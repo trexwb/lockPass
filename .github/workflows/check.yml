@@ -34,7 +34,7 @@ jobs:
       # checksum 错配风险（此前的 itoa 问题是 lock 文件损坏，
       # 不是缓存问题）
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2.2.0
         with:
           workspaces: src-tauri
 

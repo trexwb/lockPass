@@ -42,10 +42,8 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      # rust-cache 加速重复构建。此前的 itoa checksum 失败根因是
-      # Cargo.lock 中 version/checksum 错配（已修复），与缓存无关
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2.2.0
         with:
           workspaces: src-tauri
 
@@ -94,7 +92,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2.2.0
         with:
           workspaces: src-tauri
 
