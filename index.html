@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>密码保险箱</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+
+<div id="app"></div>
+
+<!-- Vendor 库按需懒加载（QR 功能触发时动态注入，不阻塞首屏） -->
+
+<!-- 应用模块（defer 保证按序执行，不阻塞 HTML 解析） -->
+<script defer src="js/template.js"></script>
+<script defer src="js/crypto.js"></script>
+<script defer src="js/database.js"></script>
+<script defer src="js/file-sync.js"></script>
+<script defer src="js/generator.js"></script>
+<script defer src="js/utils.js"></script>
+<!-- Tauri 桥接层：仅桌面环境生效，浏览器下无副作用（须位于 utils.js 之后、业务模块之前） -->
+<script defer src="js/tauri-bridge.js"></script>
+<script defer src="js/related.js"></script>
+<script defer src="js/particles.js"></script>
+<script defer src="js/app.js"></script>
+<script defer src="js/ui.js"></script>
+<script defer src="js/entries.js"></script>
+<script defer src="js/editor.js"></script>
+<script defer src="js/import-export.js"></script>
+<script defer src="js/qr-sync.js"></script>
+<script defer src="js/settings.js"></script>
+<script defer src="js/shortcuts.js"></script>
+<script defer src="js/main.js"></script>
+
+</body>
+</html>

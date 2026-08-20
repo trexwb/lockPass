@@ -1,0 +1,10 @@
+# Tauri 前端资源打包忽略规则（相对 frontendDist 根目录，即 LockPass/）
+# 避免把仓库元数据 / Rust 工程 / 文档打进应用包
+.git
+.gitignore
+node_modules
+src-tauri
+memory
+.workbuddy
+.github
+*.md

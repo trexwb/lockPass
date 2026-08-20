@@ -1,0 +1,101 @@
+/* ═══════════════════════════════════════════════════════════════════
+   LockPass — Tauri 桥接层（条件加载）
+   ───────────────────────────────────────────────────────────────────
+   仅在 Tauri 桌面环境（window.__TAURI__ 存在）下生效：
+     • 导出文件：改用系统「保存」对话框 + fs 写真实文件
+     • 复制密码：改用 clipboard-manager 插件
+     • 从系统拖入文件：通过 webview 拖放事件喂给导入流程
+   浏览器环境下本文件自动降级为原生 API，完全不影响 Web 版运行。
+   ═══════════════════════════════════════════════════════════════════ */
+
+(function () {
+  'use strict';
+
+  var T = window.__TAURI__;
+  var isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
+
+  /* ── 1. 导出文件：统一包装为返回 boolean ───────────────────────
+     浏览器：走原生下载，返回 true。
+     Tauri：dialog 保存框 + fs 写文件；用户取消返回 false。 */
+  var originalDownload = Utils.downloadFile;
+  Utils.downloadFile = async function (filename, content, type) {
+    if (!isTauri) {
+      originalDownload(filename, content, type);
+      return true;
+    }
+    try {
+      var isCsv = /\.csv($|\?)/i.test(filename);
+      var savePath = await T.core.invoke('plugin:dialog|save', {
+        defaultPath: filename,
+        filters: isCsv
+          ? [{ name: 'CSV 明文备份', extensions: ['csv'] }]
+          : [{ name: 'LockPass 加密备份', extensions: ['vault'] }]
+      });
+      if (!savePath) return false; // 用户取消
+      await T.core.invoke('plugin:fs|write_text_file', {
+        path: savePath,
+        contents: content
+      });
+      return true;
+    } catch (e) {
+      console.error('[LockPass/Tauri] 导出失败:', e);
+      if (typeof Utils !== 'undefined' && Utils.showToast) {
+        Utils.showToast('导出失败：' + (e && e.message ? e.message : e), 'error');
+      }
+      return false;
+    }
+  };
+
+  // 以下仅桌面环境需要
+  if (!isTauri) return;
+
+  var invoke = T.core.invoke;
+
+  /* ── 2. 剪贴板：覆盖 navigator.clipboard.writeText ────────────── */
+  try {
+    var ClipboardShim = {
+      writeText: function (text) {
+        return invoke('plugin:clipboard-manager|write_text', { content: String(text == null ? '' : text) });
+      },
+      readText: function () {
+        return invoke('plugin:clipboard-manager|read_text');
+      }
+    };
+    Object.defineProperty(navigator, 'clipboard', {
+      value: ClipboardShim,
+      configurable: true,
+      writable: true
+    });
+  } catch (e) {
+    console.warn('[LockPass/Tauri] 无法覆盖 navigator.clipboard:', e);
+  }
+
+  /* ── 3. 从系统拖入文件 → 导入流程 ────────────────────────────────
+     注：Tauri 的 HTML5 ondrop 仅对 webview 内部有效，
+         从操作系统拖入需监听 webview 级拖放事件。 */
+  try {
+    if (T.webview && T.webview.getCurrentWebview) {
+      var webview = T.webview.getCurrentWebview();
+      webview.onDragDropEvent(function (event) {
+        var payload = event.payload;
+        if (!payload || payload.type !== 'drop') return;
+        (payload.paths || []).forEach(async function (p) {
+          try {
+            var text = await invoke('plugin:fs|read_text_file', { path: p });
+            var name = p.split(/[\\/]/).pop();
+            if (window.ImportExport && window.ImportExport.processFile) {
+              await window.ImportExport.processFile({
+                name: name,
+                text: function () { return Promise.resolve(text); }
+              });
+            }
+          } catch (e) {
+            console.error('[LockPass/Tauri] 拖入文件读取失败:', p, e);
+          }
+        });
+      });
+    }
+  } catch (e) {
+    console.warn('[LockPass/Tauri] 拖放事件注册失败（不影响按钮导入）:', e);
+  }
+})();
