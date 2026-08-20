@@ -108,7 +108,7 @@ jobs:
       - name: 打包 .app 为 zip（保留权限与符号链接）
         run: |
           cd "src-tauri/target/release/bundle/macos"
-          ditto -c -k --keepParent "密码保险箱.app" "$RUNNER_TEMP/LockPass-macos-aarch64.zip"
+          ditto -c -k --keepParent "LockPass.app" "$RUNNER_TEMP/LockPass-macos-aarch64.zip"
 
       - name: 上传产物到 Actions Artifact
         uses: actions/upload-artifact@v4
