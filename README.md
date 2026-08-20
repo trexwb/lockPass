@@ -267,7 +267,7 @@ macOS 产物为 ad-hoc 签名，首次打开需右键 → 打开；Windows 会�
 
 - 新增 GitHub Actions CI：
   - `.github/workflows/release.yml`：推 v* 标签自动构建 Windows（NSIS+MSI）与 macOS（.app+.dmg）安装包，上传至 Draft Release
-  - `.github/workflows/pages.yml`：main 分支推送自动部署浏览器版到 GitHub Pages（在线版 https://trexwb.github.io/lockPass/）
+  - `.github/workflows/pages.yml`：main 分支推送自动部署浏览器版到 GitHub Pages（在线版 [https://trexwb.github.io/lockPass/](https://trexwb.github.io/lockPass/)）
 
 ### v1.0.1 (2026-08-20)
 
