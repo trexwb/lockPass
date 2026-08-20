@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════════════════════
+# LockPass — Dependabot 自动依赖更新
+# ───────────────────────────────────────────────────────────────────
+# 作用：
+#   • cargo（/src-tauri）：每周检查 crates.io 新版本，自动开 PR，
+#     同步更新 Cargo.toml 版本约束 + 重新生成 Cargo.lock（checksum
+#     由 Dependabot 校验，天然避免 itoa 那种错配问题）
+#   • npm（/）：每周检查 npm 新版本，自动开 PR 更新 package.json
+# 合并建议：先看 PR 上 check.yml 是否通过（cargo check --locked），
+# 通过即可放心合并；不合并 PR 不影响现有构建。
+# ═══════════════════════════════════════════════════════════════════
+
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
