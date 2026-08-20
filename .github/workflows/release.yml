@@ -42,15 +42,12 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 缓存 Cargo 构建产物
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
       - name: 安装 npm 依赖
         run: npm ci
 
       # Tauri 自动下载 WiX(msi) / NSIS 工具链；WebView2 走 downloadBootstrapper
+      # 注意：未使用 rust-cache，避免缓存的 crates.io registry checksum 与
+      #       本地 Cargo.lock 不一致导致 itoa/checksum 校验失败
       - name: 构建 Tauri 应用
         run: npm run tauri:build
 
@@ -91,14 +88,11 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 缓存 Cargo 构建产物
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
       - name: 安装 npm 依赖
         run: npm ci
 
+      # 注意：未使用 rust-cache，避免缓存的 crates.io registry checksum 与
+      #       本地 Cargo.lock 不一致导致 itoa/checksum 校验失败
       - name: 构建 Tauri 应用（仅 .app）
         run: npm run tauri:build
 
