@@ -238,6 +238,13 @@ LockPass/
 
 ## 更新日志
 
+### v1.0.1 (2026-08-20)
+
+- Tauri 桌面版新增本地文件存储 API（file_store_write/read/exists/delete/data_dir）：
+  - 数据落盘到系统应用数据目录（macOS: ~/Library/Application Support/com.lockpass），meta 与 vault 分别存为 meta.json / vault.json
+  - 前端新增 js/file-store.js：Tauri 环境下自动用文件版 DBUtils 替代 IndexedDB（接口完全一致，业务代码零改动），浏览器环境自动降级回 IndexedDB
+  - 设置面板「本地文件同步」区在桌面版显示数据目录路径；Rust 命令含路径穿越防护
+
 ### v1.0.0 (2026-08-20)
 
 - 更换应用图标：深海军蓝渐变底 + 青色 3D 金属保险箱 + 银白转盘（macOS/Windows 桌面图标与浏览器 favicon 同步更新）

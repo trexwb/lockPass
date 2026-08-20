@@ -245,7 +245,11 @@ async function refreshDataInfo() {
   // 文件同步状态
   const syncEl = document.getElementById('data-info-sync');
   const fileEl = document.getElementById('data-info-file');
-  if (FileSync.isSupported()) {
+  // Tauri 桌面版：数据已通过本地文件存储
+  if (window.FileStore && window.FileStore.isTauri) {
+    if (syncEl) syncEl.textContent = '桌面文件';
+    if (fileEl) { fileEl.textContent = '已启用'; fileEl.className = 'tag tag-ok'; }
+  } else if (FileSync.isSupported()) {
     const handle = await FileSync.getDirHandle();
     if (handle) {
       if (syncEl) syncEl.textContent = '已绑定';
@@ -274,6 +278,17 @@ async function refreshFileSyncStatus() {
   const statusEl = document.getElementById('file-sync-status');
   const btn = document.getElementById('file-sync-btn');
   if (!statusEl || !btn) return;
+  
+  // Tauri 桌面版：数据已通过本地文件存储，无需目录绑定
+  if (window.FileStore && window.FileStore.isTauri) {
+    statusEl.textContent = '数据已保存在桌面本地文件';
+    btn.style.display = 'none';
+    try {
+      const dir = await window.FileStore.dataDir();
+      if (dir) statusEl.textContent = '数据目录：' + dir;
+    } catch (e) { /* 目录获取失败时保留默认文案 */ }
+    return;
+  }
   
   if (!FileSync.isSupported()) {
     statusEl.textContent = '当前浏览器不支持（请用 Chrome / Edge）';

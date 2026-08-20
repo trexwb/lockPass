@@ -21,6 +21,8 @@
 <script defer src="js/template.js"></script>
 <script defer src="js/crypto.js"></script>
 <script defer src="js/database.js"></script>
+<!-- Tauri 文件存储层：桌面环境用本地文件替代 IndexedDB（浏览器下无副作用，须位于 database.js 之后） -->
+<script defer src="js/file-store.js"></script>
 <script defer src="js/file-sync.js"></script>
 <script defer src="js/generator.js"></script>
 <script defer src="js/utils.js"></script>

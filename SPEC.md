@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.0.0 | 更新日期：2026-08-20
+> 版本：v1.0.1 | 更新日期：2026-08-20
 
 ---
 
@@ -173,7 +173,9 @@
 
 ## 4. 数据结构
 
-### 4.1 IndexedDB 结构
+### 4.1 存储结构
+
+**浏览器版（IndexedDB）**
 
 ```
 Database: PasswordVaultDB
@@ -186,6 +188,18 @@ ObjectStore: meta (keyPath: key)
 ObjectStore: vault (keyPath: id)
   { id: "main", iv: "base64-iv", data: "base64-aes-gcm-ciphertext" }
 ```
+
+**Tauri 桌面版（本地文件存储，结构等价）**
+
+数据目录：系统应用数据目录（macOS `~/Library/Application Support/com.lockpass`，Windows `%APPDATA%\com.lockpass`），通过 Rust 命令 `file_store_*` 读写，前端 js/file-store.js 以同接口 DBUtils 透明替换 IndexedDB：
+
+```
+<数据目录>/
+├── meta.json     # 等价 meta store：{ "salt": {...}, "iterations": {...}, ... }
+└── vault.json    # 等价 vault store：{ "main": { id, iv, data } }
+```
+
+加密负载结构不变（salt/iv/data 均为 base64 密文），两种存储可无缝迁移。
 
 ### 4.2 加密流程
 
@@ -258,15 +272,19 @@ Entropy = log2(charset_size ^ length)
 
 ```
 LockPass/
-├── index.html     # 单文件应用（HTML + CSS + JS 全部内嵌）
+├── index.html     # 入口（模块化 script 按序加载）
+├── css/main.css   # 样式
+├── js/            # 业务模块（crypto/database/file-store/file-sync/generator/utils/...）
+├── assets/        # favicon、vendor 库
+├── scripts/       # 构建辅助（copy-frontend、make-dmg、gen-icons）
+├── src-tauri/     # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 ├── SPEC.md        # 产品规格文档（本文件）
 └── README.md      # 使用说明
 ```
 
-**单文件优势**：
-- 双击即用，无需 HTTP 服务器
-- 便于备份和迁移
-- 零构建依赖
+**多端形态**：
+- 浏览器：双击 index.html 即用，IndexedDB 存储
+- Tauri 桌面：同前端代码，本地文件存储（见 4.1），导出走系统对话框
 
 ---
 
@@ -280,4 +298,4 @@ LockPass/
 
 ---
 
-**文档版本：v1.0.0**
+**文档版本：v1.0.1**
