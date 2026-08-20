@@ -42,20 +42,15 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
+      # rust-cache 加速重复构建。此前的 itoa checksum 失败根因是
+      # Cargo.lock 中 version/checksum 错配（已修复），与缓存无关
+      - name: 启用 cargo 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: 安装 npm 依赖
         run: npm ci
-
-      # 彻底清理 cargo 残留：
-      #   • ~/.cargo/registry/index/ 可能有旧的 stale index（itoa checksum 不一致根源）
-      #   • src-tauri/target/ 可能有半成品干扰编译
-      # 确保 cargo 重新拉取所有 crates.io 依赖并与 Cargo.lock 完全对齐
-      - name: 清理 cargo 环境
-        run: |
-          rm -rf "$CARGO_HOME/registry"
-          rm -rf src-tauri/target
-          echo "Cargo registry 和 target 已清理，重新拉取依赖..."
-          cargo fetch --locked
-          echo "cargo fetch --locked 成功，checksum 校验通过"
 
       # Tauri 自动下载 WiX(msi) / NSIS 工具链；WebView2 走 downloadBootstrapper
       - name: 构建 Tauri 应用
@@ -98,17 +93,13 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
+      - name: 启用 cargo 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: 安装 npm 依赖
         run: npm ci
-
-      # 彻底清理 cargo 残留（见 Windows job 说明）
-      - name: 清理 cargo 环境
-        run: |
-          rm -rf "$CARGO_HOME/registry"
-          rm -rf src-tauri/target
-          echo "Cargo registry 和 target 已清理，重新拉取依赖..."
-          cargo fetch --locked
-          echo "cargo fetch --locked 成功，checksum 校验通过"
 
       - name: 构建 Tauri 应用（仅 .app）
         run: npm run tauri:build
