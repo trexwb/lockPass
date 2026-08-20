@@ -64,9 +64,22 @@ npm run icons            # 用 app-icon.png 经 `tauri icon` 重新生成全套�
 ## Windows 构建（重要约束）
 
 **Tauri 无法从 macOS 交叉编译 Windows 安装包**（依赖 MSVC + WebView2），必须在 Windows 上构建。
-已提供 GitHub Actions 工作流 `.github/workflows/build.yml`，在 `windows-latest` 跑 Windows 包、
-在 `macos-latest` 跑 universal macOS 包。触发方式：推 `v*` 标签，或 Actions 页面手动 `workflow_dispatch`。
-产物以 artifact 形式上传（可后续接入 GitHub Releases 自动发布）。
+已提供 GitHub Actions 工作流：
+
+### `.github/workflows/release.yml` — 发布自动打包
+
+- 触发：推 `v*` 标签（如 `v1.0.2`），或 Actions 页面手动 `workflow_dispatch`
+- `windows-latest` → NSIS(.exe) + MSI(.msi)
+- `macos-latest`（arm64 原生）→ `.app` zip + `.dmg`（`npm run make-dmg`，hdiutil）
+- 产物先传 Actions Artifact，再上传到 **Draft Release**，人工确认后 Publish
+- macOS 产物为 ad-hoc 签名（未配证书），用户首次打开需右键 → 打开；Windows 有 SmartScreen 提示
+
+### `.github/workflows/pages.yml` — 在线版部署 GitHub Pages
+
+- 触发：`main` 分支推送 或 `workflow_dispatch`
+- `node scripts/copy-frontend.mjs` 生成 dist/（纯 Node，零依赖安装）→ 部署到 Pages
+- 访问：`https://trexwb.github.io/lockPass/`（首次需在仓库 Settings → Pages → Source 选 GitHub Actions）
+- 在线版与桌面版数据独立（浏览器 IndexedDB），可用 .vault 导入导出互通
 
 ## macOS 本地构建实测（2026-08-20）
 

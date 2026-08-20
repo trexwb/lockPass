@@ -187,6 +187,31 @@ LockPass/
 
 ---
 
+## CI 与在线版
+
+### 发布自动打包（GitHub Actions）
+
+推 `v*` 标签（如 `v1.0.2`）或手动触发，自动构建并发布：
+
+| 平台 | 产物 |
+|------|------|
+| Windows | NSIS 安装包 (.exe) + MSI (.msi) |
+| macOS | .app 压缩包 (.zip) + .dmg |
+
+产物先上传 Actions Artifact，再汇总到 **Draft Release**，人工确认后发布。
+macOS 产物为 ad-hoc 签名，首次打开需右键 → 打开；Windows 会有 SmartScreen 提示。
+（正式分发需配置 Apple Developer ID / 代码签名证书，见 TAURI.md）
+
+### 在线版（GitHub Pages）
+
+`main` 分支推送后自动将浏览器版部署到 **GitHub Pages**：
+
+- 访问地址：`https://trexwb.github.io/lockPass/`
+- 首次需在仓库 Settings → Pages → Source 选择 **GitHub Actions**
+- 在线版数据存在访问者浏览器（IndexedDB），与桌面版相互独立，可用 .vault 文件导入导出互通
+
+---
+
 ## 安全注意事项
 
 ### 浏览器环境风险
@@ -237,6 +262,12 @@ LockPass/
 ---
 
 ## 更新日志
+
+### v1.0.2 (2026-08-20)
+
+- 新增 GitHub Actions CI：
+  - `.github/workflows/release.yml`：推 v* 标签自动构建 Windows（NSIS+MSI）与 macOS（.app+.dmg）安装包，上传至 Draft Release
+  - `.github/workflows/pages.yml`：main 分支推送自动部署浏览器版到 GitHub Pages（在线版 https://trexwb.github.io/lockPass/）
 
 ### v1.0.1 (2026-08-20)
 
