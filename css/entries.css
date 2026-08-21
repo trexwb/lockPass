@@ -304,7 +304,8 @@
   flex-direction: column;
   flex-shrink: 0;
   transform: translateX(100%);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, visibility 0s linear 0.3s;
+  visibility: hidden;
   position: fixed;
   right: 0;
   top: 0;
@@ -312,7 +313,7 @@
   height: 100vh;
   z-index: 200;
 }
-#detail-panel.open { transform: translateX(0); }
+#detail-panel.open { transform: translateX(0); visibility: visible; transition: transform 0.3s ease; }
 .detail-header {
   padding: 18px 20px;
   border-bottom: 1px solid var(--border);

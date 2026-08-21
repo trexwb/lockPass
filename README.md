@@ -299,6 +299,30 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.7 (2026-08-21)
+
+- 修复手机端（竖屏）主界面横向溢出：
+  - `css/main.css` 调整 `@import` 顺序（layout.css 移至 entries.css 之后，移动端响应式规则最后生效）
+  - 侧栏 / 详情面板关闭态加 `visibility: hidden`（transition 延迟隐藏），屏外 fixed 元素不再撑宽移动端滚动区域
+  - `html` 增加 `overflow-x: hidden` 与 body 双保险
+- Service Worker 缓存命名同步 v1.0.7（`lockpass-v1.0.7`）
+
+### v1.0.6 (2026-08-21)
+
+- 绑定数据目录防覆盖机制（行为变更：不再静默覆盖已有同步文件）：
+  - IndexedDB 无数据 + 目录已有 `LockPass-vault.json` → 直接用文件内容恢复数据并绑定
+  - IndexedDB 已有数据（含刚创建的空库）+ 目录已有同步文件 → 弹窗让用户选择「用文件恢复」或「保留当前数据」
+  - 恢复失败时不保存目录句柄、不写入文件，避免误绑定与误覆盖
+- 系统 `confirm` 全部替换为应用内确认弹窗（`Utils.confirm`，桌面 / 手机 / Pad 表现一致）
+- 修复桌面打包版主界面点击全部失效：
+  - 根因：tauri.conf.json 配置 `csp` 后，Tauri 编译期会将 inline `<script>` 哈希化并移除 `script-src` 的 `'unsafe-inline'`，而 `onclick="..."` 事件属性不在哈希范围内导致全部被 CSP 拒绝（登录页 `addEventListener` 绑定不受影响）
+  - 修复：`csp` 改回 `null`（meta CSP 原样生效），meta CSP 的 `connect-src` 补充 `ipc: http://ipc.localhost` 放行 Tauri IPC
+
+### v1.0.5 (2026-08-21)
+
+- 版本号统一 v1.0.5：`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` 与 `APP_VERSION`、SPEC.md 对齐（此前桌面打包产物版本与界面显示不一致）
+- 清理创建流程死代码：曾绑定目录的恢复引导与「继续创建」确认合并为一次选择（`wasBound` 冗余分支移除）
+
 ### v1.0.4 (2026-08-21)
 
 - 全量代码审计修复（17 项）：
@@ -313,6 +337,9 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
   - 侧栏统计合并为单次遍历；清理占位符/死代码/冗余赋值；deriveKey 支持读取 meta iterations
   - 确认框快捷键独立映射（Enter 直接点击确认）
   - CSS 按注释分区拆分为 base/layout/entries/editor/settings/modal/particles 七个子文件（main.css 保留 @import 入口）
+- 新增 PWA 支持：manifest.json + Service Worker（缓存优先策略）+ iOS「添加到主屏幕」支持（apple-touch-icon / apple-mobile-web-app-*）
+- macOS 桌面版不再显示「绑定数据目录」顶部横幅（数据已自动保存在应用数据目录，浏览器版行为不变）
+
 - 修复手机端「两次密码不一致」误报（本次修复不升版本号，并入 v1.0.4）：
   - 创建保险箱两个密码输入框移除 `name` 属性并增加 `autocapitalize="off"` / `autocorrect="off"` / `spellcheck="false"`，降低移动端浏览器/密码管理器将页面识别为密码表单并自动填充的概率
   - 创建场景初始化后 250ms 再清空一次输入框（仅当两框均未聚焦时），对抗移动端异步自动填充晚于同步清空的问题

@@ -59,7 +59,7 @@
   --breakpoint-mobile: 480px;
 }
 
-html { font-size: 14px; }
+html { font-size: 14px; overflow-x: hidden; }
 @media (max-width: 480px) {
   html { font-size: 14px; }
 }
