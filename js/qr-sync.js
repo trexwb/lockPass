@@ -343,6 +343,14 @@ const QR = {
           <input type="file" id="qr-import-file" accept="image/*" onchange="QR.handleImportFile(event)" />
         </div>
         <div id="qr-import-status" class="hidden mt-3"></div>
+        <div class="text-center mt-3">
+          <button class="btn btn-secondary btn-sm" onclick="QR.startCameraScan()" tabindex="2">
+            <span style="display:inline-flex;vertical-align:-2px;margin-right:6px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </span>扫码识别
+          </button>
+          <div class="text-muted text-sm mt-1">手机可直接调起摄像头扫码，或上传二维码图片</div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="QR.closeImportModal()" tabindex="1">取消</button>
@@ -357,7 +365,148 @@ const QR = {
    */
   closeImportModal() {
     QR._unregisterPaste();
+    QR._stopCamera();
     App.closeModal();
+  },
+
+  /* ── 摄像头扫码识别 ──────────────────────────────────────── */
+
+  /**
+   * 打开摄像头扫码视图（手机浏览器主场景；支持 BarcodeDetector 时原生解码，
+   * 否则降级 jsQR 逐帧解码）
+   */
+  startCameraScan() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      Utils.showToast('当前浏览器不支持摄像头访问，请使用上传图片', 'error');
+      return;
+    }
+    QR._stopCamera(); // 清理上一次扫码会话
+    const modal = document.getElementById('modal');
+    modal.innerHTML = `
+      <div class="modal-header">
+        <h2>扫码识别</h2>
+        <button class="btn-icon" onclick="QR.closeImportModal()" tabindex="-1">
+          ${Utils.SvgIcons.close(16)}
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="qr-scan-frame">
+          <video id="qr-scan-video" autoplay playsinline muted></video>
+          <canvas id="qr-scan-canvas" class="hidden" aria-hidden="true"></canvas>
+        </div>
+        <div class="text-muted text-sm text-center mt-2">将二维码对准取景框，识别后自动导入</div>
+        <div id="qr-scan-status" class="hidden mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="QR.cancelCameraScan()" tabindex="1">返回上传</button>
+        <button class="btn btn-secondary" onclick="QR.closeImportModal()" tabindex="2">关闭</button>
+      </div>
+    `;
+    QR._initCameraScan();
+  },
+
+  /**
+   * 取消扫码，回到上传视图
+   */
+  cancelCameraScan() {
+    QR._stopCamera();
+    QR.openImportModal();
+  },
+
+  /** 初始化摄像头与解码器 */
+  async _initCameraScan() {
+    const video = document.getElementById('qr-scan-video');
+    const status = document.getElementById('qr-scan-status');
+    if (!video || !status) return;
+    try {
+      QR._scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+    } catch (e) {
+      status.classList.remove('hidden');
+      status.innerHTML = `<div class="text-danger text-sm">无法访问摄像头：${Utils.escHtml(e.message || e)}（可改用上传图片识别）</div>`;
+      return;
+    }
+    if (!document.getElementById('qr-scan-video')) { // 等待授权期间模态框已被关闭
+      QR._stopCamera();
+      return;
+    }
+    video.srcObject = QR._scanStream;
+    try { await video.play(); } catch (e) { /* 自动播放策略差异，忽略 */ }
+
+    // 优先原生 BarcodeDetector（Chrome / Android / iOS 16.4+）
+    QR._barcodeDetector = null;
+    try {
+      if ('BarcodeDetector' in window) {
+        QR._barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+      }
+    } catch (e) {
+      QR._barcodeDetector = null; // 构造失败则降级 jsQR
+    }
+    // 降级引擎：确保 jsQR 就绪
+    if (!QR._barcodeDetector) {
+      try {
+        await _ensureJsQR();
+      } catch (e) {
+        status.classList.remove('hidden');
+        status.innerHTML = '<div class="text-danger text-sm">二维码解码库加载失败，请检查网络后重试</div>';
+        QR._stopCamera();
+        return;
+      }
+    }
+    QR._scanActive = true;
+    QR._scanLoop();
+  },
+
+  /** 识别循环：检测到二维码文本即停止并进入导入流程 */
+  async _scanLoop() {
+    const video = document.getElementById('qr-scan-video');
+    const status = document.getElementById('qr-scan-status');
+    while (QR._scanActive && video && !video.paused) {
+      try {
+        let text = null;
+        if (QR._barcodeDetector) {
+          const codes = await QR._barcodeDetector.detect(video);
+          if (codes && codes.length > 0 && codes[0].rawValue) text = codes[0].rawValue;
+        } else {
+          const canvas = document.getElementById('qr-scan-canvas');
+          if (canvas && video.videoWidth > 0) {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+            if (code && code.data) text = code.data;
+          }
+        }
+        if (text) {
+          QR._scanActive = false;
+          QR._stopCamera();
+          status.classList.remove('hidden');
+          status.innerHTML = '<div class="text-sm text-muted">识别成功，正在导入…</div>';
+          try {
+            await QR._processQrText(text);
+          } catch (e) {
+            // 解密/导入失败：提示后停在扫码视图，用户可返回上传重试
+            status.classList.remove('hidden');
+            status.innerHTML = `<div class="text-danger text-sm">${Utils.escHtml(e.message)}</div>`;
+          }
+          return;
+        }
+      } catch (e) { /* 单帧检测异常忽略，继续下一帧 */ }
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  },
+
+  /** 停止摄像头与识别循环 */
+  _stopCamera() {
+    QR._scanActive = false;
+    if (QR._scanStream) {
+      try { QR._scanStream.getTracks().forEach((t) => t.stop()); } catch (e) { /* 忽略 */ }
+      QR._scanStream = null;
+    }
   },
 
   /**
@@ -429,27 +578,38 @@ const QR = {
 
     try {
       const qrText = await QR.decodeImageFile(file);
-      App.state.qrImportText = qrText;
-
-      // 复用当前解锁会话的主密码自动解密，无需再次输入
-      const password = getSession();
-      if (!password) {
-        status.innerHTML = '<div class="text-danger text-sm">未找到会话主密码，请先解锁保险箱后重试</div>';
-        return;
-      }
-      const entry = await QR.qrStringToEntry(qrText, password);
-      App.state.qrImportEntry = entry;
-
-      status.innerHTML = `
-        <div class="text-success text-sm flex items-center gap-2">
-          ${Utils.SvgIcons.check(13)}
-          二维码识别成功，正在自动同步…
-        </div>
-      `;
-      await QR._autoImport(entry);
+      await QR._processQrText(qrText);
     } catch (e) {
       status.innerHTML = `<div class="text-danger text-sm">${Utils.escHtml(e.message)}</div>`;
     }
+  },
+
+  /**
+   * 处理识别出的二维码文本：自动解密并导入（上传图片与摄像头扫码共用）
+   * @param {string} qrText - 二维码文本
+   */
+  async _processQrText(qrText) {
+    const status = document.getElementById('qr-import-status') || document.getElementById('qr-scan-status');
+    if (!status) return;
+    status.classList.remove('hidden');
+    App.state.qrImportText = qrText;
+
+    // 复用当前解锁会话的主密码自动解密，无需再次输入
+    const password = getSession();
+    if (!password) {
+      status.innerHTML = '<div class="text-danger text-sm">未找到会话主密码，请先解锁保险箱后重试</div>';
+      return;
+    }
+    const entry = await QR.qrStringToEntry(qrText, password);
+    App.state.qrImportEntry = entry;
+
+    status.innerHTML = `
+      <div class="text-success text-sm flex items-center gap-2">
+        ${Utils.SvgIcons.check(13)}
+        二维码识别成功，正在自动同步…
+      </div>
+    `;
+    await QR._autoImport(entry);
   },
 
   /**
@@ -529,7 +689,8 @@ const QR = {
 
     // 短暂停留：保持模态框打开，用户可继续扫码导入下一张
     setTimeout(() => {
-      if (!document.getElementById('qr-import-drop')) return; // 模态框已关闭则跳过
+      // 上传视图或扫码视图都不存在说明模态框已关闭，跳过
+      if (!document.getElementById('qr-import-drop') && !document.getElementById('qr-scan-video')) return;
       QR.closeImportModal();
     }, 2000);
   },

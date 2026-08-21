@@ -30,7 +30,8 @@
   display: none;
   margin-right: 8px;
 }
-@media (max-width: 768px) {
+/* 横屏手机宽度可达 932px，断点提升至 1024px 确保覆盖 */
+@media (max-width: 1024px) {
   .hamburger-btn {
     display: flex;
   }
@@ -248,8 +249,9 @@
 
 /* Responsive */
 
-/* ── Tablet (≤768px) ───────────────────────────────────────── */
-@media (max-width: 768px) {
+/* ── Tablet / 横屏手机 (≤1024px) ──────────────────────────── */
+/* iPhone 横屏宽度 844~932px，需覆盖到 1024px 才能触发抽屉模式 */
+@media (max-width: 1024px) {
   :root {
     --sidebar-w: 280px;
   }
@@ -270,6 +272,7 @@
     top: 0;
     height: 100vh;
     height: 100dvh;
+    padding-top: env(safe-area-inset-top);
     z-index: calc(var(--z-banner) + 1);
     transform: translateX(-100%);
     transition: transform 0.3s ease, visibility 0s linear 0.3s;
@@ -312,8 +315,9 @@
   }
 }
 
-/* ── Mobile (≤480px) ────────────────────────────────────────── */
-@media (max-width: 480px) {
+/* ── Mobile (≤480px) 或 横屏矮屏 (≤500px) ───────────────────── */
+/* 横屏手机高度 375~430px，通过 max-height 捕获以应用全屏面板等移动端样式 */
+@media (max-width: 480px), (max-height: 500px) {
   /* Header */
   #header {
     padding: 0 12px;

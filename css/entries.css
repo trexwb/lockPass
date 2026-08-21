@@ -387,6 +387,13 @@
 .related-item .entry-icon { width: 30px; height: 30px; }
 .related-item .entry-title { font-size: 0.92rem; margin-bottom: 2px; }
 .related-item .entry-meta { font-size: 0.78rem; }
+
+/* Mobile / iPad: 详情面板为全屏浮层，需避开刘海/状态栏 */
+@media (max-width: 1024px) {
+  #detail-panel {
+    padding-top: env(safe-area-inset-top);
+  }
+}
 .related-reasons {
   display: flex;
   flex-direction: column;
