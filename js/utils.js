@@ -2,6 +2,10 @@
    LockPass — 工具函数模块
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Toast 反馈定时器时长（毫秒） */
+const TOAST_VISIBLE_DURATION = 3000; // 显示时长
+const TOAST_FADE_OUT_DELAY = 300;    // 淡出结束后移除延迟
+
 /**
  * 获取分类图标 SVG
  * @param {string} iconId - 图标 ID
@@ -195,8 +199,8 @@ function showToast(message, type = 'success') {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(20px)';
     toast.style.transition = 'all 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+    setTimeout(() => toast.remove(), TOAST_FADE_OUT_DELAY);
+  }, TOAST_VISIBLE_DURATION);
 }
 
 /**

@@ -1,0 +1,52 @@
+/* ═══════════════════════════════════════════════════════════════════
+   LockPass — 通用工具类
+   置于 @import 顺序最后，同特异性下可覆盖组件默认样式
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 布局辅助 ─────────────────────────────────────────────── */
+.flex-1 { flex: 1; }
+.flex-wrap { flex-wrap: wrap; }
+.ml-auto { margin-left: auto; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.text-center { text-align: center; }
+.align-self-end { align-self: flex-end; }
+
+/* ── 间距辅助 ─────────────────────────────────────────────── */
+.mb-0 { margin-bottom: 0; }
+.mb-3 { margin-bottom: 12px; }
+.mt-3 { margin-top: 12px; }
+.p-0 { padding: 0; }
+.p-6 { padding: 24px; }
+
+/* ── 尺寸辅助 ─────────────────────────────────────────────── */
+.w-120 { width: 120px; }
+.min-w-auto { min-width: auto; }
+
+/* ── 图标按钮尺寸（覆盖 .btn-icon 默认 32px） ──────────────── */
+.btn-icon.btn-icon-sm { width: 24px; height: 24px; }
+.btn-icon.btn-icon-xs { width: 26px; height: 26px; flex-shrink: 0; }
+
+/* ── 组件级覆盖 ───────────────────────────────────────────── */
+/* 锁屏主密码强度条轨道使用更亮的边框色 */
+.pw-strength-bar-bg.pw-strength-bg-border { background: var(--border); }
+/* 密码生成器末行：紧凑间距 */
+.pw-gen-row.gap-8 { gap: 8px; }
+
+/* ── 状态容器 ─────────────────────────────────────────────── */
+.spinner-wrap { text-align: center; padding: 32px 0; }
+.empty-state-lg { padding: 32px; text-align: center; color: var(--text-muted); }
+.spinner-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+}
+/* 二维码白底（扫码必须白底，故硬编码 #fff） */
+.qr-paper {
+  display: inline-block;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+}
+.content-pad { padding: 0 20px 20px; }

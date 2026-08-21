@@ -71,15 +71,15 @@ function syncFieldLabels(type) {
   };
   const lbl = labels[type] || labels.website;
   const form = document.getElementById(`form-${type}`);
-  const elUser = form?.querySelector('[data-field="username-label"]');
-  const elPw   = form?.querySelector('[data-field="password-label"]');
-  const elUrl  = form?.querySelector('[data-field="url-label"]');
+  const elUser = form && form.querySelector('[data-field="username-label"]');
+  const elPw   = form && form.querySelector('[data-field="password-label"]');
+  const elUrl  = form && form.querySelector('[data-field="url-label"]');
   if (elUser) elUser.textContent = lbl.u;
   if (elPw)   elPw.textContent  = lbl.p;
   if (elUrl) {
     elUrl.parentElement.style.display = lbl.u2 ? '' : 'none';
     elUrl.textContent = lbl.u2;
-    const urlInput = form?.querySelector('[data-field="url"]');
+    const urlInput = form && form.querySelector('[data-field="url"]');
     if (urlInput) urlInput.placeholder = lbl.hint;
   }
   // 更新密码强度 label
@@ -117,25 +117,25 @@ function cacheFormData() {
 
   const data = {
     type,
-    title: document.getElementById('e-title')?.value || '',
-    username: form.querySelector('[data-field="username"]')?.value || '',
-    password: form.querySelector('[data-field="password"]')?.value || '',
-    url: form.querySelector('[data-field="url"]')?.value || '',
-    port: form.querySelector('[data-field="port"]')?.value || '',
-    notes: document.getElementById('e-notes')?.value || '',
+    title: (document.getElementById('e-title') || {}).value || '',
+    username: (form.querySelector('[data-field="username"]') || {}).value || '',
+    password: (form.querySelector('[data-field="password"]') || {}).value || '',
+    url: (form.querySelector('[data-field="url"]') || {}).value || '',
+    port: (form.querySelector('[data-field="port"]') || {}).value || '',
+    notes: (document.getElementById('e-notes') || {}).value || '',
     tags: getSelectedTags(),
     timestamp: Date.now(),
   };
 
   // server 类型额外缓存 root 字段
   if (type === 'server') {
-    data.rootUser = form.querySelector('[data-field="root-user"]')?.value || '';
-    data.rootPwd = form.querySelector('[data-field="root-pwd"]')?.value || '';
+    data.rootUser = (form.querySelector('[data-field="root-user"]') || {}).value || '';
+    data.rootPwd = (form.querySelector('[data-field="root-pwd"]') || {}).value || '';
   }
 
   // app 类型额外缓存 appId（排除 privateKey）
   if (type === 'app') {
-    data.appId = form.querySelector('[data-field="appid"]')?.value || '';
+    data.appId = (form.querySelector('[data-field="appid"]') || {}).value || '';
     // 私钥不缓存：太长且敏感
   }
 
@@ -423,7 +423,7 @@ function buildServerFields(entry) {
         <div class="input-row-main">
           <input class="form-input mono" data-field="url" type="text" placeholder="示例：1.2.3.4 或 ssh://1.2.3.4" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="2" />
         </div>
-        <input class="form-input mono" data-field="port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" style="width:90px;flex-shrink:0;" />
+        <input class="form-input mono input-port" data-field="port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" />
       </div>
     </div>
     <div class="form-group">
@@ -512,7 +512,7 @@ function buildDatabaseFields(entry) {
         <div class="input-row-main">
           <input class="form-input mono" data-field="url" type="text" placeholder="示例：localhost 或 10.0.0.100" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="2" />
         </div>
-        <input class="form-input mono" data-field="port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" style="width:90px;flex-shrink:0;" />
+        <input class="form-input mono input-port" data-field="port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" />
       </div>
     </div>
     <div class="form-group">
@@ -651,7 +651,7 @@ function buildOtherFields(entry) {
 function toggleFieldVisibility(inputId, btnEl) {
   // 从当前激活的表单里找输入框（字段已统一 data-field 命名，回退兼容旧 id）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector(`[data-field="${inputId}"]`) || document.getElementById(inputId);
+  const input = (form && form.querySelector(`[data-field="${inputId}"]`)) || document.getElementById(inputId);
   if (!input) return;
   const isTextarea = input.tagName === 'TEXTAREA';
 
@@ -696,8 +696,8 @@ function toggleFieldVisibility(inputId, btnEl) {
 function copyFieldById(fieldName) {
   // 字段已统一为 data-field 命名，回退兼容旧 id
   const form = document.getElementById(`form-${currentEntryType}`);
-  const el = form?.querySelector(`[data-field="${fieldName}"]`) || document.getElementById(fieldName);
-  const val = el?.value;
+  const el = (form && form.querySelector(`[data-field="${fieldName}"]`)) || document.getElementById(fieldName);
+  const val = el && el.value;
   if (val) copyField(val);
 }
 
@@ -707,13 +707,13 @@ function copyFieldById(fieldName) {
 function toggleEntryPwVisibility() {
   // 从当前激活的表单里找密码框（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector('[data-field="password"]');
+  const input = form && form.querySelector('[data-field="password"]');
   if (!input) return;
   
   input.type = input.type === 'password' ? 'text' : 'password';
   
   // 更新眼睛图标（优先从当前表单找）
-  const eye = form?.querySelector('[data-field="password-eye"]');
+  const eye = form && form.querySelector('[data-field="password-eye"]');
   if (eye) {
     eye.innerHTML = input.type === 'password'
       ? Utils.SvgIcons.eyeOpenPaths
@@ -727,7 +727,7 @@ function toggleEntryPwVisibility() {
 function toggleGenPanel() {
   // 从当前激活的表单里找 gen-panel（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const panel = form?.querySelector('#gen-panel') || document.getElementById('gen-panel');
+  const panel = (form && form.querySelector('#gen-panel')) || document.getElementById('gen-panel');
   if (!panel) return;
   panel.classList.toggle('hidden');
   if (!panel.classList.contains('hidden')) {
@@ -742,7 +742,7 @@ function renderGenPanel() {
   return `
     <div class="pw-gen-preview">
       <span class="pw-gen-preview-text" data-field="gen-preview-text">点击生成</span>
-      <button class="btn-icon" style="width:26px;height:26px;flex-shrink:0" onclick="generateNewPassword()" title="重新生成" tabindex="-1">
+      <button class="btn-icon btn-icon-xs" onclick="generateNewPassword()" title="重新生成" tabindex="-1">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
     </div>
@@ -758,8 +758,8 @@ function renderGenPanel() {
         <label class="charset-label"><input type="checkbox" data-field="gen-number" checked onchange="generateNewPassword()" tabindex="-1" /> 数字 (0-9)</label>
         <label class="charset-label"><input type="checkbox" data-field="gen-symbol" checked onchange="generateNewPassword()" tabindex="-1" /> 符号 (!@#$…)</label>
       </div>
-      <div class="pw-gen-row" style="gap:8px;margin-top:4px">
-        <label class="charset-label" style="min-width:auto"><input type="checkbox" data-field="gen-noambig" onchange="generateNewPassword()" tabindex="-1" /> 排除歧义字符</label>
+      <div class="pw-gen-row gap-8 mt-1">
+        <label class="charset-label min-w-auto"><input type="checkbox" data-field="gen-noambig" onchange="generateNewPassword()" tabindex="-1" /> 排除歧义字符</label>
       </div>
       <div data-field="gen-strength-container">
         <div class="pw-strength-bar-bg">
@@ -779,12 +779,12 @@ function renderGenPanel() {
  * 生成新密码
  */
 function generateNewPassword() {
-  const length = parseInt(document.getElementById('gen-length')?.value || 16);
-  const upper = document.getElementById('gen-upper')?.checked;
-  const lower = document.getElementById('gen-lower')?.checked;
-  const number = document.getElementById('gen-number')?.checked;
-  const symbol = document.getElementById('gen-symbol')?.checked;
-  const noAmbig = document.getElementById('gen-noambig')?.checked;
+  const length = parseInt((document.getElementById('gen-length') || {}).value || 16);
+  const upper = (document.getElementById('gen-upper') || {}).checked;
+  const lower = (document.getElementById('gen-lower') || {}).checked;
+  const number = (document.getElementById('gen-number') || {}).checked;
+  const symbol = (document.getElementById('gen-symbol') || {}).checked;
+  const noAmbig = (document.getElementById('gen-noambig') || {}).checked;
   
   const password = PasswordGenerator.generatePassword({
     length,
@@ -824,14 +824,14 @@ function useGeneratedPassword() {
   const password = preview.textContent;
   // 从当前激活的表单里找密码输入框（避免多表单 DOM 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector('[data-field="password"]');
+  const input = form && form.querySelector('[data-field="password"]');
   if (!input) return;
   
   input.value = password;
   input.type = 'text';
   
   // 更新眼睛图标（优先从当前表单找）
-  const eye = form?.querySelector('[data-field="password-eye"]');
+  const eye = form && form.querySelector('[data-field="password-eye"]');
   if (eye) {
     eye.innerHTML = Utils.SvgIcons.eyeClosedPaths;
   }
@@ -846,7 +846,7 @@ function useGeneratedPassword() {
 function generatePasswordFor(field) {
   // 从当前激活的表单里找输入框（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector(`[data-field="${field}"]`);
+  const input = form && form.querySelector(`[data-field="${field}"]`);
   if (!input) return;
   
   // 使用默认配置生成密码
@@ -857,7 +857,8 @@ function generatePasswordFor(field) {
   input.type = 'text'; // 生成后显示明文方便查看
   
   // 更新眼睛图标为"睁眼"状态
-  const btn = input.closest('.input-affix')?.querySelector('.input-affix-btns button');
+  const affix = input.closest('.input-affix');
+  const btn = affix ? affix.querySelector('.input-affix-btns button') : null;
   if (btn) {
     const eye = btn.querySelector('svg');
     if (eye) {
@@ -874,10 +875,11 @@ function generatePasswordFor(field) {
 function updateStrengthBar() {
   // 从当前激活的表单里找 e-password（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const password = form?.querySelector('[data-field="password"]')?.value || '';
-  const container = form?.querySelector('[data-field="strength-container"]');
-  const bar = form?.querySelector('[data-field="strength-bar"]');
-  const text = form?.querySelector('[data-field="strength-text"]');
+  const pwEl = form && form.querySelector('[data-field="password"]');
+  const password = (pwEl && pwEl.value) || '';
+  const container = form && form.querySelector('[data-field="strength-container"]');
+  const bar = form && form.querySelector('[data-field="strength-bar"]');
+  const text = form && form.querySelector('[data-field="strength-text"]');
   
   if (!container || !bar || !text) return;
   
@@ -898,8 +900,10 @@ function updateStrengthBar() {
  * 保存条目（支持 5 种 entryType）
  */
 async function saveEntry() {
-  const title = document.getElementById('e-title')?.value.trim();
-  const notes = document.getElementById('e-notes')?.value.trim();
+  const titleEl = document.getElementById('e-title');
+  const title = titleEl ? titleEl.value.trim() : '';
+  const notesEl = document.getElementById('e-notes');
+  const notes = notesEl ? notesEl.value.trim() : '';
   const tags = getSelectedTags();
   const type = currentEntryType;
 
@@ -910,19 +914,19 @@ async function saveEntry() {
 
   // 从当前激活的表单容器读取字段（表单字段已统一为 data-field 命名，回退兼容旧 id）
   const form = document.getElementById(`form-${type}`);
-  const $ = (name) => form?.querySelector(`[data-field="${name}"]`) || document.getElementById(name);
+  const $ = (name) => (form && form.querySelector(`[data-field="${name}"]`)) || document.getElementById(name);
 
   // 按类型收集字段
-  const username = $('username')?.value.trim() || '';
+  const username = ($('username') && $('username').value.trim()) || '';
   // app 类型的公钥输入框可能处于掩码态，先还原再取值，避免把掩码点保存入库
   // 兼容两种掩码存储：toggleFieldVisibility 存 _plainValue，历史遗留 data 属性也兜底
   const pwField = $('password');
   if (pwField && pwField.dataset.masked === '1') pwField.value = pwField._plainValue || pwField.dataset.plainValue || '';
-  const password = pwField?.value || '';
-  const url     = $('url')?.value.trim() || '';
+  const password = (pwField && pwField.value) || '';
+  const url     = ($('url') && $('url').value.trim()) || '';
   // port：server / database 才有
   const port     = (type === 'server' || type === 'database')
-    ? parseInt($('port')?.value, 10) || undefined
+    ? parseInt(($('port') || {}).value, 10) || undefined
     : undefined;
 
   // 各类型的必要字段验证
@@ -962,13 +966,13 @@ async function saveEntry() {
       // server: 更新 root 字段
       if (type === 'server') {
         entry.root = {
-          username: $('root-user')?.value.trim() || '',
-          password: $('root-pwd')?.value || '',
+          username: ($('root-user') && $('root-user').value.trim()) || '',
+          password: ($('root-pwd') || {}).value || '',
         };
       }
       // app: 更新 appId / privateKey（textarea 可能处于掩码态，需先还原）
       if (type === 'app') {
-        entry.appId = $('appid')?.value.trim() || '';
+        entry.appId = ($('appid') && $('appid').value.trim()) || '';
         const pkEl = $('private-key');
         if (pkEl) {
           if (pkEl.dataset.masked === '1') pkEl.value = pkEl._plainValue || '';
@@ -998,12 +1002,12 @@ async function saveEntry() {
     }
     if (type === 'server') {
       base.root = {
-        username: $('root-user')?.value.trim() || '',
-        password: $('root-pwd')?.value || '',
+        username: ($('root-user') && $('root-user').value.trim()) || '',
+        password: ($('root-pwd') || {}).value || '',
       };
     }
     if (type === 'app') {
-      base.appId = $('appid')?.value.trim() || '';
+      base.appId = ($('appid') && $('appid').value.trim()) || '';
       const pkEl = $('private-key');
       if (pkEl) {
         if (pkEl.dataset.masked === '1') pkEl.value = pkEl._plainValue || '';

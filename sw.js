@@ -7,7 +7,7 @@
    不缓存的内容：任何带 ?timestamp= 或 query 的动态请求
    ═══════════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'lockpass-v1.0.8';
+const CACHE_NAME = 'lockpass-v1.0.10';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -31,6 +31,7 @@ const PRECACHE_URLS = [
   '/js/settings.js',
   '/js/shortcuts.js',
   '/js/main.js',
+  '/js/sw-register.js',
   '/manifest.json',
   '/assets/icons/favicon.svg',
 ];

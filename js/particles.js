@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /**
    * 创建单 canvas 粒子实例
@@ -23,30 +23,30 @@
   function createParticles(canvas, opts) {
     if (!canvas || !canvas.getContext) return null;
     opts = opts || {};
-    var ctx = canvas.getContext('2d');
-    var DPR = Math.min(window.devicePixelRatio || 1, 2);
-    var LINK_DIST = opts.linkDist || 130;
-    var LINK_DIST_SQ = LINK_DIST * LINK_DIST;
-    var MOUSE_DIST = opts.mouseDist || 190;
-    var MOUSE_DIST_SQ = MOUSE_DIST * MOUSE_DIST;
-    var BASE_COUNT = opts.baseCount || 78;
-    var LINK_OPAQUE_MAX = opts.linkOpaqueMax != null ? opts.linkOpaqueMax : 0.16;
-    var MOUSE_OPAQUE_MAX = opts.mouseOpaqueMax != null ? opts.mouseOpaqueMax : 0.3;
-    var BATCH_STEPS = 8;
-    var linkColor = opts.linkColor || '88,166,255';
-    var particleColor = opts.particleColor || '170,205,255';
+    const ctx = canvas.getContext('2d');
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const LINK_DIST = opts.linkDist || 130;
+    const LINK_DIST_SQ = LINK_DIST * LINK_DIST;
+    const MOUSE_DIST = opts.mouseDist || 190;
+    const MOUSE_DIST_SQ = MOUSE_DIST * MOUSE_DIST;
+    const BASE_COUNT = opts.baseCount || 78;
+    const LINK_OPAQUE_MAX = opts.linkOpaqueMax != null ? opts.linkOpaqueMax : 0.16;
+    const MOUSE_OPAQUE_MAX = opts.mouseOpaqueMax != null ? opts.mouseOpaqueMax : 0.3;
+    const BATCH_STEPS = 8;
+    const linkColor = opts.linkColor || '88,166,255';
+    const particleColor = opts.particleColor || '170,205,255';
 
-    var particles = [];
-    var rafId = null;
-    var running = false;
-    var width = 0;
-    var height = 0;
-    var mouse = { x: -9999, y: -9999, active: false };
+    let particles = [];
+    let rafId = null;
+    let running = false;
+    let width = 0;
+    let height = 0;
+    const mouse = { x: -9999, y: -9999, active: false };
 
     function seed() {
-      var count = Math.min(BASE_COUNT, Math.max(26, Math.round((width * height) / 21000)));
+      const count = Math.min(BASE_COUNT, Math.max(26, Math.round((width * height) / 21000)));
       particles = [];
-      for (var i = 0; i < count; i++) {
+      for (let i = 0; i < count; i++) {
         particles.push({
           x: Math.random() * width,
           y: Math.random() * height,
@@ -59,7 +59,7 @@
     }
 
     function resize() {
-      var rect = canvas.getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return; // 容器隐藏时不重置
       width = rect.width;
       height = rect.height;
@@ -73,8 +73,8 @@
       ctx.clearRect(0, 0, width, height);
 
       // 更新粒子位置
-      for (var i = 0; i < particles.length; i++) {
-        var p = particles[i];
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
         p.tw += 0.02;
@@ -85,31 +85,31 @@
       }
 
       // ── 连线：按透明度分组批量绘制 ──
-      var batches = [];
-      for (var b = 0; b < BATCH_STEPS; b++) batches.push([]);
+      const batches = [];
+      for (let b = 0; b < BATCH_STEPS; b++) batches.push([]);
 
       ctx.lineWidth = 1;
-      for (var i = 0; i < particles.length; i++) {
-        var a = particles[i];
-        for (var j = i + 1; j < particles.length; j++) {
-          var c = particles[j];
-          var dx = a.x - c.x;
-          var dy = a.y - c.y;
-          var distSq = dx * dx + dy * dy;
+      for (let i = 0; i < particles.length; i++) {
+        const a = particles[i];
+        for (let j = i + 1; j < particles.length; j++) {
+          const c = particles[j];
+          const dx = a.x - c.x;
+          const dy = a.y - c.y;
+          const distSq = dx * dx + dy * dy;
           if (distSq < LINK_DIST_SQ) {
-            var ratio = 1 - distSq / LINK_DIST_SQ;
-            var bucket = Math.min(BATCH_STEPS - 1, Math.floor(ratio * BATCH_STEPS));
+            const ratio = 1 - distSq / LINK_DIST_SQ;
+            const bucket = Math.min(BATCH_STEPS - 1, Math.floor(ratio * BATCH_STEPS));
             batches[bucket].push(a.x, a.y, c.x, c.y);
           }
         }
         // 鼠标连线
         if (mouse.active) {
-          var mdx = a.x - mouse.x;
-          var mdy = a.y - mouse.y;
-          var mDistSq = mdx * mdx + mdy * mdy;
+          const mdx = a.x - mouse.x;
+          const mdy = a.y - mouse.y;
+          const mDistSq = mdx * mdx + mdy * mdy;
           if (mDistSq < MOUSE_DIST_SQ) {
-            var mRatio = 1 - mDistSq / MOUSE_DIST_SQ;
-            var mOpaque = mRatio * MOUSE_OPAQUE_MAX;
+            const mRatio = 1 - mDistSq / MOUSE_DIST_SQ;
+            const mOpaque = mRatio * MOUSE_OPAQUE_MAX;
             ctx.strokeStyle = 'rgba(' + linkColor + ',' + mOpaque.toFixed(3) + ')';
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
@@ -120,13 +120,13 @@
       }
 
       // 批量绘制连线（每组只设一次 strokeStyle）
-      for (var b = 0; b < BATCH_STEPS; b++) {
-        var group = batches[b];
+      for (let b = 0; b < BATCH_STEPS; b++) {
+        const group = batches[b];
         if (group.length === 0) continue;
-        var avgRatio = (b + 0.5) / BATCH_STEPS;
+        const avgRatio = (b + 0.5) / BATCH_STEPS;
         ctx.strokeStyle = 'rgba(' + linkColor + ',' + (avgRatio * LINK_OPAQUE_MAX).toFixed(3) + ')';
         ctx.beginPath();
-        for (var k = 0; k < group.length; k += 4) {
+        for (let k = 0; k < group.length; k += 4) {
           ctx.moveTo(group[k], group[k + 1]);
           ctx.lineTo(group[k + 2], group[k + 3]);
         }
@@ -134,9 +134,9 @@
       }
 
       // ── 粒子（呼吸闪烁）──
-      for (var i = 0; i < particles.length; i++) {
-        var p = particles[i];
-        var alpha = 0.35 + Math.sin(p.tw) * 0.25;
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const alpha = 0.35 + Math.sin(p.tw) * 0.25;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(' + particleColor + ',' + alpha.toFixed(3) + ')';
@@ -160,7 +160,7 @@
     }
 
     function onMouseMove(e) {
-      var rect = canvas.getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
       mouse.x = e.clientX - rect.left;
       mouse.y = e.clientY - rect.top;
       mouse.active = true;
@@ -181,12 +181,12 @@
   }
 
   function isLockVisible() {
-    var lock = document.getElementById('lock-screen');
+    const lock = document.getElementById('lock-screen');
     return lock && !lock.classList.contains('hidden');
   }
 
-  var lockInst = createParticles(document.getElementById('lock-bg'));
-  var wsInst = createParticles(document.getElementById('workspace-bg'), {
+  const lockInst = createParticles(document.getElementById('lock-bg'));
+  const wsInst = createParticles(document.getElementById('workspace-bg'), {
     baseCount: 56,          // 工作区比锁屏略少，避免抢内容视觉焦点
     linkOpaqueMax: 0.13,
     mouseOpaqueMax: 0.26
@@ -195,7 +195,7 @@
   // 按锁屏可见性同步两个实例的启停
   function syncAll() {
     if (!lockInst && !wsInst) return;
-    var lockVisible = isLockVisible();
+    const lockVisible = isLockVisible();
     if (lockInst) lockVisible ? lockInst.start() : lockInst.stop();
     if (wsInst) {
       if (lockVisible) {

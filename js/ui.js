@@ -318,25 +318,25 @@ function vsRender() {
   const viewH = scroller.clientHeight || 600;
 
   // 首次渲染：用估算高度，渲染后从真实 DOM 测量
-  var itemH = _vsItemH || VS_ESTIMATE_H;
-  var total = _vsList.length;
+  const itemH = _vsItemH || VS_ESTIMATE_H;
+  const total = _vsList.length;
 
-  var viewTop = Math.max(0, scrollTop - topOffset);
-  var viewBottom = viewTop + viewH;
+  const viewTop = Math.max(0, scrollTop - topOffset);
+  const viewBottom = viewTop + viewH;
 
-  var start = Math.max(0, Math.floor(viewTop / itemH) - VS_OVERSCAN);
-  var end = Math.min(total, Math.ceil(viewBottom / itemH) + VS_OVERSCAN);
+  const start = Math.max(0, Math.floor(viewTop / itemH) - VS_OVERSCAN);
+  let end = Math.min(total, Math.ceil(viewBottom / itemH) + VS_OVERSCAN);
   if (start >= end) end = Math.min(total, start + 1);
 
-  var topPad = start * itemH;
-  var bottomPad = (total - end) * itemH;
+  const topPad = start * itemH;
+  const bottomPad = (total - end) * itemH;
 
   // O(1) 跳过：如果可见窗口索引未变且列表未变，无需更新 DOM
-  var rangeKey = start + '-' + end;
+  const rangeKey = start + '-' + end;
   if (!_vsDirty && _vsLastRange === rangeKey) return;
   _vsLastRange = rangeKey;
 
-  var html = '<div class="vs-spacer" style="height:' + topPad + 'px"></div>' +
+  const html = '<div class="vs-spacer" style="height:' + topPad + 'px"></div>' +
     _vsList.slice(start, end).map(buildEntryCard).join('') +
     '<div class="vs-spacer" style="height:' + bottomPad + 'px"></div>';
 
@@ -345,7 +345,7 @@ function vsRender() {
 
   // 首次渲染后从真实 DOM 测量卡片高度（修正估算误差）
   if (!_vsItemH) {
-    var first = container.querySelector('.entry-card');
+    const first = container.querySelector('.entry-card');
     if (first) {
       _vsItemH = first.offsetHeight + VS_GAP;
       // 如果测量值与估算差异大，重新渲染以修正 padding

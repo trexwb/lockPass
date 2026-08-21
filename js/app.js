@@ -7,7 +7,7 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.9';
+const APP_VERSION = 'v1.0.10';
 
 /**
  * 旧版 Session Storage 键名（仅用于向后清理，不再写入）
@@ -611,7 +611,9 @@ async function handleUnlock(autoPassword) {
   const btnText = document.getElementById('unlock-btn-text');
   const btn = document.getElementById('unlock-btn');
   
-  const password = autoPassword || pwInput.value;
+  // 仅接受字符串密码：click 事件会把 MouseEvent 传入 autoPassword（truthy），
+  // 若直接 `||` 取值会导致 password 变成事件对象，与确认框字符串恒不相等
+  const password = typeof autoPassword === 'string' ? autoPassword : pwInput.value;
   if (!password) {
     shakeAndShowError('请输入主密码');
     return;

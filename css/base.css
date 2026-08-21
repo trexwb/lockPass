@@ -53,6 +53,26 @@
   --sidebar-w:  240px;
   --header-h:   56px;
   --transition: 0.2s ease;
+
+  /* 层级（z-index）统一管理 */
+  --z-bg: 0;                 /* 背景粒子层 */
+  --z-content: 1;            /* 内容层（相对装饰背景提升一层） */
+  --z-header: 100;           /* sticky 顶部导航 */
+  --z-overlay: 199;          /* 侧边栏遮罩层 */
+  --z-sidebar: 200;          /* 移动端侧边栏抽屉 */
+  --z-modal: 200;            /* 模态框遮罩 */
+  --z-detail: 200;           /* 详情面板（桌面端） */
+  --z-detail-fullscreen: 300;/* 详情面板（移动端全屏） */
+  --z-dropdown: 300;         /* 下拉菜单 */
+  --z-toast: 300;            /* Toast 通知 */
+  --z-confirm: 400;          /* 确认弹窗（盖过 modal / detail） */
+  --z-banner: 900;           /* 顶部提醒横幅 */
+
+  /* 常用半透明色（重复使用的 rgba 提取） */
+  --overlay-bg: rgba(0,0,0,0.7);        /* 模态框/确认框背景遮罩 */
+  --overlay-bg-soft: rgba(0,0,0,0.5);   /* 侧边栏遮罩 */
+  --border-dim: rgba(48,54,61,0.5);     /* 细分隔线/浅边框 */
+  --danger-border: rgba(248,81,73,0.3); /* 危险操作边框 */
   
   /* 响应式断点变量 */
   --breakpoint-tablet: 768px;
@@ -154,7 +174,7 @@ body:has(#lp-bind-banner) #app {
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-faint); }
-.btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(248,81,73,0.3); }
+.btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger-border); }
 .btn-danger:hover { background: rgba(248,81,73,0.25); }
 .btn-ghost { background: none; color: var(--text-muted); }
 .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
@@ -240,7 +260,7 @@ kbd {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 900;
+  z-index: var(--z-banner);
   box-sizing: border-box;
   width: 100%;
   max-width: 760px;

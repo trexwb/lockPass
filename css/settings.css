@@ -6,11 +6,17 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(48,54,61,0.5);
+  border-bottom: 1px solid var(--border-dim);
 }
 .settings-row:last-child { border-bottom: none; }
 .settings-label { font-size: 1.0rem; color: var(--text-primary); }
 .settings-desc { font-size: 0.86rem; color: var(--text-muted); margin-top: 2px; }
+/* 数据说明备注：无上边距、更小字号 */
+.settings-desc.settings-desc-note {
+  padding: 0 0 6px;
+  font-size: 0.8rem;
+  margin-top: 0;
+}
 
 /* 数据说明区 */
 .data-info-cards {
@@ -358,4 +364,4 @@
 
 /* Danger ghost button */
 .btn-danger-ghost { color: var(--text-muted); }
-.btn-danger-ghost:hover { color: var(--danger); background: var(--danger-dim); border-color: rgba(248,81,73,0.3); }
+.btn-danger-ghost:hover { color: var(--danger); background: var(--danger-dim); border-color: var(--danger-border); }

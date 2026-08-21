@@ -318,7 +318,8 @@ function renderMasterPwStrength() {
     return;
   }
 
-  const pw = document.getElementById('master-password')?.value || '';
+  const pwInput = document.getElementById('master-password');
+  const pw = pwInput ? pwInput.value : '';
   if (!pw) {
     wrap.classList.add('hidden');
     return;

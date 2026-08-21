@@ -299,6 +299,35 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.10 (2026-08-21)
+
+- 前端代码规范全面治理（按「前端开发规范」Skill 逐项修复）：
+  - 移除全部 43 处 ES2020 可选链 `?.`（`editor.js` 42 + `main.js` 1），改写为 ES6 等价写法，兼容 Chrome 60+ / Firefox 60+ / Safari 12+ / Edge 79+
+  - 5 个文件约 100 处 `var` 声明全部替换为 `const`/`let`（`template.js` / `tauri-bridge.js` / `file-store.js` / `ui.js` / `particles.js`）
+  - 约 50 处静态行内样式 `style=""` 抽离为 CSS 工具类，新建 `css/utilities.css`（置于 `@import` 链最后，可覆盖组件默认样式）；动态样式（宽度百分比 / 条件显示 / 颜色变量）保留 JS 直接操作
+  - `index.html` 内联 SW 注册脚本外置为 `js/sw-register.js`，清理 console 调试日志
+  - z-index 全部变量化（`--z-bg` ~ `--z-banner` 语义化命名，统一管理于 `:root`）；4 组重复 rgba 半透明色提取为 CSS 变量
+  - 魔法数字治理：动画时长 / 悬浮提示 / 复制反馈 / Toast 时长等常量前置命名（`entries.js` / `utils.js`）
+  - CSP 保持 `script-src 'self' 'unsafe-inline'`（JS 模板大量 `onclick` 内联事件由 AGENTS.md 允许）
+- 版本号统一 v1.0.10：`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `Cargo.toml` / `js/app.js` / `sw.js` / `AGENTS.md` / `SPEC.md` 共 9 处一致，`version:check` 通过
+- Service Worker 缓存命名同步 `lockpass-v1.0.10`，`js/sw-register.js` 已加入预缓存列表
+
+### v1.0.9 (2026-08-21)
+
+- 跨端布局兼容性修复（H5 / Pad / PC / Tauri）：
+  - `100vh` 全部补充 `100dvh` 回退（修复 iOS Safari 地址栏裁切）
+  - `#header` / 详情页脚 / 弹窗页脚适配 `env(safe-area-inset-*)`（刘海屏 / Tauri 标题栏）
+  - 触屏设备（`@media (hover:none)`）卡片操作按钮强制 `opacity:1`，修复复制/删除按钮不可见
+  - `#sidebar-overlay` 桌面端默认 `display:none`，不再干扰布局
+  - 绑定横幅 `#lp-bind-banner` 与 `#header` 重叠修复（`:has()` 选择器为 `#app` 加 padding-top）
+  - 平板（≤768px）数据统计卡片 4 列改 2 列；手机端 Toast 移至顶部避开底部弹窗
+
+### v1.0.8 (2026-08-21)
+
+- 跨端 UI 兼容性全面检查（H5 / Pad / PC / Tauri 共 13 视口 × 10 状态 = 130 组合回归通过）：
+  - 修复 320px 视口下设置弹窗快捷键表格横向滚动（`min-width:0` + 紧凑 padding + 名称/按键列允许折行）
+  - 修复 v1.0.7 手机端横向溢出问题未在边缘视口/多界面复发
+
 ### v1.0.7 (2026-08-21)
 
 - 修复手机端（竖屏）主界面横向溢出：

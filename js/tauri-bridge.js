@@ -11,21 +11,21 @@
 (function () {
   'use strict';
 
-  var T = window.__TAURI__;
-  var isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
+  const T = window.__TAURI__;
+  const isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
 
   /* ── 1. 导出文件：统一包装为返回 boolean ───────────────────────
      浏览器：走原生下载，返回 true。
      Tauri：dialog 保存框 + fs 写文件；用户取消返回 false。 */
-  var originalDownload = Utils.downloadFile;
+  const originalDownload = Utils.downloadFile;
   Utils.downloadFile = async function (filename, content, type) {
     if (!isTauri) {
       originalDownload(filename, content, type);
       return true;
     }
     try {
-      var isCsv = /\.csv($|\?)/i.test(filename);
-      var savePath = await T.core.invoke('plugin:dialog|save', {
+      const isCsv = /\.csv($|\?)/i.test(filename);
+      const savePath = await T.core.invoke('plugin:dialog|save', {
         options: {
           defaultPath: filename,
           filters: isCsv
@@ -51,11 +51,11 @@
   // 以下仅桌面环境需要
   if (!isTauri) return;
 
-  var invoke = T.core.invoke;
+  const invoke = T.core.invoke;
 
   /* ── 2. 剪贴板：覆盖 navigator.clipboard.writeText ────────────── */
   try {
-    var ClipboardShim = {
+    const ClipboardShim = {
       writeText: function (text) {
         return invoke('plugin:clipboard-manager|write_text', { content: String(text == null ? '' : text) });
       },
@@ -77,14 +77,14 @@
          从操作系统拖入需监听 webview 级拖放事件。 */
   try {
     if (T.webview && T.webview.getCurrentWebview) {
-      var webview = T.webview.getCurrentWebview();
+      const webview = T.webview.getCurrentWebview();
       webview.onDragDropEvent(function (event) {
-        var payload = event.payload;
+        const payload = event.payload;
         if (!payload || payload.type !== 'drop') return;
         (payload.paths || []).forEach(async function (p) {
           try {
-            var text = await invoke('read_text_file_any', { path: p });
-            var name = p.split(/[\\/]/).pop();
+            const text = await invoke('read_text_file_any', { path: p });
+            const name = p.split(/[\\/]/).pop();
             if (window.ImportExport && window.ImportExport.processFile) {
               await window.ImportExport.processFile({
                 name: name,
@@ -106,9 +106,9 @@
      这里全局拦截后调用 open_url 命令，用系统默认浏览器打开。 */
   try {
     document.addEventListener('click', function (e) {
-      var el = e.target;
+      const el = e.target;
       if (!el || typeof el.closest !== 'function') return;
-      var a = el.closest('a[target="_blank"]');
+      const a = el.closest('a[target="_blank"]');
       if (!a || !a.href) return;
       e.preventDefault();
       invoke('open_url', { url: a.href }).catch(function (err) {

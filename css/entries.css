@@ -313,7 +313,7 @@
   bottom: 0;
   height: 100vh;
   height: 100dvh;
-  z-index: 200;
+  z-index: var(--z-detail);
 }
 #detail-panel.open { transform: translateX(0); visibility: visible; transition: transform 0.3s ease; }
 .detail-header {

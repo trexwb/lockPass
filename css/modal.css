@@ -3,16 +3,16 @@
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
-  z-index: 200;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
 }
 /* 确认弹窗必须盖过详情抽屉(300)/toast(300)/下拉菜单(300) */
-.confirm-overlay { z-index: 400; }
+.confirm-overlay { z-index: var(--z-confirm); }
 #modal,
 .confirm-dialog {
   background: var(--bg-secondary);
@@ -37,7 +37,7 @@
   position: sticky;
   top: 0;
   background: var(--bg-secondary);
-  z-index: 1;
+  z-index: var(--z-content);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
@@ -49,7 +49,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  z-index: 300;
+  z-index: var(--z-toast);
 }
 @media (max-width: 480px) {
   /* 移动端：toast 避开底部弹窗（bottom sheet），上移到顶部安全区下方 */

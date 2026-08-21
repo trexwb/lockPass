@@ -22,7 +22,7 @@ function openSettingsModal() {
             <div class="settings-label">自动锁定</div>
             <div class="settings-desc">无操作后自动锁定保险箱</div>
           </div>
-          <select class="form-input" id="setting-lock-timeout" style="width:120px" onchange="updateLockTimeout()">
+          <select class="form-input w-120" id="setting-lock-timeout" onchange="updateLockTimeout()">
             <option value="60000" ${App.state.lockTimeoutMs === 60000 ? 'selected' : ''}>1 分钟</option>
             <option value="300000" ${App.state.lockTimeoutMs === 300000 ? 'selected' : ''}>5 分钟</option>
             <option value="900000" ${App.state.lockTimeoutMs === 900000 ? 'selected' : ''}>15 分钟</option>
@@ -35,7 +35,7 @@ function openSettingsModal() {
             <div class="settings-label">剪贴板清除</div>
             <div class="settings-desc">复制密码后自动清除剪贴板</div>
           </div>
-          <select class="form-input" id="setting-clipboard-clear" style="width:120px" onchange="updateClipboardClear()">
+          <select class="form-input w-120" id="setting-clipboard-clear" onchange="updateClipboardClear()">
             <option value="10000" ${App.state.clipboardClearMs === 10000 ? 'selected' : ''}>10 秒</option>
             <option value="30000" ${App.state.clipboardClearMs === 30000 ? 'selected' : ''}>30 秒</option>
             <option value="60000" ${App.state.clipboardClearMs === 60000 ? 'selected' : ''}>60 秒</option>
@@ -52,7 +52,7 @@ function openSettingsModal() {
           </div>
           <button class="btn btn-secondary btn-sm" id="file-sync-btn" onclick="bindDataDirectory()">绑定</button>
         </div>
-        <div class="settings-desc" style="padding:0 0 6px;color:var(--text-muted);font-size:0.8rem">
+        <div class="settings-desc settings-desc-note">
           绑定后在所选目录下直接生成 LockPass-vault.json；浏览器清空 IndexedDB 后可重新选择目录恢复。
         </div>
       </div>
@@ -194,7 +194,7 @@ function renderShortcutsTable() {
   if (!container) return;
   const defs = (window.SearchShortcuts && SearchShortcuts.SHORTCUT_DEFS) || [];
   if (!defs.length) {
-    container.innerHTML = '<div style="font-size:0.85rem;color:var(--text-muted)">暂无可用的快捷键。</div>';
+    container.innerHTML = '<div class="text-sm text-muted">暂无可用的快捷键。</div>';
     return;
   }
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -557,9 +557,9 @@ function renderTagManagementBody(modal) {
         ${Utils.SvgIcons.close(16)}
       </button>
     </div>
-    <div class="modal-body" style="padding:0">
+    <div class="modal-body p-0">
       <div id="tag-manage-list" class="tag-manage-list">
-        ${sorted.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-muted)">暂无标签</div>' : ''}
+        ${sorted.length === 0 ? '<div class="empty-state-lg">暂无标签</div>' : ''}
         ${sorted.map(name => renderTagManageRow(name, tagDefs[name], counts[name] || 0)).join('')}
       </div>
       <div class="tag-manage-add">
@@ -689,7 +689,7 @@ function showTagFormModal(editingName) {
         </div>
         <input type="hidden" id="tag-form-color" value="${def ? def.color : '#58a6ff'}" />
       </div>
-      <div class="form-group" style="margin-bottom:0">
+      <div class="form-group mb-0">
         <label class="form-label">图标</label>
         <div class="icon-picker-grid" id="tag-form-icons">
           ${TAG_ICON_OPTIONS.map(iconId => `

@@ -12,3 +12,5 @@
 @import "settings.css";
 @import "modal.css";
 @import "particles.css";
+/* 工具类置于最后，确保可覆盖各组件默认样式 */
+@import "utilities.css";

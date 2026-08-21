@@ -44,11 +44,11 @@ window.UI_TEMPLATE = `
         <input id="confirm-password" type="password" placeholder="再次输入主密码确认" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" tabindex="2" />
       </div>
 
-      <div id="master-pw-strength-wrap" class="hidden" style="margin-top:8px">
-        <div class="pw-strength-bar-bg" style="height:4px;border-radius:2px;background:var(--border)">
-          <div id="master-pw-strength-bar" class="pw-strength-bar" style="width:0%;height:100%;border-radius:2px;transition:width 0.25s,background 0.25s"></div>
+      <div id="master-pw-strength-wrap" class="hidden mt-2">
+        <div class="pw-strength-bar-bg pw-strength-bg-border">
+          <div id="master-pw-strength-bar" class="pw-strength-bar" style="width:0%"></div>
         </div>
-        <div id="master-pw-strength-text" class="text-muted" style="font-size:0.8rem;margin-top:4px"></div>
+        <div id="master-pw-strength-text" class="text-muted pw-strength-text"></div>
       </div>
 
       <div id="lock-error" class="text-danger text-sm mt-1 hidden"></div>
@@ -63,7 +63,7 @@ window.UI_TEMPLATE = `
       <button id="bind-restore-btn" class="btn btn-ghost btn-full hidden" onclick="bindRestoreFromDirectory()" title="绑定已有数据目录并恢复（目录中需存在 LockPass-vault.json）" tabindex="5">
         绑定已有数据目录
       </button>
-      <input type="file" id="restore-file-input" accept=".vault,.json" style="display:none" onchange="handleRestoreFileSelect(event)" />
+      <input type="file" id="restore-file-input" accept=".vault,.json" class="hidden" onchange="handleRestoreFileSelect(event)" />
     </div>
   </div>
 </div>
@@ -164,7 +164,7 @@ window.UI_TEMPLATE = `
       </div>
       
       <div class="sidebar-footer">
-        <button class="btn btn-ghost btn-sm btn-full" onclick="App.logout()" style="justify-content:center">
+        <button class="btn btn-ghost btn-sm btn-full" onclick="App.logout()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
@@ -237,7 +237,7 @@ window.UI_TEMPLATE = `
       </div>
       <div class="detail-body" id="detail-body"></div>
       <div class="detail-footer" id="detail-footer">
-        <button class="btn btn-secondary" style="flex:1" onclick="editCurrentEntry()">
+        <button class="btn btn-secondary flex-1" onclick="editCurrentEntry()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -288,7 +288,7 @@ window.UI_TEMPLATE = `
  * 必须在其他业务模块读取 DOM 之前执行（脚本按顺序加载，本文件放在 vendor 之后、业务脚本之前）
  */
 (function renderAppShell() {
-  var appEl = document.getElementById('app');
+  const appEl = document.getElementById('app');
   if (appEl) {
     appEl.innerHTML = window.UI_TEMPLATE;
   }

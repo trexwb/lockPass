@@ -110,6 +110,12 @@
 .form-input.mono { font-family: var(--font-mono); }
 .input-row { display: flex; gap: 8px; }
 .input-row .form-input { flex: 1; }
+/* 端口输入框：固定窄宽且不被 flex 拉伸/收缩 */
+.input-row .form-input.input-port {
+  width: 90px;
+  flex: none;
+  flex-shrink: 0;
+}
 .input-affix { position: relative; }
 .input-affix .form-input { padding-right: 80px; }
 .input-affix-btns {
