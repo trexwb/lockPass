@@ -86,6 +86,11 @@ async function init() {
       // 首次使用且 IndexedDB 为空时，始终提供「从本地文件恢复」入口
       // （使用 <input type="file">，所有浏览器均可用）
       document.getElementById('restore-file-btn').classList.remove('hidden');
+      // 浏览器环境额外提供「绑定已有数据目录」：目录中存在 LockPass-vault.json
+      // 时可直接恢复并绑定（Tauri 桌面版数据在本地文件，无需目录绑定，不显示）
+      if (!(window.FileStore && window.FileStore.isTauri) && FileSync.isSupported()) {
+        document.getElementById('bind-restore-btn').classList.remove('hidden');
+      }
 
       // 显示主密码强度指示
       renderMasterPwStrength();
@@ -136,19 +141,52 @@ async function handleRestoreFileSelect(event) {
 
     // 重建 IndexedDB（不绑定目录，一次性恢复）
     await FileSync.restorePayload(payload);
-
-    // 切换为解锁界面
-    document.getElementById('lock-title').textContent = '密码保险箱';
-    document.getElementById('lock-subtitle').textContent = '已从本地文件恢复，输入主密码解锁';
-    document.getElementById('unlock-btn-text').textContent = '解锁';
-    document.getElementById('confirm-pw-group').classList.add('hidden');
-    document.getElementById('restore-file-btn').classList.add('hidden');
-    document.getElementById('lock-error').classList.add('hidden');
-
+    switchToUnlockAfterRestore('已从本地文件恢复，输入主密码解锁');
     Utils.showToast('已从本地文件恢复数据', 'success');
   } catch (e) {
     Utils.showToast(e.message || '恢复失败', 'error');
   }
+}
+
+/**
+ * 绑定已有数据目录并恢复（IndexedDB 为空、目录中已有 LockPass-vault.json 时使用）
+ * 与「从本地文件恢复」的区别：恢复的同时完成目录绑定，后续修改自动同步
+ */
+async function bindRestoreFromDirectory() {
+  if (!FileSync.isSupported()) {
+    Utils.showToast('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge', 'error');
+    return;
+  }
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (e) {
+    return; // 用户取消选择
+  }
+  try {
+    // 仅当目录中已有同步文件才恢复+绑定；避免绑定空目录导致后续困惑
+    const existingFile = await FileSync._getExistingSyncFile(handle);
+    if (!existingFile) {
+      Utils.showToast('所选目录中没有 LockPass-vault.json，无法恢复', 'error');
+      return;
+    }
+    await FileSync.restoreFromDirectory(handle);
+    switchToUnlockAfterRestore('已从绑定目录恢复，输入主密码解锁');
+    Utils.showToast('已绑定数据目录并恢复数据', 'success');
+  } catch (e) {
+    Utils.showToast(e.message || '绑定恢复失败', 'error');
+  }
+}
+
+/** 恢复成功后切换为解锁界面（两个恢复入口共用） */
+function switchToUnlockAfterRestore(subtitle) {
+  document.getElementById('lock-title').textContent = '密码保险箱';
+  document.getElementById('lock-subtitle').textContent = subtitle;
+  document.getElementById('unlock-btn-text').textContent = '解锁';
+  document.getElementById('confirm-pw-group').classList.add('hidden');
+  document.getElementById('restore-file-btn').classList.add('hidden');
+  document.getElementById('bind-restore-btn').classList.add('hidden');
+  document.getElementById('lock-error').classList.add('hidden');
 }
 
 /**

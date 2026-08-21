@@ -60,6 +60,9 @@ window.UI_TEMPLATE = `
       <button id="restore-file-btn" class="btn btn-ghost btn-full hidden" onclick="restoreFromLocalFile()" title="从本地文件恢复（.vault 备份或 LockPass-vault.json 同步文件）" tabindex="4">
         从本地文件恢复
       </button>
+      <button id="bind-restore-btn" class="btn btn-ghost btn-full hidden" onclick="bindRestoreFromDirectory()" title="绑定已有数据目录并恢复（目录中需存在 LockPass-vault.json）" tabindex="5">
+        绑定已有数据目录
+      </button>
       <input type="file" id="restore-file-input" accept=".vault,.json" style="display:none" onchange="handleRestoreFileSelect(event)" />
     </div>
   </div>
