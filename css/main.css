@@ -192,7 +192,7 @@ a:hover { text-decoration: underline; }
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   flex-shrink: 0;
 }
 .sidebar-section { padding: 16px 12px 8px; }
@@ -233,7 +233,19 @@ a:hover { text-decoration: underline; }
 }
 .nav-item.active .count { background: var(--accent-dim); color: var(--accent); }
 .nav-item svg { flex-shrink: 0; opacity: 0.8; }
-.sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid var(--border); }
+.sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.sidebar-title-clickable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-sm);
+}
+.sidebar-title-clickable:hover { color: var(--text-muted); }
+.tag-chevron { flex-shrink: 0; transition: transform 0.2s ease; opacity: 0.7; }
+#nav-categories.collapsed { display: none; }
+.sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
 
 /* 类型筛选 */
 .nav-types { display: flex; flex-direction: column; gap: 2px; }

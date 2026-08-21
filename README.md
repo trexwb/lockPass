@@ -308,6 +308,9 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
   - `src-tauri/src/lib.rs` 新增 `open_url` 命令：协议白名单校验（仅 `http://` / `https://` / `mailto:`），按平台用 `open` / `cmd /C start` / `xdg-open` 调起系统浏览器
   - `js/tauri-bridge.js` 新增全局点击委托：拦截 `a[target="_blank"]` 链接，`preventDefault` 后调用 `open_url` 用系统浏览器打开
   - 网址链接与备注 markdown 解析链接点击恢复正常
+- 侧边栏 UI 优化：
+  - 「热门标签」标题可点击折叠/展开（chevron 指示器，localStorage 持久化折叠状态，默认展开）
+  - 「退出」按钮始终固底：侧边栏内容移入 `.sidebar-scroll` 滚动容器，footer 不随内容滚动
 
 ### v1.0.2 (2026-08-20)
 

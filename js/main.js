@@ -41,6 +41,9 @@ async function init() {
     versionEl.textContent = APP_VERSION;
   }
   
+  // 恢复热门标签折叠状态（本地持久化，默认展开）
+  applyTagSectionState();
+
   // 初始化快捷键
   SearchShortcuts.initKeyboardShortcuts();
   
@@ -235,6 +238,29 @@ document.addEventListener('click', function (e) {
   const dd = document.getElementById('add-entry-dropdown');
   if (dd && !dd.contains(e.target)) closeAddDropdown();
 });
+
+// 热门标签折叠/展开（UI 偏好，localStorage 持久化；默认展开）
+const TAGS_COLLAPSE_KEY = 'lockpass_tags_collapsed';
+function applyTagSectionState() {
+  const nav = document.getElementById('nav-categories');
+  if (!nav) return;
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(TAGS_COLLAPSE_KEY) === '1'; } catch (e) {}
+  nav.classList.toggle('collapsed', collapsed);
+  const toggle = document.getElementById('tags-toggle');
+  const chevron = toggle ? toggle.querySelector('.tag-chevron') : null;
+  if (chevron) chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
+}
+window.toggleTagSection = function () {
+  const nav = document.getElementById('nav-categories');
+  if (!nav) return;
+  const collapsed = nav.classList.contains('collapsed');
+  nav.classList.toggle('collapsed', !collapsed);
+  const toggle = document.getElementById('tags-toggle');
+  const chevron = toggle ? toggle.querySelector('.tag-chevron') : null;
+  if (chevron) chevron.style.transform = collapsed ? '' : 'rotate(-90deg)';
+  try { localStorage.setItem(TAGS_COLLAPSE_KEY, collapsed ? '0' : '1'); } catch (e) {}
+};
 
 /**
  * 渲染主密码强度指示（仅首次创建界面显示）

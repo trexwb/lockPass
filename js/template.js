@@ -116,6 +116,7 @@ window.UI_TEMPLATE = `
     
     <!-- Sidebar -->
     <aside id="sidebar">
+      <div class="sidebar-scroll">
       <div class="sidebar-section">
         <div class="btn-dropdown" id="add-entry-dropdown">
           <button class="btn btn-primary btn-full btn-dropdown-main" onclick="openEntryModal()">
@@ -155,8 +156,12 @@ window.UI_TEMPLATE = `
       
       <!-- 热门标签 -->
       <div class="sidebar-section">
-        <div class="sidebar-section-title">热门标签</div>
+        <div class="sidebar-section-title sidebar-title-clickable" id="tags-toggle" onclick="toggleTagSection()" title="折叠/展开热门标签">
+          热门标签
+          <svg class="tag-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
         <nav id="nav-categories"></nav>
+      </div>
       </div>
       
       <div class="sidebar-footer">
