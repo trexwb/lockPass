@@ -102,6 +102,16 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 button { font-family: var(--font-ui); cursor: pointer; border: none; outline: none; }
 input, textarea, select { font-family: var(--font-ui); outline: none; }
+
+/* iOS：聚焦字号 <16px 的输入框会触发页面自动放大（PWA 主屏模式下无法缩回），
+   移动端输入控件统一 16px 绝对字号（1.0rem=14px 不够） */
+@media (max-width: 1024px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
