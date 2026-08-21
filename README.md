@@ -299,6 +299,21 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.4 (2026-08-21)
+
+- 全量代码审计修复（17 项）：
+  - CSV 预览崩溃（`rows` 未定义）修复；CSV 解析支持 RFC 4180 引号字段内换行
+  - 移除主密码可逆混淆存储（sessionStorage），改为仅内存保存，刷新后需重新解锁
+  - 密码生成器字段名对齐（digits/special → numbers/symbols）；消除随机数模运算偏差（拒绝采样）
+  - 修复列表排序就地污染数据源（改为副本排序）
+  - 收窄 Tauri `fs` 权限（移除 `path: "**"`），新增 `export_text_file` / `read_text_file_any` Rust 命令并接入前端
+  - 落地 CSP（index.html meta + tauri.conf.json）
+  - 消除多类型表单重复 DOM ID（改用 `data-field` 属性）
+  - 文件同步失败不再静默（设置面板展示失败状态 + Toast 提示）
+  - 侧栏统计合并为单次遍历；清理占位符/死代码/冗余赋值；deriveKey 支持读取 meta iterations
+  - 确认框快捷键独立映射（Enter 直接点击确认）
+  - CSS 按注释分区拆分为 base/layout/entries/editor/settings/modal/particles 七个子文件（main.css 保留 @import 入口）
+
 ### v1.0.3 (2026-08-21)
 
 - 修复 Tauri 桌面版导出失败（dialog save 命令参数结构错误 `invalid args options`）：

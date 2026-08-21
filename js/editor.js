@@ -70,15 +70,16 @@ function syncFieldLabels(type) {
     other:   { u: '凭证名称', p: '凭证值',  u2: '',         hint: '示例：API 密钥 / 许可证 / 证书' },
   };
   const lbl = labels[type] || labels.website;
-  const elUser = document.getElementById('e-username-label');
-  const elPw   = document.getElementById('e-password-label');
-  const elUrl  = document.getElementById('e-url-label');
+  const form = document.getElementById(`form-${type}`);
+  const elUser = form?.querySelector('[data-field="username-label"]');
+  const elPw   = form?.querySelector('[data-field="password-label"]');
+  const elUrl  = form?.querySelector('[data-field="url-label"]');
   if (elUser) elUser.textContent = lbl.u;
   if (elPw)   elPw.textContent  = lbl.p;
   if (elUrl) {
     elUrl.parentElement.style.display = lbl.u2 ? '' : 'none';
     elUrl.textContent = lbl.u2;
-    const urlInput = document.getElementById('e-url');
+    const urlInput = form?.querySelector('[data-field="url"]');
     if (urlInput) urlInput.placeholder = lbl.hint;
   }
   // 更新密码强度 label
@@ -117,10 +118,10 @@ function cacheFormData() {
   const data = {
     type,
     title: document.getElementById('e-title')?.value || '',
-    username: form.querySelector('#e-username')?.value || '',
-    password: form.querySelector('#e-password')?.value || '',
-    url: form.querySelector('#e-url')?.value || '',
-    port: form.querySelector('#e-port')?.value || '',
+    username: form.querySelector('[data-field="username"]')?.value || '',
+    password: form.querySelector('[data-field="password"]')?.value || '',
+    url: form.querySelector('[data-field="url"]')?.value || '',
+    port: form.querySelector('[data-field="port"]')?.value || '',
     notes: document.getElementById('e-notes')?.value || '',
     tags: getSelectedTags(),
     timestamp: Date.now(),
@@ -128,13 +129,13 @@ function cacheFormData() {
 
   // server 类型额外缓存 root 字段
   if (type === 'server') {
-    data.rootUser = form.querySelector('#e-root-user')?.value || '';
-    data.rootPwd = form.querySelector('#e-root-pwd')?.value || '';
+    data.rootUser = form.querySelector('[data-field="root-user"]')?.value || '';
+    data.rootPwd = form.querySelector('[data-field="root-pwd"]')?.value || '';
   }
 
   // app 类型额外缓存 appId（排除 privateKey）
   if (type === 'app') {
-    data.appId = form.querySelector('#e-appid')?.value || '';
+    data.appId = form.querySelector('[data-field="appid"]')?.value || '';
     // 私钥不缓存：太长且敏感
   }
 
@@ -289,24 +290,24 @@ function openEntryModal(entryId = null) {
       // 恢复类型特定字段
       const form = document.getElementById(`form-${draft.type || currentEntryType}`);
       if (form) {
-        const usernameEl = form.querySelector('#e-username');
-        const passwordEl = form.querySelector('#e-password');
-        const urlEl = form.querySelector('#e-url');
-        const portEl = form.querySelector('#e-port');
+        const usernameEl = form.querySelector('[data-field="username"]');
+        const passwordEl = form.querySelector('[data-field="password"]');
+        const urlEl = form.querySelector('[data-field="url"]');
+        const portEl = form.querySelector('[data-field="port"]');
         if (usernameEl && draft.username) usernameEl.value = draft.username;
         if (passwordEl && draft.password) passwordEl.value = draft.password;
         if (urlEl && draft.url) urlEl.value = draft.url;
         if (portEl && draft.port) portEl.value = draft.port;
         // server 类型恢复 root 字段
         if ((draft.type || currentEntryType) === 'server') {
-          const rootUserEl = form.querySelector('#e-root-user');
-          const rootPwdEl = form.querySelector('#e-root-pwd');
+          const rootUserEl = form.querySelector('[data-field="root-user"]');
+          const rootPwdEl = form.querySelector('[data-field="root-pwd"]');
           if (rootUserEl && draft.rootUser) rootUserEl.value = draft.rootUser;
           if (rootPwdEl && draft.rootPwd) rootPwdEl.value = draft.rootPwd;
         }
         // app 类型恢复 appId
         if ((draft.type || currentEntryType) === 'app') {
-          const appIdEl = form.querySelector('#e-appid');
+          const appIdEl = form.querySelector('[data-field="appid"]');
           if (appIdEl && draft.appId) appIdEl.value = draft.appId;
         }
       }
@@ -379,35 +380,35 @@ function getTypeIconSvg(type) {
 function buildWebsiteFields(entry) {
   return `
     <div class="form-group">
-      <label class="form-label" id="e-username-label">用户名</label>
-      <input class="form-input" id="e-username" type="text" placeholder="username@example.com" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="2" />
+      <label class="form-label" data-field="username-label">用户名</label>
+      <input class="form-input" data-field="username" type="text" placeholder="username@example.com" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="2" />
     </div>
     <div class="form-group">
-      <label class="form-label" id="e-password-label">密码 <span class="text-danger">*</span></label>
+      <label class="form-label" data-field="password-label">密码 <span class="text-danger">*</span></label>
       <div class="input-affix">
-        <input class="form-input mono" id="e-password" type="password" placeholder="输入或生成密码" value="${Utils.escHtml(getEntryField(entry, 'password'))}" oninput="updateStrengthBar()" tabindex="3" />
+        <input class="form-input mono" data-field="password" type="password" placeholder="输入或生成密码" value="${Utils.escHtml(getEntryField(entry, 'password'))}" oninput="updateStrengthBar()" tabindex="3" />
         <div class="input-affix-btns">
           <button class="pw-gen-btn" onclick="toggleEntryPwVisibility()" title="显示/隐藏" tabindex="-1">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="entry-pw-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-field="password-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
           </button>
           <button class="pw-gen-btn" onclick="toggleGenPanel()" title="生成密码" tabindex="-1">
             ${Utils.SvgIcons.key(15)}
           </button>
         </div>
       </div>
-      <div class="pw-strength" id="pw-strength-container" style="display:${getEntryField(entry, 'password') ? 'block' : 'none'}">
+      <div class="pw-strength" data-field="strength-container" style="display:${getEntryField(entry, 'password') ? 'block' : 'none'}">
         <div class="pw-strength-bar-bg">
-          <div class="pw-strength-bar" id="pw-strength-bar" style="width:0%"></div>
+          <div class="pw-strength-bar" data-field="strength-bar" style="width:0%"></div>
         </div>
-        <div class="pw-strength-text" id="pw-strength-text"></div>
+        <div class="pw-strength-text" data-field="strength-text"></div>
       </div>
-      <div id="gen-panel" class="pw-gen-panel hidden">
+      <div data-field="gen-panel" class="pw-gen-panel hidden">
         ${renderGenPanel()}
       </div>
     </div>
-    <div class="form-group" id="e-url-group">
-      <label class="form-label" id="e-url-label">网址</label>
-      <input class="form-input" id="e-url" type="url" placeholder="https://example.com" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="4" />
+    <div class="form-group" data-field="url-group">
+      <label class="form-label" data-field="url-label">网址</label>
+      <input class="form-input" data-field="url" type="url" placeholder="https://example.com" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="4" />
     </div>`;
 }
 
@@ -417,21 +418,21 @@ function buildWebsiteFields(entry) {
 function buildServerFields(entry) {
   return `
     <div class="form-group">
-      <label class="form-label" id="e-url-label">连接地址</label>
+      <label class="form-label" data-field="url-label">连接地址</label>
       <div class="input-row">
         <div class="input-row-main">
-          <input class="form-input mono" id="e-url" type="text" placeholder="示例：1.2.3.4 或 ssh://1.2.3.4" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="2" />
+          <input class="form-input mono" data-field="url" type="text" placeholder="示例：1.2.3.4 或 ssh://1.2.3.4" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="2" />
         </div>
-        <input class="form-input mono" id="e-port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" style="width:90px;flex-shrink:0;" />
+        <input class="form-input mono" data-field="port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" style="width:90px;flex-shrink:0;" />
       </div>
     </div>
     <div class="form-group">
       <label class="form-label">登录账号</label>
       <div class="input-row">
         <div class="input-row-main">
-          <input class="form-input" id="e-username" type="text" placeholder="账号" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="4" />
+          <input class="form-input" data-field="username" type="text" placeholder="账号" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="4" />
         </div>
-        <button class="pw-gen-btn" onclick="copyFieldById('e-username')" title="复制账号" tabindex="-1">
+        <button class="pw-gen-btn" onclick="copyFieldById('username')" title="复制账号" tabindex="-1">
           ${Utils.SvgIcons.copy(15)}
         </button>
       </div>
@@ -441,10 +442,10 @@ function buildServerFields(entry) {
       <div class="input-row">
         <div class="input-row-main">
           <div class="input-affix">
-            <input class="form-input mono" id="e-password" type="password" placeholder="密码" value="${Utils.escHtml(getEntryField(entry, 'password'))}" oninput="updateStrengthBar()" tabindex="5" />
+            <input class="form-input mono" data-field="password" type="password" placeholder="密码" value="${Utils.escHtml(getEntryField(entry, 'password'))}" oninput="updateStrengthBar()" tabindex="5" />
             <div class="input-affix-btns">
               <button class="pw-gen-btn" onclick="toggleEntryPwVisibility()" title="显示/隐藏" tabindex="-1">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="entry-pw-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-field="password-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
               </button>
               <button class="pw-gen-btn" onclick="toggleGenPanel()" title="生成密码" tabindex="-1">
                 ${Utils.SvgIcons.key(15)}
@@ -452,17 +453,17 @@ function buildServerFields(entry) {
             </div>
           </div>
         </div>
-        <button class="pw-gen-btn" onclick="copyFieldById('e-password')" title="复制密码" tabindex="-1">
+        <button class="pw-gen-btn" onclick="copyFieldById('password')" title="复制密码" tabindex="-1">
           ${Utils.SvgIcons.copy(15)}
         </button>
       </div>
-      <div class="pw-strength" id="pw-strength-container" style="display:${getEntryField(entry, 'password') ? 'block' : 'none'}">
+      <div class="pw-strength" data-field="strength-container" style="display:${getEntryField(entry, 'password') ? 'block' : 'none'}">
         <div class="pw-strength-bar-bg">
-          <div class="pw-strength-bar" id="pw-strength-bar" style="width:0%"></div>
+          <div class="pw-strength-bar" data-field="strength-bar" style="width:0%"></div>
         </div>
-        <div class="pw-strength-text" id="pw-strength-text"></div>
+        <div class="pw-strength-text" data-field="strength-text"></div>
       </div>
-      <div id="gen-panel" class="pw-gen-panel hidden">
+      <div data-field="gen-panel" class="pw-gen-panel hidden">
         ${renderGenPanel()}
       </div>
     </div>
@@ -470,9 +471,9 @@ function buildServerFields(entry) {
       <label class="form-label">root 账号</label>
       <div class="input-row">
         <div class="input-row-main">
-          <input class="form-input" id="e-root-user" type="text" placeholder="root" value="${Utils.escHtml(getEntryField(entry, 'rootUser'))}" tabindex="6" />
+          <input class="form-input" data-field="root-user" type="text" placeholder="root" value="${Utils.escHtml(getEntryField(entry, 'rootUser'))}" tabindex="6" />
         </div>
-        <button class="pw-gen-btn" onclick="copyFieldById('e-root-user')" title="复制账号" tabindex="-1">
+        <button class="pw-gen-btn" onclick="copyFieldById('root-user')" title="复制账号" tabindex="-1">
           ${Utils.SvgIcons.copy(15)}
         </button>
       </div>
@@ -482,18 +483,18 @@ function buildServerFields(entry) {
       <div class="input-row">
         <div class="input-row-main">
           <div class="input-affix">
-            <input class="form-input mono" id="e-root-pwd" type="password" placeholder="root 密码" value="${Utils.escHtml(getEntryField(entry, 'rootPwd'))}" tabindex="7" />
+            <input class="form-input mono" data-field="root-pwd" type="password" placeholder="root 密码" value="${Utils.escHtml(getEntryField(entry, 'rootPwd'))}" tabindex="7" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" onclick="toggleFieldVisibility('e-root-pwd', this)" title="显示/隐藏" tabindex="-1">
+              <button class="pw-gen-btn" onclick="toggleFieldVisibility('root-pwd', this)" title="显示/隐藏" tabindex="-1">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${Utils.SvgIcons.eyeOpenPaths}</svg>
               </button>
-              <button class="pw-gen-btn" onclick="generatePasswordFor('e-root-pwd')" title="生成密码" tabindex="-1">
+              <button class="pw-gen-btn" onclick="generatePasswordFor('root-pwd')" title="生成密码" tabindex="-1">
                 ${Utils.SvgIcons.key(15)}
               </button>
             </div>
           </div>
         </div>
-        <button class="pw-gen-btn" onclick="copyFieldById('e-root-pwd')" title="复制密码" tabindex="-1">
+        <button class="pw-gen-btn" onclick="copyFieldById('root-pwd')" title="复制密码" tabindex="-1">
           ${Utils.SvgIcons.copy(15)}
         </button>
       </div>
@@ -509,31 +510,31 @@ function buildDatabaseFields(entry) {
       <label class="form-label">数据库地址</label>
       <div class="input-row">
         <div class="input-row-main">
-          <input class="form-input mono" id="e-url" type="text" placeholder="示例：localhost 或 10.0.0.100" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="2" />
+          <input class="form-input mono" data-field="url" type="text" placeholder="示例：localhost 或 10.0.0.100" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="2" />
         </div>
-        <input class="form-input mono" id="e-port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" style="width:90px;flex-shrink:0;" />
+        <input class="form-input mono" data-field="port" type="number" placeholder="端口" min="1" max="65535" value="${Utils.escHtml(getEntryField(entry, 'port'))}" tabindex="3" style="width:90px;flex-shrink:0;" />
       </div>
     </div>
     <div class="form-group">
       <label class="form-label">用户名</label>
       <div class="input-row">
         <div class="input-row-main">
-          <input class="form-input" id="e-username" type="text" placeholder="数据库用户名" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="4" />
+          <input class="form-input" data-field="username" type="text" placeholder="数据库用户名" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="4" />
         </div>
-        <button class="pw-gen-btn" onclick="copyFieldById('e-username')" title="复制用户名" tabindex="-1">
+        <button class="pw-gen-btn" onclick="copyFieldById('username')" title="复制用户名" tabindex="-1">
           ${Utils.SvgIcons.copy(15)}
         </button>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label" id="e-password-label">密码</label>
+      <label class="form-label" data-field="password-label">密码</label>
       <div class="input-row">
         <div class="input-row-main">
           <div class="input-affix">
-            <input class="form-input mono" id="e-password" type="password" placeholder="数据库密码" value="${Utils.escHtml(getEntryField(entry, 'password'))}" oninput="updateStrengthBar()" tabindex="5" />
+            <input class="form-input mono" data-field="password" type="password" placeholder="数据库密码" value="${Utils.escHtml(getEntryField(entry, 'password'))}" oninput="updateStrengthBar()" tabindex="5" />
             <div class="input-affix-btns">
               <button class="pw-gen-btn" onclick="toggleEntryPwVisibility()" title="显示/隐藏" tabindex="-1">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="entry-pw-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-field="password-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
               </button>
               <button class="pw-gen-btn" onclick="toggleGenPanel()" title="生成密码" tabindex="-1">
                 ${Utils.SvgIcons.key(15)}
@@ -541,17 +542,17 @@ function buildDatabaseFields(entry) {
             </div>
           </div>
         </div>
-        <button class="pw-gen-btn" onclick="copyFieldById('e-password')" title="复制密码" tabindex="-1">
+        <button class="pw-gen-btn" onclick="copyFieldById('password')" title="复制密码" tabindex="-1">
           ${Utils.SvgIcons.copy(15)}
         </button>
       </div>
-      <div class="pw-strength" id="pw-strength-container" style="display:${getEntryField(entry, 'password') ? 'block' : 'none'}">
+      <div class="pw-strength" data-field="strength-container" style="display:${getEntryField(entry, 'password') ? 'block' : 'none'}">
         <div class="pw-strength-bar-bg">
-          <div class="pw-strength-bar" id="pw-strength-bar" style="width:0%"></div>
+          <div class="pw-strength-bar" data-field="strength-bar" style="width:0%"></div>
         </div>
-        <div class="pw-strength-text" id="pw-strength-text"></div>
+        <div class="pw-strength-text" data-field="strength-text"></div>
       </div>
-      <div id="gen-panel" class="pw-gen-panel hidden">
+      <div data-field="gen-panel" class="pw-gen-panel hidden">
         ${renderGenPanel()}
       </div>
     </div>`;
@@ -564,19 +565,19 @@ function buildAiFields(entry) {
   return `
     <div class="form-group">
       <label class="form-label">服务名称</label>
-      <input class="form-input" id="e-username" type="text" placeholder="示例：DeepSeek / OpenAI / 通义千问 / Kimi" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="2" />
+      <input class="form-input" data-field="username" type="text" placeholder="示例：DeepSeek / OpenAI / 通义千问 / Kimi" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="2" />
     </div>
     <div class="form-group">
       <label class="form-label">API 地址</label>
-      <input class="form-input" id="e-url" type="url" placeholder="https://api.deepseek.com / https://api.openai.com" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="3" />
+      <input class="form-input" data-field="url" type="url" placeholder="https://api.deepseek.com / https://api.openai.com" value="${Utils.escHtml(getEntryField(entry, 'url'))}" tabindex="3" />
     </div>
     <div class="form-group">
-      <label class="form-label" id="e-password-label">Token <span class="text-danger">*</span></label>
+      <label class="form-label" data-field="password-label">Token <span class="text-danger">*</span></label>
       <div class="input-affix">
-        <input class="form-input mono" id="e-password" type="password" placeholder="输入 Token" value="${Utils.escHtml(getEntryField(entry, 'password'))}" tabindex="4" />
+        <input class="form-input mono" data-field="password" type="password" placeholder="输入 Token" value="${Utils.escHtml(getEntryField(entry, 'password'))}" tabindex="4" />
         <div class="input-affix-btns">
           <button class="pw-gen-btn" onclick="toggleEntryPwVisibility()" title="显示/隐藏" tabindex="-1">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="entry-pw-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-field="password-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
           </button>
         </div>
       </div>
@@ -590,17 +591,17 @@ function buildAppFields(entry) {
   return `
     <div class="form-group">
       <label class="form-label">App ID</label>
-      <input class="form-input mono" id="e-appid" type="text" placeholder="示例：2019031163548107" value="${Utils.escHtml(getEntryField(entry, 'appId'))}" tabindex="2" />
+      <input class="form-input mono" data-field="appid" type="text" placeholder="示例：2019031163548107" value="${Utils.escHtml(getEntryField(entry, 'appId'))}" tabindex="2" />
     </div>
     <div class="form-group">
-      <label class="form-label" id="e-password-label">公钥</label>
+      <label class="form-label" data-field="password-label">公钥</label>
       <div class="input-affix mono-textarea-wrap">
-        <textarea class="form-input mono mono-textarea" id="e-password" rows="3" placeholder="输入公钥" tabindex="3">${Utils.escHtml(getEntryField(entry, 'password'))}</textarea>
+        <textarea class="form-input mono mono-textarea" data-field="password" rows="3" placeholder="输入公钥" tabindex="3">${Utils.escHtml(getEntryField(entry, 'password'))}</textarea>
         <div class="input-affix-btns">
-          <button class="pw-gen-btn" onclick="toggleFieldVisibility('e-password', this)" title="显示/隐藏" tabindex="-1">
+          <button class="pw-gen-btn" onclick="toggleFieldVisibility('password', this)" title="显示/隐藏" tabindex="-1">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${Utils.SvgIcons.eyeOpenPaths}</svg>
           </button>
-          <button class="pw-gen-btn" onclick="copyFieldById('e-password')" title="复制" tabindex="-1">
+          <button class="pw-gen-btn" onclick="copyFieldById('password')" title="复制" tabindex="-1">
             ${Utils.SvgIcons.copy(15)}
           </button>
         </div>
@@ -609,12 +610,12 @@ function buildAppFields(entry) {
     <div class="form-group">
       <label class="form-label">私钥</label>
       <div class="input-affix mono-textarea-wrap">
-        <textarea class="form-input mono mono-textarea" id="e-private-key" rows="3" placeholder="输入私钥（证书级长度）" tabindex="4">${Utils.escHtml(getEntryField(entry, 'privateKey'))}</textarea>
+        <textarea class="form-input mono mono-textarea" data-field="private-key" rows="3" placeholder="输入私钥（证书级长度）" tabindex="4">${Utils.escHtml(getEntryField(entry, 'privateKey'))}</textarea>
         <div class="input-affix-btns">
-          <button class="pw-gen-btn" onclick="toggleFieldVisibility('e-private-key', this)" title="显示/隐藏" tabindex="-1">
+          <button class="pw-gen-btn" onclick="toggleFieldVisibility('private-key', this)" title="显示/隐藏" tabindex="-1">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${Utils.SvgIcons.eyeOpenPaths}</svg>
           </button>
-          <button class="pw-gen-btn" onclick="copyFieldById('e-private-key')" title="复制" tabindex="-1">
+          <button class="pw-gen-btn" onclick="copyFieldById('private-key')" title="复制" tabindex="-1">
             ${Utils.SvgIcons.copy(15)}
           </button>
         </div>
@@ -629,15 +630,15 @@ function buildOtherFields(entry) {
   return `
     <div class="form-group">
       <label class="form-label">凭证名称</label>
-      <input class="form-input" id="e-username" type="text" placeholder="示例：API 密钥 / 许可证 / 证书 / 授权码" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="2" />
+      <input class="form-input" data-field="username" type="text" placeholder="示例：API 密钥 / 许可证 / 证书 / 授权码" value="${Utils.escHtml(getEntryField(entry, 'username'))}" tabindex="2" />
     </div>
     <div class="form-group">
-      <label class="form-label" id="e-password-label">凭证值 <span class="text-danger">*</span></label>
+      <label class="form-label" data-field="password-label">凭证值 <span class="text-danger">*</span></label>
       <div class="input-affix">
-        <input class="form-input mono" id="e-password" type="password" placeholder="输入凭证值" value="${Utils.escHtml(getEntryField(entry, 'password'))}" tabindex="3" />
+        <input class="form-input mono" data-field="password" type="password" placeholder="输入凭证值" value="${Utils.escHtml(getEntryField(entry, 'password'))}" tabindex="3" />
         <div class="input-affix-btns">
           <button class="pw-gen-btn" onclick="toggleEntryPwVisibility()" title="显示/隐藏" tabindex="-1">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="entry-pw-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-field="password-eye">${Utils.SvgIcons.eyeOpenPaths}</svg>
           </button>
         </div>
       </div>
@@ -701,15 +702,15 @@ function copyFieldById(inputId) {
  * 切换密码输入框可见性
  */
 function toggleEntryPwVisibility() {
-  // 从当前激活的表单里找 e-password（避免 ID 冲突）
+  // 从当前激活的表单里找密码框（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector('#e-password') || document.getElementById('e-password');
+  const input = form?.querySelector('[data-field="password"]');
   if (!input) return;
   
   input.type = input.type === 'password' ? 'text' : 'password';
   
   // 更新眼睛图标（优先从当前表单找）
-  const eye = form?.querySelector('#entry-pw-eye') || document.getElementById('entry-pw-eye');
+  const eye = form?.querySelector('[data-field="password-eye"]');
   if (eye) {
     eye.innerHTML = input.type === 'password'
       ? Utils.SvgIcons.eyeOpenPaths
@@ -737,7 +738,7 @@ function toggleGenPanel() {
 function renderGenPanel() {
   return `
     <div class="pw-gen-preview">
-      <span class="pw-gen-preview-text" id="gen-preview-text">点击生成</span>
+      <span class="pw-gen-preview-text" data-field="gen-preview-text">点击生成</span>
       <button class="btn-icon" style="width:26px;height:26px;flex-shrink:0" onclick="generateNewPassword()" title="重新生成" tabindex="-1">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
@@ -745,23 +746,23 @@ function renderGenPanel() {
     <div class="pw-gen-controls">
       <div class="pw-gen-row">
         <label>长度</label>
-        <input type="range" id="gen-length" min="8" max="64" value="16" oninput="document.getElementById('gen-len-val').textContent=this.value;generateNewPassword()" tabindex="-1" />
-        <span id="gen-len-val">16</span>
+        <input type="range" data-field="gen-length" min="8" max="64" value="16" oninput="setGenLengthValue(this)" tabindex="-1" />
+        <span data-field="gen-len-val">16</span>
       </div>
       <div class="pw-gen-charsets">
-        <label class="charset-label"><input type="checkbox" id="gen-upper" checked onchange="generateNewPassword()" tabindex="-1" /> 大写字母 (A-Z)</label>
-        <label class="charset-label"><input type="checkbox" id="gen-lower" checked onchange="generateNewPassword()" tabindex="-1" /> 小写字母 (a-z)</label>
-        <label class="charset-label"><input type="checkbox" id="gen-number" checked onchange="generateNewPassword()" tabindex="-1" /> 数字 (0-9)</label>
-        <label class="charset-label"><input type="checkbox" id="gen-symbol" checked onchange="generateNewPassword()" tabindex="-1" /> 符号 (!@#$…)</label>
+        <label class="charset-label"><input type="checkbox" data-field="gen-upper" checked onchange="generateNewPassword()" tabindex="-1" /> 大写字母 (A-Z)</label>
+        <label class="charset-label"><input type="checkbox" data-field="gen-lower" checked onchange="generateNewPassword()" tabindex="-1" /> 小写字母 (a-z)</label>
+        <label class="charset-label"><input type="checkbox" data-field="gen-number" checked onchange="generateNewPassword()" tabindex="-1" /> 数字 (0-9)</label>
+        <label class="charset-label"><input type="checkbox" data-field="gen-symbol" checked onchange="generateNewPassword()" tabindex="-1" /> 符号 (!@#$…)</label>
       </div>
       <div class="pw-gen-row" style="gap:8px;margin-top:4px">
-        <label class="charset-label" style="min-width:auto"><input type="checkbox" id="gen-noambig" onchange="generateNewPassword()" tabindex="-1" /> 排除歧义字符</label>
+        <label class="charset-label" style="min-width:auto"><input type="checkbox" data-field="gen-noambig" onchange="generateNewPassword()" tabindex="-1" /> 排除歧义字符</label>
       </div>
-      <div id="gen-strength-container">
+      <div data-field="gen-strength-container">
         <div class="pw-strength-bar-bg">
-          <div class="pw-strength-bar" id="gen-strength-bar" style="width:0%"></div>
+          <div class="pw-strength-bar" data-field="gen-strength-bar" style="width:0%"></div>
         </div>
-        <div class="pw-strength-text" id="gen-strength-text"></div>
+        <div class="pw-strength-text" data-field="gen-strength-text"></div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="useGeneratedPassword()" tabindex="-1">
         ${Utils.SvgIcons.check(13)}
@@ -818,16 +819,16 @@ function useGeneratedPassword() {
   if (!preview || preview.textContent === '点击生成') return;
   
   const password = preview.textContent;
-  // 从当前激活的表单里找 e-password（避免 ID 冲突）
+  // 从当前激活的表单里找密码输入框（避免多表单 DOM 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector('#e-password') || document.getElementById('e-password');
+  const input = form?.querySelector('[data-field="password"]');
   if (!input) return;
   
   input.value = password;
   input.type = 'text';
   
   // 更新眼睛图标（优先从当前表单找）
-  const eye = form?.querySelector('#entry-pw-eye') || document.getElementById('entry-pw-eye');
+  const eye = form?.querySelector('[data-field="password-eye"]');
   if (eye) {
     eye.innerHTML = Utils.SvgIcons.eyeClosedPaths;
   }
@@ -839,14 +840,14 @@ function useGeneratedPassword() {
 /**
  * 为指定输入框生成密码
  */
-function generatePasswordFor(inputId) {
+function generatePasswordFor(field) {
   // 从当前激活的表单里找输入框（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector(`#${inputId}`) || document.getElementById(inputId);
+  const input = form?.querySelector(`[data-field="${field}"]`);
   if (!input) return;
   
   // 使用默认配置生成密码
-  const config = { length: 16, upper: true, lower: true, digits: true, special: true };
+  const config = { length: 16, uppercase: true, lowercase: true, numbers: true, symbols: true };
   const password = PasswordGenerator.generatePassword(config);
   
   input.value = password;
@@ -870,10 +871,10 @@ function generatePasswordFor(inputId) {
 function updateStrengthBar() {
   // 从当前激活的表单里找 e-password（避免 ID 冲突）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const password = form?.querySelector('#e-password')?.value || document.getElementById('e-password')?.value || '';
-  const container = form?.querySelector('#pw-strength-container') || document.getElementById('pw-strength-container');
-  const bar = form?.querySelector('#pw-strength-bar') || document.getElementById('pw-strength-bar');
-  const text = form?.querySelector('#pw-strength-text') || document.getElementById('pw-strength-text');
+  const password = form?.querySelector('[data-field="password"]')?.value || '';
+  const container = form?.querySelector('[data-field="strength-container"]');
+  const bar = form?.querySelector('[data-field="strength-bar"]');
+  const text = form?.querySelector('[data-field="strength-text"]');
   
   if (!container || !bar || !text) return;
   
@@ -964,8 +965,8 @@ async function saveEntry() {
       }
       // app: 更新 appId / privateKey（textarea 可能处于掩码态，需先还原）
       if (type === 'app') {
-        entry.appId = $('e-appid')?.value.trim() || '';
-        const pkEl = $('e-private-key');
+        entry.appId = $('appid')?.value.trim() || '';
+        const pkEl = $('private-key');
         if (pkEl) {
           if (pkEl.dataset.masked === '1') pkEl.value = pkEl._plainValue || '';
           entry.privateKey = pkEl.value || '';
@@ -994,13 +995,13 @@ async function saveEntry() {
     }
     if (type === 'server') {
       base.root = {
-        username: $('e-root-user')?.value.trim() || '',
-        password: $('e-root-pwd')?.value || '',
+        username: $('root-user')?.value.trim() || '',
+        password: $('root-pwd')?.value || '',
       };
     }
     if (type === 'app') {
-      base.appId = $('e-appid')?.value.trim() || '';
-      const pkEl = $('e-private-key');
+      base.appId = $('appid')?.value.trim() || '';
+      const pkEl = $('private-key');
       if (pkEl) {
         if (pkEl.dataset.masked === '1') pkEl.value = pkEl._plainValue || '';
         base.privateKey = pkEl.value || '';

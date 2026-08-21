@@ -35,12 +35,6 @@ async function init() {
     return;
   }
 
-  // 显示版本号
-  const versionEl = document.getElementById('version-display');
-  if (versionEl) {
-    versionEl.textContent = APP_VERSION;
-  }
-  
   // 恢复热门标签折叠状态（本地持久化，默认展开）
   applyTagSectionState();
 

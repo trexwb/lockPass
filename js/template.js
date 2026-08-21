@@ -1,12 +1,8 @@
 /*
- * @Author: ${git_name}
- * @Date: 2026-08-20 11:50:13
- * @LastEditors: ${git_name}
- * @LastEditTime: 2026-08-20 11:56:30
- * @FilePath: /tools/LockPass/js/template.js
- * @Description: 
- * 一花一世界，一叶一如来
- * Copyright (c) 2026 by 杭州大美, All Rights Reserved. 
+ * LockPass — UI 模板模块
+ * @Author: LockPass Project
+ * @Date: 2026-08-20
+ * Copyright (c) 2026 LockPass, All Rights Reserved.
  */
 /* ═══════════════════════════════════════════════════════════════════
    LockPass — UI 模板模块

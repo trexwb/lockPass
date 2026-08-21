@@ -107,7 +107,7 @@ function downloadFile(filename, content, type) {
 }
 
 /**
- * 解析 CSV 行
+ * 解析 CSV 行（RFC 4180：支持引号字段内的逗号、引号转义 "" 与换行）
  * @param {string} line - CSV 行
  * @returns {Array<string>} 字段数组
  */
@@ -120,17 +120,56 @@ function parseCSVLine(line) {
     const char = line[i];
     
     if (char === '"') {
-      inQuotes = !inQuotes;
+      // 引号转义："" 表示字面引号
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
       result.push(current);
       current = '';
     } else {
-      current += char;
+      current += char; // 引号内的换行也作为字段内容保留
     }
   }
   
   result.push(current);
   return result;
+}
+
+/**
+ * 按引号状态切分 CSV 文本为多行（RFC 4180：引号字段内的换行属于字段内容，不切行）
+ * @param {string} text - CSV 文本
+ * @returns {Array<string>} 行数组（每行不含末尾 \r）
+ */
+function splitCSVLines(text) {
+  const lines = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        current += '""';
+        i++;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      current += char;
+    } else if (char === '\n' && !inQuotes) {
+      if (current.endsWith('\r')) current = current.slice(0, -1);
+      lines.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.endsWith('\r')) current = current.slice(0, -1);
+  if (current !== '') lines.push(current);
+  return lines;
 }
 
 /**
@@ -594,6 +633,7 @@ window.Utils = {
   formatDateFilename,
   downloadFile,
   parseCSVLine,
+  splitCSVLines,
   showToast,
   confirm: confirmDialog,
   getCategoryIcon,

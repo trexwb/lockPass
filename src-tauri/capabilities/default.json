@@ -1,19 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "LockPass 默认权限：剪贴板、文件导出/导入对话框与磁盘读写",
+  "description": "LockPass 默认权限：剪贴板、文件导出/导入对话框；磁盘读写走受限自定义命令",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:default",
-    "clipboard-manager:default",
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-read-text-file",
-      "allow": [{ "path": "**" }]
-    }
+    "clipboard-manager:default"
   ]
 }

@@ -13,6 +13,9 @@ const FILE_SYNC_NAME = 'LockPass-vault.json';
 const LS_SYNC_BOUND = 'lp_sync_bound'; // 标记曾绑定过（用于 UI 引导提示）
 
 const FileSync = {
+  /** 最近一次同步失败信息（null 表示无失败；供设置面板展示，不阻断主流程） */
+  lastSyncError: null,
+
   /** 是否支持文件系统访问 API */
   isSupported() {
     return typeof window.showDirectoryPicker === 'function';

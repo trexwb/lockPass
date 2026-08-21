@@ -7,9 +7,10 @@
  * 从主密码派生 AES-256-GCM 密钥
  * @param {string} password - 用户主密码
  * @param {Uint8Array} salt - 盐值（32字节）
+ * @param {number} [iterations=100000] - PBKDF2 迭代次数（与保险箱 meta 中的 iterations 保持一致）
  * @returns {Promise<CryptoKey>} AES-256-GCM 密钥
  */
-async function deriveKey(password, salt) {
+async function deriveKey(password, salt, iterations = 100000) {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -23,7 +24,7 @@ async function deriveKey(password, salt) {
     {
       name: 'PBKDF2',
       salt: salt,
-      iterations: 100000,
+      iterations: iterations,
       hash: 'SHA-256'
     },
     keyMaterial,

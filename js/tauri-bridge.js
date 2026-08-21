@@ -34,7 +34,7 @@
         }
       });
       if (!savePath) return false; // 用户取消
-      await T.core.invoke('plugin:fs|write_text_file', {
+      await T.core.invoke('export_text_file', {
         path: savePath,
         contents: content
       });
@@ -83,7 +83,7 @@
         if (!payload || payload.type !== 'drop') return;
         (payload.paths || []).forEach(async function (p) {
           try {
-            var text = await invoke('plugin:fs|read_text_file', { path: p });
+            var text = await invoke('read_text_file_any', { path: p });
             var name = p.split(/[\\/]/).pop();
             if (window.ImportExport && window.ImportExport.processFile) {
               await window.ImportExport.processFile({

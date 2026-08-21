@@ -26,8 +26,8 @@ const SHORTCUT_DEFS = [
   },
   {
     id: 'save', name: '保存当前表单', mac: '⌘ + ↵', win: 'Ctrl + Enter',
-    when: '新建/编辑弹窗打开时', desc: '保存新增或编辑中的密码条目（输入框内也可用）',
-    test: ctx => (ctx.modalOpen || ctx.confirmOpen) && ctx.mod && ctx.key === 'enter',
+    when: '新建/编辑弹窗打开时', desc: '保存新增或编辑中的密码条目（输入框内也可用；确认框打开时 Enter 直接点击确认）',
+    test: ctx => ctx.modalOpen && ctx.mod && ctx.key === 'enter',
     run: () => { if (typeof EntryEditor !== 'undefined' && EntryEditor.saveEntry) EntryEditor.saveEntry(); }
   },
   {
@@ -241,8 +241,18 @@ function handleKeyboard(event) {
     return;
   }
 
-  // ── 弹窗/确认框打开：仅允许 ⌘ + Enter 保存 ──
-  if (modalOpen || confirmOpen) {
+  // ── 确认框打开：Enter / ⌘+Enter 独立映射为点击确认按钮 ──
+  if (confirmOpen) {
+    if (key === 'enter') {
+      event.preventDefault();
+      const okBtn = document.querySelector('#confirm-overlay .confirm-ok');
+      if (okBtn) okBtn.click();
+    }
+    return;
+  }
+
+  // ── 弹窗打开：仅允许 ⌘ + Enter 保存 ──
+  if (modalOpen) {
     if (mod && key === 'enter') {
       event.preventDefault();
       if (typeof EntryEditor !== 'undefined' && EntryEditor.saveEntry) EntryEditor.saveEntry();

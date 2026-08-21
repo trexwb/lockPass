@@ -254,7 +254,7 @@ async function processFile(file) {
  * 预览 CSV
  */
 function previewCSV(text) {
-  const lines = text.trim().split('\n');
+  const lines = Utils.splitCSVLines(text);
   if (lines.length < 2) {
     Utils.showToast('CSV 文件为空或格式错误', 'error');
     return;
@@ -267,7 +267,7 @@ function previewCSV(text) {
   document.getElementById('import-preview').classList.remove('hidden');
   document.getElementById('import-preview-content').innerHTML = `
     <div class="text-sm"><strong>CSV 文件</strong></div>
-    <div class="text-muted text-sm mt-1">共 ${rows.length - 1} 条记录（不含表头） · 字段：${Utils.escHtml(headers.join(', '))}</div>
+    <div class="text-muted text-sm mt-1">共 ${count} 条记录（不含表头） · 字段：${Utils.escHtml(headers.join(', '))}</div>
     <div class="text-warning text-sm mt-2">⚠️ CSV 为明文格式；累加模式；重复条目将逐条询问；点「确认」开始导入</div>
   `;
   

@@ -7,89 +7,39 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.3';
+const APP_VERSION = 'v1.0.4';
 
 /**
- * Session Storage 键名（用于刷新后自动恢复）
+ * 旧版 Session Storage 键名（仅用于向后清理，不再写入）
+ * v1.0.4 起主密码不再存入 storage，会话仅保存在内存模块级变量中
  */
 const SESSION_KEY = 'lockpass_session';
 const SESSION_NONCE_KEY = 'lockpass_session_nonce';
 
 /**
- * 生成随机 nonce
+ * 内存会话密码（模块级变量，刷新后为空，需重新解锁）
  */
-function generateNonce() {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-}
+let sessionPassword = '';
 
 /**
- * 使用 XOR 混淆密码（基于 nonce）
- * 注意：这不是强加密，只是防止明码存储在 storage 中
- */
-function obfuscatePassword(password, nonce) {
-  if (!password || !nonce) return '';
-  const nonceBytes = nonce.match(/.{2}/g).map(h => parseInt(h, 16));
-  let result = '';
-  for (let i = 0; i < password.length; i++) {
-    const charCode = password.charCodeAt(i) ^ nonceBytes[i % nonceBytes.length];
-    result += String.fromCharCode(charCode);
-  }
-  // Base64 encode to handle binary chars
-  return btoa(result);
-}
-
-/**
- * 解混淆密码
- */
-function deobfuscatePassword(obfuscated, nonce) {
-  if (!obfuscated || !nonce) return '';
-  try {
-    const nonceBytes = nonce.match(/.{2}/g).map(h => parseInt(h, 16));
-    const password = atob(obfuscated);
-    let result = '';
-    for (let i = 0; i < password.length; i++) {
-      const charCode = password.charCodeAt(i) ^ nonceBytes[i % nonceBytes.length];
-      result += String.fromCharCode(charCode);
-    }
-    return result;
-  } catch (e) {
-    return '';
-  }
-}
-
-/**
- * 保存会话到 sessionStorage（刷新后自动恢复）
- * 使用 XOR 混淆，避免明码存储
+ * 保存会话：仅写入内存，不再写入 sessionStorage
  */
 function saveSession(password) {
-  try {
-    const nonce = generateNonce();
-    const obfuscated = obfuscatePassword(password, nonce);
-    sessionStorage.setItem(SESSION_KEY, obfuscated);
-    sessionStorage.setItem(SESSION_NONCE_KEY, nonce);
-  } catch (e) {}
+  sessionPassword = password || '';
 }
 
 /**
- * 获取会话密码
+ * 获取会话密码：仅返回内存变量（刷新后为空）
  */
 function getSession() {
-  try {
-    const obfuscated = sessionStorage.getItem(SESSION_KEY);
-    const nonce = sessionStorage.getItem(SESSION_NONCE_KEY);
-    if (!obfuscated || !nonce) return '';
-    return deobfuscatePassword(obfuscated, nonce);
-  } catch (e) {
-    return '';
-  }
+  return sessionPassword;
 }
 
 /**
- * 清除会话（退出登录）
+ * 清除会话（退出登录）：清空内存并清理旧版 storage 键
  */
 function clearSession() {
+  sessionPassword = '';
   try {
     sessionStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_NONCE_KEY);
@@ -291,7 +241,8 @@ async function isVaultInitialized() {
 async function createVault(password) {
   const salt = CryptoUtils.generateSalt();
   const saltBase64 = CryptoUtils.arrayBufferToBase64(salt);
-  const key = await CryptoUtils.deriveKey(password, salt);
+  // iterations 固定 100000，与下方 meta 写入保持一致
+  const key = await CryptoUtils.deriveKey(password, salt, 100000);
   
   const initialData = {
     entries: [],
@@ -325,7 +276,10 @@ async function unlockVault(password) {
   }
   
   const salt = CryptoUtils.base64ToArrayBuffer(saltRecord.value);
-  const key = await CryptoUtils.deriveKey(password, new Uint8Array(salt));
+  // 读取 meta 中的 iterations（旧数据无该字段时使用默认值 100000）
+  const iterRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'iterations');
+  const iterations = iterRecord ? (Number(iterRecord.value) || 100000) : 100000;
+  const key = await CryptoUtils.deriveKey(password, new Uint8Array(salt), iterations);
   
   const vaultRecord = await DBUtils.dbGet(DBUtils.STORE_VAULT, 'main');
   if (!vaultRecord) {
@@ -822,17 +776,35 @@ function toggleLockPw() {
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
+ * 单次遍历聚合侧边栏统计（类型/收藏/回收站/标签计数）
+ * 消除 renderSidebar 多次 filter 与 getTagCounts 的重复遍历
+ * @returns {Object} { total, favCount, deletedCount, typeCounts, tagCounts }
+ */
+function computeSidebarStats() {
+  const stats = {
+    total: AppState.entries.length,
+    favCount: 0,
+    deletedCount: AppState.deleted.length,
+    typeCounts: {},
+    tagCounts: {},
+  };
+  AppState.entries.forEach(entry => {
+    const type = entry.entryType || 'website';
+    stats.typeCounts[type] = (stats.typeCounts[type] || 0) + 1;
+    if (entry.favorite) stats.favCount += 1;
+    (entry.tags || []).forEach(t => {
+      stats.tagCounts[t] = (stats.tagCounts[t] || 0) + 1;
+    });
+  });
+  return stats;
+}
+
+/**
  * 获取标签使用量（按条目数量排序）
  * @returns {Object} { [tagName]: count }
  */
 function getTagCounts() {
-  const counts = {};
-  AppState.entries.forEach(entry => {
-    (entry.tags || []).forEach(t => {
-      counts[t] = (counts[t] || 0) + 1;
-    });
-  });
-  return counts;
+  return computeSidebarStats().tagCounts;
 }
 
 /**
@@ -894,6 +866,7 @@ window.App = {
   clearSession,
   getTagCounts,
   getTopTags,
+  computeSidebarStats,
   registerTag,
   unregisterTag,
 };

@@ -252,8 +252,13 @@ async function refreshDataInfo() {
   } else if (FileSync.isSupported()) {
     const handle = await FileSync.getDirHandle();
     if (handle) {
-      if (syncEl) syncEl.textContent = '已绑定';
-      if (fileEl) { fileEl.textContent = '已同步'; fileEl.className = 'tag tag-ok'; }
+      if (FileSync.lastSyncError) {
+        if (syncEl) syncEl.textContent = '同步失败';
+        if (fileEl) { fileEl.textContent = '同步失败'; fileEl.className = 'tag tag-danger'; }
+      } else {
+        if (syncEl) syncEl.textContent = '已绑定';
+        if (fileEl) { fileEl.textContent = '已同步'; fileEl.className = 'tag tag-ok'; }
+      }
     } else {
       if (syncEl) syncEl.textContent = '未绑定';
       if (fileEl) { fileEl.textContent = '未绑定'; fileEl.className = 'tag tag-muted'; }
@@ -426,15 +431,17 @@ async function changePassword() {
     // 验证旧密码
     const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
     const salt = CryptoUtils.base64ToArrayBuffer(saltRecord.value);
-    const oldKey = await CryptoUtils.deriveKey(oldPw, new Uint8Array(salt));
+    const iterRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'iterations');
+    const iterations = iterRecord ? (Number(iterRecord.value) || 100000) : 100000;
+    const oldKey = await CryptoUtils.deriveKey(oldPw, new Uint8Array(salt), iterations);
 
     // 尝试解密验证
     const vaultRecord = await DBUtils.dbGet(DBUtils.STORE_VAULT, 'main');
     await CryptoUtils.decrypt(vaultRecord.data, vaultRecord.iv, oldKey);
 
-    // 生成新盐值和密钥
+    // 生成新盐值和密钥（沿用当前 iterations，保证派生参数一致）
     const newSalt = CryptoUtils.generateSalt();
-    const newKey = await CryptoUtils.deriveKey(newPw, newSalt);
+    const newKey = await CryptoUtils.deriveKey(newPw, newSalt, iterations);
 
     // 重新加密数据
     const { iv, data } = await CryptoUtils.encrypt(

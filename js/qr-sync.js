@@ -508,11 +508,6 @@ const QR = {
       updatedAt: new Date().toISOString(),
     };
 
-    // database 类型：携带 port
-    if (entry.entryType === 'database' && entry.port != null) {
-      newEntry.port = entry.port;
-    }
-
     // server 类型：携带 root 账号/密码
     if (entry.root) {
       newEntry.root = {
