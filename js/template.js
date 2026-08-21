@@ -63,7 +63,8 @@ window.UI_TEMPLATE = `
       <button id="bind-restore-btn" class="btn btn-ghost btn-full hidden" onclick="bindRestoreFromDirectory()" title="绑定已有数据目录并恢复（目录中需存在 LockPass-vault.json）" tabindex="5">
         绑定已有数据目录
       </button>
-      <input type="file" id="restore-file-input" accept=".vault,.json" class="hidden" onchange="handleRestoreFileSelect(event)" />
+      <!-- accept 追加通用 MIME：iOS 无法识别 .vault 自定义扩展名（无 UTI）会灰选不可点 -->
+      <input type="file" id="restore-file-input" accept=".vault,.json,application/octet-stream,application/json" class="hidden" onchange="handleRestoreFileSelect(event)" />
     </div>
   </div>
 </div>
