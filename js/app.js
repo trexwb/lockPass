@@ -729,6 +729,12 @@ async function handleUnlock(autoPassword) {
  */
 let _bindBannerDismissedFallback = false; // sessionStorage 不可用时的内存降级标记
 async function showBindBannerIfNeeded() {
+  // macOS 桌面应用：数据已自动保存在本地文件（应用数据目录），
+  // 且 WebView 无文件系统访问权限，无需也无法绑定数据目录 → 不显示绑定横幅
+  if (window.FileStore && window.FileStore.isTauri &&
+      navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
+    return;
+  }
   try {
     // 本会话已点过「暂不」则不再显示：优先读 sessionStorage 标记，异常时用内存变量
     let dismissed = false;
