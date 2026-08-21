@@ -35,7 +35,7 @@ window.UI_TEMPLATE = `
     
     <div id="lock-form" class="lock-form">
       <div class="input-group">
-        <input id="master-password" type="password" placeholder="输入主密码" oninput="renderMasterPwStrength()" tabindex="1" />
+        <input id="master-password" type="password" placeholder="输入主密码" autocomplete="new-password" name="new-password" oninput="renderMasterPwStrength()" tabindex="1" />
         <button class="toggle-pw" onclick="toggleLockPw()" title="显示/隐藏" tabindex="-1">
           <svg id="lock-eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -45,7 +45,7 @@ window.UI_TEMPLATE = `
       </div>
       
       <div id="confirm-pw-group" class="input-group hidden">
-        <input id="confirm-password" type="password" placeholder="再次输入主密码确认" autocomplete="new-password" tabindex="2" />
+        <input id="confirm-password" type="password" placeholder="再次输入主密码确认" autocomplete="new-password" name="confirm-password" tabindex="2" />
       </div>
 
       <div id="master-pw-strength-wrap" class="hidden" style="margin-top:8px">
