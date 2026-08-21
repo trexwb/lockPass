@@ -649,9 +649,9 @@ function buildOtherFields(entry) {
  * 切换指定 input 的密码可见性（用于 server/app 的多个密码字段）
  */
 function toggleFieldVisibility(inputId, btnEl) {
-  // 从当前激活的表单里找输入框（避免 ID 冲突）
+  // 从当前激活的表单里找输入框（字段已统一 data-field 命名，回退兼容旧 id）
   const form = document.getElementById(`form-${currentEntryType}`);
-  const input = form?.querySelector(`#${inputId}`) || document.getElementById(inputId);
+  const input = form?.querySelector(`[data-field="${inputId}"]`) || document.getElementById(inputId);
   if (!input) return;
   const isTextarea = input.tagName === 'TEXTAREA';
 
@@ -693,8 +693,11 @@ function toggleFieldVisibility(inputId, btnEl) {
 /**
  * 通过 input ID 复制字段值
  */
-function copyFieldById(inputId) {
-  const val = document.getElementById(inputId)?.value;
+function copyFieldById(fieldName) {
+  // 字段已统一为 data-field 命名，回退兼容旧 id
+  const form = document.getElementById(`form-${currentEntryType}`);
+  const el = form?.querySelector(`[data-field="${fieldName}"]`) || document.getElementById(fieldName);
+  const val = el?.value;
   if (val) copyField(val);
 }
 
@@ -905,21 +908,21 @@ async function saveEntry() {
     return;
   }
 
-  // 从当前激活的表单容器读取字段（避免 ID 冲突）
+  // 从当前激活的表单容器读取字段（表单字段已统一为 data-field 命名，回退兼容旧 id）
   const form = document.getElementById(`form-${type}`);
-  const $ = (id) => form?.querySelector(`#${id}`) || document.getElementById(id);
+  const $ = (name) => form?.querySelector(`[data-field="${name}"]`) || document.getElementById(name);
 
   // 按类型收集字段
-  const username = $('e-username')?.value.trim() || '';
+  const username = $('username')?.value.trim() || '';
   // app 类型的公钥输入框可能处于掩码态，先还原再取值，避免把掩码点保存入库
   // 兼容两种掩码存储：toggleFieldVisibility 存 _plainValue，历史遗留 data 属性也兜底
-  const pwField = $('e-password');
+  const pwField = $('password');
   if (pwField && pwField.dataset.masked === '1') pwField.value = pwField._plainValue || pwField.dataset.plainValue || '';
   const password = pwField?.value || '';
-  const url     = $('e-url')?.value.trim() || '';
+  const url     = $('url')?.value.trim() || '';
   // port：server / database 才有
   const port     = (type === 'server' || type === 'database')
-    ? parseInt($('e-port')?.value, 10) || undefined
+    ? parseInt($('port')?.value, 10) || undefined
     : undefined;
 
   // 各类型的必要字段验证
@@ -959,8 +962,8 @@ async function saveEntry() {
       // server: 更新 root 字段
       if (type === 'server') {
         entry.root = {
-          username: $('e-root-user')?.value.trim() || '',
-          password: $('e-root-pwd')?.value || '',
+          username: $('root-user')?.value.trim() || '',
+          password: $('root-pwd')?.value || '',
         };
       }
       // app: 更新 appId / privateKey（textarea 可能处于掩码态，需先还原）
