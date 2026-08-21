@@ -1,12 +1,8 @@
 /*
- * @Author: ${git_name}
- * @Date: 2026-08-20 11:50:13
- * @LastEditors: ${git_name}
- * @LastEditTime: 2026-08-20 11:56:30
- * @FilePath: /tools/LockPass/js/template.js
- * @Description: 
- * 一花一世界，一叶一如来
- * Copyright (c) 2026 by 杭州大美, All Rights Reserved. 
+ * LockPass — UI 模板模块
+ * @Author: LockPass Project
+ * @Date: 2026-08-20
+ * Copyright (c) 2026 LockPass, All Rights Reserved.
  */
 /* ═══════════════════════════════════════════════════════════════════
    LockPass — UI 模板模块
@@ -35,7 +31,7 @@ window.UI_TEMPLATE = `
     
     <div id="lock-form" class="lock-form">
       <div class="input-group">
-        <input id="master-password" type="password" placeholder="输入主密码" oninput="renderMasterPwStrength()" tabindex="1" />
+        <input id="master-password" type="password" placeholder="输入主密码" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="renderMasterPwStrength()" tabindex="1" />
         <button class="toggle-pw" onclick="toggleLockPw()" title="显示/隐藏" tabindex="-1">
           <svg id="lock-eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -45,14 +41,14 @@ window.UI_TEMPLATE = `
       </div>
       
       <div id="confirm-pw-group" class="input-group hidden">
-        <input id="confirm-password" type="password" placeholder="再次输入主密码确认" autocomplete="new-password" tabindex="2" />
+        <input id="confirm-password" type="password" placeholder="再次输入主密码确认" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" tabindex="2" />
       </div>
 
-      <div id="master-pw-strength-wrap" class="hidden" style="margin-top:8px">
-        <div class="pw-strength-bar-bg" style="height:4px;border-radius:2px;background:var(--border)">
-          <div id="master-pw-strength-bar" class="pw-strength-bar" style="width:0%;height:100%;border-radius:2px;transition:width 0.25s,background 0.25s"></div>
+      <div id="master-pw-strength-wrap" class="hidden mt-2">
+        <div class="pw-strength-bar-bg pw-strength-bg-border">
+          <div id="master-pw-strength-bar" class="pw-strength-bar" style="width:0%"></div>
         </div>
-        <div id="master-pw-strength-text" class="text-muted" style="font-size:0.8rem;margin-top:4px"></div>
+        <div id="master-pw-strength-text" class="text-muted pw-strength-text"></div>
       </div>
 
       <div id="lock-error" class="text-danger text-sm mt-1 hidden"></div>
@@ -64,7 +60,10 @@ window.UI_TEMPLATE = `
       <button id="restore-file-btn" class="btn btn-ghost btn-full hidden" onclick="restoreFromLocalFile()" title="从本地文件恢复（.vault 备份或 LockPass-vault.json 同步文件）" tabindex="4">
         从本地文件恢复
       </button>
-      <input type="file" id="restore-file-input" accept=".vault,.json" style="display:none" onchange="handleRestoreFileSelect(event)" />
+      <button id="bind-restore-btn" class="btn btn-ghost btn-full hidden" onclick="bindRestoreFromDirectory()" title="绑定已有数据目录并恢复（目录中需存在 LockPass-vault.json）" tabindex="5">
+        绑定已有数据目录
+      </button>
+      <input type="file" id="restore-file-input" accept=".vault,.json" class="hidden" onchange="handleRestoreFileSelect(event)" />
     </div>
   </div>
 </div>
@@ -116,6 +115,7 @@ window.UI_TEMPLATE = `
     
     <!-- Sidebar -->
     <aside id="sidebar">
+      <div class="sidebar-scroll">
       <div class="sidebar-section">
         <div class="btn-dropdown" id="add-entry-dropdown">
           <button class="btn btn-primary btn-full btn-dropdown-main" onclick="openEntryModal()">
@@ -155,12 +155,16 @@ window.UI_TEMPLATE = `
       
       <!-- 热门标签 -->
       <div class="sidebar-section">
-        <div class="sidebar-section-title">热门标签</div>
+        <div class="sidebar-section-title sidebar-title-clickable" id="tags-toggle" onclick="toggleTagSection()" title="折叠/展开热门标签">
+          热门标签
+          <svg class="tag-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
         <nav id="nav-categories"></nav>
+      </div>
       </div>
       
       <div class="sidebar-footer">
-        <button class="btn btn-ghost btn-sm btn-full" onclick="App.logout()" style="justify-content:center">
+        <button class="btn btn-ghost btn-sm btn-full" onclick="App.logout()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
@@ -233,7 +237,7 @@ window.UI_TEMPLATE = `
       </div>
       <div class="detail-body" id="detail-body"></div>
       <div class="detail-footer" id="detail-footer">
-        <button class="btn btn-secondary" style="flex:1" onclick="editCurrentEntry()">
+        <button class="btn btn-secondary flex-1" onclick="editCurrentEntry()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -284,7 +288,7 @@ window.UI_TEMPLATE = `
  * 必须在其他业务模块读取 DOM 之前执行（脚本按顺序加载，本文件放在 vendor 之后、业务脚本之前）
  */
 (function renderAppShell() {
-  var appEl = document.getElementById('app');
+  const appEl = document.getElementById('app');
   if (appEl) {
     appEl.innerHTML = window.UI_TEMPLATE;
   }

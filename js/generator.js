@@ -59,15 +59,23 @@ function generatePassword(options = {}) {
     charset = CHARSETS.lowercase;
   }
   
-  // 生成密码
+  // 生成密码（拒绝采样消除模运算偏差：丢弃落入拒绝区间的随机数）
   const array = new Uint32Array(length);
-  crypto.getRandomValues(array);
-  
+  const charsetLen = charset.length;
+  const max = Math.floor(0xFFFFFFFF / charsetLen) * charsetLen;
+
   let password = '';
-  for (let i = 0; i < length; i++) {
-    password += charset[array[i] % charset.length];
+  let i = 0;
+  while (i < length) {
+    crypto.getRandomValues(array);
+    for (let j = 0; j < length && i < length; j++) {
+      const v = array[j];
+      if (v >= max) continue; // 拒绝采样：落入拒绝区间则丢弃
+      password += charset[v % charsetLen];
+      i++;
+    }
   }
-  
+
   return password;
 }
 

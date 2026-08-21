@@ -22,7 +22,7 @@ function openSettingsModal() {
             <div class="settings-label">自动锁定</div>
             <div class="settings-desc">无操作后自动锁定保险箱</div>
           </div>
-          <select class="form-input" id="setting-lock-timeout" style="width:120px" onchange="updateLockTimeout()">
+          <select class="form-input w-120" id="setting-lock-timeout" onchange="updateLockTimeout()">
             <option value="60000" ${App.state.lockTimeoutMs === 60000 ? 'selected' : ''}>1 分钟</option>
             <option value="300000" ${App.state.lockTimeoutMs === 300000 ? 'selected' : ''}>5 分钟</option>
             <option value="900000" ${App.state.lockTimeoutMs === 900000 ? 'selected' : ''}>15 分钟</option>
@@ -35,7 +35,7 @@ function openSettingsModal() {
             <div class="settings-label">剪贴板清除</div>
             <div class="settings-desc">复制密码后自动清除剪贴板</div>
           </div>
-          <select class="form-input" id="setting-clipboard-clear" style="width:120px" onchange="updateClipboardClear()">
+          <select class="form-input w-120" id="setting-clipboard-clear" onchange="updateClipboardClear()">
             <option value="10000" ${App.state.clipboardClearMs === 10000 ? 'selected' : ''}>10 秒</option>
             <option value="30000" ${App.state.clipboardClearMs === 30000 ? 'selected' : ''}>30 秒</option>
             <option value="60000" ${App.state.clipboardClearMs === 60000 ? 'selected' : ''}>60 秒</option>
@@ -52,7 +52,7 @@ function openSettingsModal() {
           </div>
           <button class="btn btn-secondary btn-sm" id="file-sync-btn" onclick="bindDataDirectory()">绑定</button>
         </div>
-        <div class="settings-desc" style="padding:0 0 6px;color:var(--text-muted);font-size:0.8rem">
+        <div class="settings-desc settings-desc-note">
           绑定后在所选目录下直接生成 LockPass-vault.json；浏览器清空 IndexedDB 后可重新选择目录恢复。
         </div>
       </div>
@@ -194,7 +194,7 @@ function renderShortcutsTable() {
   if (!container) return;
   const defs = (window.SearchShortcuts && SearchShortcuts.SHORTCUT_DEFS) || [];
   if (!defs.length) {
-    container.innerHTML = '<div style="font-size:0.85rem;color:var(--text-muted)">暂无可用的快捷键。</div>';
+    container.innerHTML = '<div class="text-sm text-muted">暂无可用的快捷键。</div>';
     return;
   }
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -252,8 +252,13 @@ async function refreshDataInfo() {
   } else if (FileSync.isSupported()) {
     const handle = await FileSync.getDirHandle();
     if (handle) {
-      if (syncEl) syncEl.textContent = '已绑定';
-      if (fileEl) { fileEl.textContent = '已同步'; fileEl.className = 'tag tag-ok'; }
+      if (FileSync.lastSyncError) {
+        if (syncEl) syncEl.textContent = '同步失败';
+        if (fileEl) { fileEl.textContent = '同步失败'; fileEl.className = 'tag tag-danger'; }
+      } else {
+        if (syncEl) syncEl.textContent = '已绑定';
+        if (fileEl) { fileEl.textContent = '已同步'; fileEl.className = 'tag tag-ok'; }
+      }
     } else {
       if (syncEl) syncEl.textContent = '未绑定';
       if (fileEl) { fileEl.textContent = '未绑定'; fileEl.className = 'tag tag-muted'; }
@@ -317,10 +322,16 @@ async function refreshFileSyncStatus() {
  */
 async function bindDataDirectory() {
   try {
-    const { result } = await FileSync.bindDirectory();
-    if (result.ok) {
+    const out = await FileSync.bindDirectory();
+    if (out.restored) {
+      // IndexedDB 已从目录中已有的 LockPass-vault.json 重建：
+      // 回到锁屏，等待用户输入主密码解锁查看恢复的数据
+      App.lockVault();
+      document.getElementById('lock-subtitle').textContent = '已从本地文件恢复，输入主密码解锁';
+      Utils.showToast('已从本地文件恢复数据', 'success');
+    } else if (out.result.ok) {
       Utils.showToast('已绑定本地目录，数据将自动同步', 'success');
-    } else if (result.reason === 'empty') {
+    } else if (out.result.reason === 'empty') {
       Utils.showToast('目录已绑定，创建保险箱后将自动同步', 'success');
     } else {
       Utils.showToast('目录已绑定，但同步未完成', 'warning');
@@ -426,15 +437,17 @@ async function changePassword() {
     // 验证旧密码
     const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
     const salt = CryptoUtils.base64ToArrayBuffer(saltRecord.value);
-    const oldKey = await CryptoUtils.deriveKey(oldPw, new Uint8Array(salt));
+    const iterRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'iterations');
+    const iterations = iterRecord ? (Number(iterRecord.value) || 100000) : 100000;
+    const oldKey = await CryptoUtils.deriveKey(oldPw, new Uint8Array(salt), iterations);
 
     // 尝试解密验证
     const vaultRecord = await DBUtils.dbGet(DBUtils.STORE_VAULT, 'main');
     await CryptoUtils.decrypt(vaultRecord.data, vaultRecord.iv, oldKey);
 
-    // 生成新盐值和密钥
+    // 生成新盐值和密钥（沿用当前 iterations，保证派生参数一致）
     const newSalt = CryptoUtils.generateSalt();
-    const newKey = await CryptoUtils.deriveKey(newPw, newSalt);
+    const newKey = await CryptoUtils.deriveKey(newPw, newSalt, iterations);
 
     // 重新加密数据
     const { iv, data } = await CryptoUtils.encrypt(
@@ -544,9 +557,9 @@ function renderTagManagementBody(modal) {
         ${Utils.SvgIcons.close(16)}
       </button>
     </div>
-    <div class="modal-body" style="padding:0">
+    <div class="modal-body p-0">
       <div id="tag-manage-list" class="tag-manage-list">
-        ${sorted.length === 0 ? '<div style="padding:32px;text-align:center;color:var(--text-muted)">暂无标签</div>' : ''}
+        ${sorted.length === 0 ? '<div class="empty-state-lg">暂无标签</div>' : ''}
         ${sorted.map(name => renderTagManageRow(name, tagDefs[name], counts[name] || 0)).join('')}
       </div>
       <div class="tag-manage-add">
@@ -676,7 +689,7 @@ function showTagFormModal(editingName) {
         </div>
         <input type="hidden" id="tag-form-color" value="${def ? def.color : '#58a6ff'}" />
       </div>
-      <div class="form-group" style="margin-bottom:0">
+      <div class="form-group mb-0">
         <label class="form-label">图标</label>
         <div class="icon-picker-grid" id="tag-form-icons">
           ${TAG_ICON_OPTIONS.map(iconId => `

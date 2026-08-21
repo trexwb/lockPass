@@ -19,7 +19,7 @@ const DIST = path.join(ROOT, 'dist');
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
 
-const targets = ['index.html', 'css', 'js', 'assets'];
+const targets = ['index.html', 'sw.js', 'manifest.json', 'css', 'js', 'assets'];
 for (const rel of targets) {
   const src = path.join(ROOT, rel);
   if (!fs.existsSync(src)) {

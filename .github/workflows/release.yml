@@ -4,12 +4,10 @@
 # 触发：推送 v* 标签（如 v1.0.2）或手动 workflow_dispatch
 # 产物：
 #   • Windows:  NSIS 安装包(.exe) + MSI 安装包(.msi)
-#   • macOS:    .app 压缩包(.zip) + .dmg（hdiutil 生成，无 GUI 依赖）
+#   • macOS:   .app 压缩包(.zip) + .dmg（hdiutil 生成，无 GUI 依赖）
 # 说明：
-#   • macOS 产物为 ad-hoc 签名（未配置 Apple Developer ID），
-#     用户首次打开需右键 → 打开（Gatekeeper 提示）。
-#     如需正式分发，请在仓库 Secrets 配置 APPLE_CERTIFICATE 等并
-#     在下方构建步骤前加入签名/公证（见 TAURI.md）。
+#   • macOS 产物为 ad-hoc 签名（无 Developer ID 证书），分发到其他 Mac
+#     首次打开需在终端执行一条解除隔离的命令（见 README.md）。
 #   • Windows 产物未签名，SmartScreen 会提示"更多信息 → 仍要运行"。
 #   • 所有产物先上传为 Actions Artifact，再汇总到 Draft Release，
 #     人工确认后点"Publish release"正式发布。
@@ -42,10 +40,8 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      # rust-cache 加速重复构建。此前的 itoa checksum 失败根因是
-      # Cargo.lock 中 version/checksum 错配（已修复），与缓存无关
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2.2.0
         with:
           workspaces: src-tauri
 
@@ -74,7 +70,7 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
 
-  # ── macOS：.app + .dmg ───────────────────────────────────────────
+  # ── macOS：.app + .dmg（ad-hoc 签名，仅构建机可用）───────────────
   # macos-latest 为 arm64 原生 runner，产物即 aarch64；
   # dmg 由 scripts/make-dmg.sh 用 hdiutil 生成（Tauri 自带 create-dmg
   # 依赖 AppleScript，在 CI 无 GUI 环境会失败，故不用）。
@@ -94,7 +90,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2.2.0
         with:
           workspaces: src-tauri
 
@@ -110,7 +106,7 @@ jobs:
       - name: 打包 .app 为 zip（保留权限与符号链接）
         run: |
           cd "src-tauri/target/release/bundle/macos"
-          ditto -c -k --keepParent "密码保险箱.app" "$RUNNER_TEMP/LockPass-macos-aarch64.zip"
+          ditto -c -k --keepParent "LockPass.app" "$RUNNER_TEMP/LockPass-macos-aarch64.zip"
 
       - name: 上传产物到 Actions Artifact
         uses: actions/upload-artifact@v4

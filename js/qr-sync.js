@@ -188,7 +188,7 @@ const QR = {
     App.state.qrShareEntry = entry;
 
     const modal = document.getElementById('modal');
-    const spinnerHtml = `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px"><div class="spinner"></div><span class="text-muted text-sm">正在生成…</span></div>`;
+    const spinnerHtml = `<div class="spinner-col"><div class="spinner"></div><span class="text-muted text-sm">正在生成…</span></div>`;
     modal.innerHTML = `
       <div class="modal-header">
         <h2>分享为二维码</h2>
@@ -197,14 +197,14 @@ const QR = {
         </button>
       </div>
       <div class="modal-body">
-        <div class="text-muted text-sm" style="margin-bottom:12px">
+        <div class="text-muted text-sm mb-3">
           将「${Utils.escHtml(entry.title || '未命名')}」加密为二维码，可在另一台设备扫码导入
         </div>
-        <div id="qr-share-result" style="margin-top:16px;text-align:center">
-          <div id="qr-share-canvas" style="display:inline-block;padding:12px;background:#fff;border-radius:8px">
+        <div id="qr-share-result" class="mt-4 text-center">
+          <div id="qr-share-canvas" class="qr-paper">
             ${spinnerHtml}
           </div>
-          <p class="text-muted text-sm" style="margin-top:10px">二维码已加密，另一台设备扫码后自动导入</p>
+          <p class="text-muted text-sm mt-2">二维码已加密，另一台设备扫码后自动导入</p>
           <button class="btn btn-secondary btn-sm hidden" id="qr-share-download" onclick="QR.downloadShareQr()" tabindex="2">下载二维码图片</button>
         </div>
       </div>
@@ -266,7 +266,7 @@ const QR = {
   _showShareError(msg) {
     const container = document.getElementById('qr-share-canvas');
     if (!container) return;
-    container.innerHTML = `<div class="text-danger text-sm" style="padding:24px">${Utils.escHtml(msg)}</div>`;
+    container.innerHTML = `<div class="text-danger text-sm p-6">${Utils.escHtml(msg)}</div>`;
   },
 
   /**
@@ -331,7 +331,7 @@ const QR = {
       </div>
       <div class="modal-body">
         <div class="file-drop" id="qr-import-drop" onclick="document.getElementById('qr-import-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="QR.handleImportDrop(event)" tabindex="1" role="button">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mx-auto mb-3">
             <rect x="3" y="3" width="7" height="7" rx="1"/>
             <rect x="14" y="3" width="7" height="7" rx="1"/>
             <rect x="3" y="14" width="7" height="7" rx="1"/>
@@ -340,9 +340,9 @@ const QR = {
           </svg>
           <div>粘贴 / 上传 / 拖拽二维码图片</div>
           <div class="text-muted text-sm mt-1">支持 PNG / JPG；可直接复制二维码图片后按 <kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴，或拖拽图片到此处</div>
-          <input type="file" id="qr-import-file" accept="image/*" style="display:none" onchange="QR.handleImportFile(event)" />
+          <input type="file" id="qr-import-file" accept="image/*" onchange="QR.handleImportFile(event)" />
         </div>
-        <div id="qr-import-status" class="hidden" style="margin-top:12px"></div>
+        <div id="qr-import-status" class="hidden mt-3"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="QR.closeImportModal()" tabindex="1">取消</button>
@@ -441,7 +441,7 @@ const QR = {
       App.state.qrImportEntry = entry;
 
       status.innerHTML = `
-        <div class="text-success text-sm" style="display:flex;align-items:center;gap:6px">
+        <div class="text-success text-sm flex items-center gap-2">
           ${Utils.SvgIcons.check(13)}
           二维码识别成功，正在自动同步…
         </div>
@@ -507,11 +507,6 @@ const QR = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-
-    // database 类型：携带 port
-    if (entry.entryType === 'database' && entry.port != null) {
-      newEntry.port = entry.port;
-    }
 
     // server 类型：携带 root 账号/密码
     if (entry.root) {

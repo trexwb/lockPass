@@ -199,8 +199,44 @@ LockPass/
 | macOS | .app 压缩包 (.zip) + .dmg |
 
 产物先上传 Actions Artifact，再汇总到 **Draft Release**，人工确认后发布。
-macOS 产物为 ad-hoc 签名，首次打开需右键 → 打开；Windows 会有 SmartScreen 提示。
-（正式分发需配置 Apple Developer ID / 代码签名证书，见 TAURI.md）
+Windows 安装包会有 SmartScreen 提示，点击"更多信息 → 仍要运行"即可。
+
+#### macOS 安装说明（首次打开）
+
+macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到其他 Mac 首次打开时，
+系统会拦截并提示"已损坏，无法打开"。这是正常的 Gatekeeper 安全机制，解除方法如下：
+
+**下载 dmg 后（以 .dmg 为例）：**
+
+1. 双击挂载 dmg，拖动 LockPass.app 到 Applications 文件夹
+2. **打开 Finder → 应用程序**，找到 LockPass.app
+3. **首次运行**：不要直接双击，改用以下任一方式打开：
+
+   **方式一（推荐）：右键打开**
+   - 按住 `Control` 键，同时单击 LockPass.app
+   - 在弹出菜单中选择"打开"
+   - 弹出提示框，点"打开"
+
+   **方式二（终端命令）：**
+   ```bash
+   # 解除隔离属性（只需执行一次）
+   xattr -rd com.apple.quarantine /Applications/LockPass.app
+
+   # 然后正常双击打开
+   open /Applications/LockPass.app
+   ```
+
+   **方式三（适用于 .zip 方式）：**
+   ```bash
+   # 解压后，同样解除隔离
+   xattr -rd com.apple.quarantine ~/Downloads/LockPass-macos-aarch64/LockPass.app
+
+   # 打开
+   open ~/Downloads/LockPass-macos-aarch64/LockPass.app
+   ```
+
+> **注意**：每次下载新版本安装时，都需要重新执行上述解除隔离步骤。
+> 如果不需要桌面版，也可以直接使用[在线版](https://trexwb.github.io/lockPass/)，无需安装。
 
 ### 在线版（GitHub Pages）
 
@@ -263,11 +299,103 @@ macOS 产物为 ad-hoc 签名，首次打开需右键 → 打开；Windows 会�
 
 ## 更新日志
 
+### v1.0.10 (2026-08-21)
+
+- 前端代码规范全面治理（按「前端开发规范」Skill 逐项修复）：
+  - 移除全部 43 处 ES2020 可选链 `?.`（`editor.js` 42 + `main.js` 1），改写为 ES6 等价写法，兼容 Chrome 60+ / Firefox 60+ / Safari 12+ / Edge 79+
+  - 5 个文件约 100 处 `var` 声明全部替换为 `const`/`let`（`template.js` / `tauri-bridge.js` / `file-store.js` / `ui.js` / `particles.js`）
+  - 约 50 处静态行内样式 `style=""` 抽离为 CSS 工具类，新建 `css/utilities.css`（置于 `@import` 链最后，可覆盖组件默认样式）；动态样式（宽度百分比 / 条件显示 / 颜色变量）保留 JS 直接操作
+  - `index.html` 内联 SW 注册脚本外置为 `js/sw-register.js`，清理 console 调试日志
+  - z-index 全部变量化（`--z-bg` ~ `--z-banner` 语义化命名，统一管理于 `:root`）；4 组重复 rgba 半透明色提取为 CSS 变量
+  - 魔法数字治理：动画时长 / 悬浮提示 / 复制反馈 / Toast 时长等常量前置命名（`entries.js` / `utils.js`）
+  - CSP 保持 `script-src 'self' 'unsafe-inline'`（JS 模板大量 `onclick` 内联事件由 AGENTS.md 允许）
+- 版本号统一 v1.0.10：`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `Cargo.toml` / `js/app.js` / `sw.js` / `AGENTS.md` / `SPEC.md` 共 9 处一致，`version:check` 通过
+- Service Worker 缓存命名同步 `lockpass-v1.0.10`，`js/sw-register.js` 已加入预缓存列表
+
+### v1.0.9 (2026-08-21)
+
+- 跨端布局兼容性修复（H5 / Pad / PC / Tauri）：
+  - `100vh` 全部补充 `100dvh` 回退（修复 iOS Safari 地址栏裁切）
+  - `#header` / 详情页脚 / 弹窗页脚适配 `env(safe-area-inset-*)`（刘海屏 / Tauri 标题栏）
+  - 触屏设备（`@media (hover:none)`）卡片操作按钮强制 `opacity:1`，修复复制/删除按钮不可见
+  - `#sidebar-overlay` 桌面端默认 `display:none`，不再干扰布局
+  - 绑定横幅 `#lp-bind-banner` 与 `#header` 重叠修复（`:has()` 选择器为 `#app` 加 padding-top）
+  - 平板（≤768px）数据统计卡片 4 列改 2 列；手机端 Toast 移至顶部避开底部弹窗
+
+### v1.0.8 (2026-08-21)
+
+- 跨端 UI 兼容性全面检查（H5 / Pad / PC / Tauri 共 13 视口 × 10 状态 = 130 组合回归通过）：
+  - 修复 320px 视口下设置弹窗快捷键表格横向滚动（`min-width:0` + 紧凑 padding + 名称/按键列允许折行）
+  - 修复 v1.0.7 手机端横向溢出问题未在边缘视口/多界面复发
+
+### v1.0.7 (2026-08-21)
+
+- 修复手机端（竖屏）主界面横向溢出：
+  - `css/main.css` 调整 `@import` 顺序（layout.css 移至 entries.css 之后，移动端响应式规则最后生效）
+  - 侧栏 / 详情面板关闭态加 `visibility: hidden`（transition 延迟隐藏），屏外 fixed 元素不再撑宽移动端滚动区域
+  - `html` 增加 `overflow-x: hidden` 与 body 双保险
+- Service Worker 缓存命名同步 v1.0.7（`lockpass-v1.0.7`）
+
+### v1.0.6 (2026-08-21)
+
+- 绑定数据目录防覆盖机制（行为变更：不再静默覆盖已有同步文件）：
+  - IndexedDB 无数据 + 目录已有 `LockPass-vault.json` → 直接用文件内容恢复数据并绑定
+  - IndexedDB 已有数据（含刚创建的空库）+ 目录已有同步文件 → 弹窗让用户选择「用文件恢复」或「保留当前数据」
+  - 恢复失败时不保存目录句柄、不写入文件，避免误绑定与误覆盖
+- 系统 `confirm` 全部替换为应用内确认弹窗（`Utils.confirm`，桌面 / 手机 / Pad 表现一致）
+- 修复桌面打包版主界面点击全部失效：
+  - 根因：tauri.conf.json 配置 `csp` 后，Tauri 编译期会将 inline `<script>` 哈希化并移除 `script-src` 的 `'unsafe-inline'`，而 `onclick="..."` 事件属性不在哈希范围内导致全部被 CSP 拒绝（登录页 `addEventListener` 绑定不受影响）
+  - 修复：`csp` 改回 `null`（meta CSP 原样生效），meta CSP 的 `connect-src` 补充 `ipc: http://ipc.localhost` 放行 Tauri IPC
+
+### v1.0.5 (2026-08-21)
+
+- 版本号统一 v1.0.5：`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` 与 `APP_VERSION`、SPEC.md 对齐（此前桌面打包产物版本与界面显示不一致）
+- 清理创建流程死代码：曾绑定目录的恢复引导与「继续创建」确认合并为一次选择（`wasBound` 冗余分支移除）
+
+### v1.0.4 (2026-08-21)
+
+- 全量代码审计修复（17 项）：
+  - CSV 预览崩溃（`rows` 未定义）修复；CSV 解析支持 RFC 4180 引号字段内换行
+  - 移除主密码可逆混淆存储（sessionStorage），改为仅内存保存，刷新后需重新解锁
+  - 密码生成器字段名对齐（digits/special → numbers/symbols）；消除随机数模运算偏差（拒绝采样）
+  - 修复列表排序就地污染数据源（改为副本排序）
+  - 收窄 Tauri `fs` 权限（移除 `path: "**"`），新增 `export_text_file` / `read_text_file_any` Rust 命令并接入前端
+  - 落地 CSP（index.html meta + tauri.conf.json）
+  - 消除多类型表单重复 DOM ID（改用 `data-field` 属性）
+  - 文件同步失败不再静默（设置面板展示失败状态 + Toast 提示）
+  - 侧栏统计合并为单次遍历；清理占位符/死代码/冗余赋值；deriveKey 支持读取 meta iterations
+  - 确认框快捷键独立映射（Enter 直接点击确认）
+  - CSS 按注释分区拆分为 base/layout/entries/editor/settings/modal/particles 七个子文件（main.css 保留 @import 入口）
+- 新增 PWA 支持：manifest.json + Service Worker（缓存优先策略）+ iOS「添加到主屏幕」支持（apple-touch-icon / apple-mobile-web-app-*）
+- macOS 桌面版不再显示「绑定数据目录」顶部横幅（数据已自动保存在应用数据目录，浏览器版行为不变）
+
+- 修复手机端「两次密码不一致」误报（本次修复不升版本号，并入 v1.0.4）：
+  - 创建保险箱两个密码输入框移除 `name` 属性并增加 `autocapitalize="off"` / `autocorrect="off"` / `spellcheck="false"`，降低移动端浏览器/密码管理器将页面识别为密码表单并自动填充的概率
+  - 创建场景初始化后 250ms 再清空一次输入框（仅当两框均未聚焦时），对抗移动端异步自动填充晚于同步清空的问题
+  - 校验不一致时清空确认框并聚焦，提示「两次密码不一致，请重新输入确认密码」，引导手动重输消除自动填充干扰
+- 新增创建界面「绑定已有数据目录」入口（本次修复不升版本号，并入 v1.0.4）：
+  - IndexedDB 为空（清空缓存/换浏览器）但原绑定目录中仍有 LockPass-vault.json 时，可在创建界面直接选择该目录完成恢复并绑定，恢复后自动同步
+  - 与「从本地文件恢复」的区别：恢复同时完成目录绑定，后续修改自动写回文件
+  - 所选目录无同步文件时不绑定并提示；Tauri 桌面版不显示该入口（数据已存本地文件）
+
+### v1.0.3 (2026-08-21)
+
+- 修复 Tauri 桌面版导出失败（dialog save 命令参数结构错误 `invalid args options`）：
+  - `js/tauri-bridge.js` 中 `plugin:dialog|save` 调用将 `defaultPath`/`filters` 包进 `options` 对象，符合 Tauri v2 `tauri-plugin-dialog` 命令签名
+  - 导出 `.vault` 加密备份与 `.csv` 明文备份恢复正常
+- 修复 Tauri 桌面版链接点击无效（webview 中 `target=_blank` 不调起系统浏览器）：
+  - `src-tauri/src/lib.rs` 新增 `open_url` 命令：协议白名单校验（仅 `http://` / `https://` / `mailto:`），按平台用 `open` / `cmd /C start` / `xdg-open` 调起系统浏览器
+  - `js/tauri-bridge.js` 新增全局点击委托：拦截 `a[target="_blank"]` 链接，`preventDefault` 后调用 `open_url` 用系统浏览器打开
+  - 网址链接与备注 markdown 解析链接点击恢复正常
+- 侧边栏 UI 优化：
+  - 「热门标签」标题可点击折叠/展开（chevron 指示器，localStorage 持久化折叠状态，默认展开）
+  - 「退出」按钮始终固底：侧边栏内容移入 `.sidebar-scroll` 滚动容器，footer 不随内容滚动
+
 ### v1.0.2 (2026-08-20)
 
 - 新增 GitHub Actions CI：
   - `.github/workflows/release.yml`：推 v* 标签自动构建 Windows（NSIS+MSI）与 macOS（.app+.dmg）安装包，上传至 Draft Release
-  - `.github/workflows/pages.yml`：main 分支推送自动部署浏览器版到 GitHub Pages（在线版 https://trexwb.github.io/lockPass/）
+  - `.github/workflows/pages.yml`：main 分支推送自动部署浏览器版到 GitHub Pages（在线版 [https://trexwb.github.io/lockPass/](https://trexwb.github.io/lockPass/)）
 
 ### v1.0.1 (2026-08-20)
 

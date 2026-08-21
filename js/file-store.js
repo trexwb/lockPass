@@ -20,16 +20,16 @@
 (function () {
   'use strict';
 
-  var T = window.__TAURI__;
-  var isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
+  const T = window.__TAURI__;
+  const isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
   if (!isTauri) return; // 浏览器：保持 IndexedDB
 
-  var invoke = T.core.invoke;
-  var FILE_META = 'meta.json';
-  var FILE_VAULT = 'vault.json';
+  const invoke = T.core.invoke;
+  const FILE_META = 'meta.json';
+  const FILE_VAULT = 'vault.json';
 
   /* ── 1. FileStore：底层文件 API 封装 ──────────────────────────── */
-  var FileStore = {
+  const FileStore = {
     isTauri: true,
 
     /** 写入文本文件（自动建目录） */
@@ -60,19 +60,19 @@
   window.FileStore = FileStore;
 
   /* ── 2. 写队列：串行化落盘，防止并发写丢数据 ─────────────────── */
-  var writeQueue = Promise.resolve();
+  let writeQueue = Promise.resolve();
   function enqueueWrite(fn) {
-    var run = writeQueue.then(fn, fn); // 前一个失败不阻断后续
+    const run = writeQueue.then(fn, fn); // 前一个失败不阻断后续
     writeQueue = run.catch(function () {});
     return run;
   }
 
   /* ── 3. 读缓存 + JSON 解析 ────────────────────────────────────── */
-  var cache = {};
+  let cache = {};
 
   async function readJson(file) {
     if (file in cache) return cache[file];
-    var obj = {};
+    let obj = {};
     try {
       if (await FileStore.exists(file)) {
         obj = JSON.parse(await FileStore.read(file)) || {};
@@ -95,7 +95,7 @@
   }
 
   /* ── 4. 文件版 DBUtils（接口与 js/database.js 完全一致） ──────── */
-  var DBUtilsFile = {
+  const DBUtilsFile = {
     STORE_META: 'meta',
     STORE_VAULT: 'vault',
 
@@ -104,14 +104,14 @@
 
     /** 按 key 读取单条 */
     dbGet: async function (storeName, key) {
-      var obj = await readJson(fileOf(storeName));
+      const obj = await readJson(fileOf(storeName));
       return obj[key];
     },
 
     /** 按 keyPath 写入单条 */
     dbPut: async function (storeName, value) {
-      var file = fileOf(storeName);
-      var obj = await readJson(file);
+      const file = fileOf(storeName);
+      const obj = await readJson(file);
       obj[keyOf(storeName, value)] = value;
       cache[file] = obj;
       await enqueueWrite(function () {
@@ -121,8 +121,8 @@
 
     /** 按 key 删除单条 */
     dbDelete: async function (storeName, key) {
-      var file = fileOf(storeName);
-      var obj = await readJson(file);
+      const file = fileOf(storeName);
+      const obj = await readJson(file);
       if (key in obj) {
         delete obj[key];
         cache[file] = obj;
@@ -134,13 +134,13 @@
 
     /** 获取全部记录 */
     dbGetAll: async function (storeName) {
-      var obj = await readJson(fileOf(storeName));
+      const obj = await readJson(fileOf(storeName));
       return Object.keys(obj).map(function (k) { return obj[k]; });
     },
 
     /** 清空存储 */
     dbClear: async function (storeName) {
-      var file = fileOf(storeName);
+      const file = fileOf(storeName);
       cache[file] = {};
       await enqueueWrite(function () {
         return FileStore.write(file, '{}');

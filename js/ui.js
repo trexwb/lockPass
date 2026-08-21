@@ -9,14 +9,14 @@
  * - 热门标签：按使用频率取前 8 个（仅显示有使用记录的标签）
  */
 function renderSidebar() {
+  // 单次遍历聚合所有侧栏统计（类型/收藏/回收站/标签计数），避免重复遍历
+  const stats = App.computeSidebarStats();
+
   // 渲染类型筛选
   const typeContainer = document.getElementById('nav-types');
   if (typeContainer) {
     const typeLabels = { website: '网站', server: '服务器', database: '数据库', ai: 'AI', app: '应用', other: '其他' };
-    const typeCounts = {};
-    App.ENTRY_TYPES.forEach(t => {
-      typeCounts[t.id] = App.state.entries.filter(e => (e.entryType || 'website') === t.id).length;
-    });
+    const typeCounts = stats.typeCounts;
     let typeHtml = '';
     App.ENTRY_TYPES.forEach(t => {
       const isActive = App.state.currentFilter === `type:${t.id}`;
@@ -24,7 +24,7 @@ function renderSidebar() {
         <div class="nav-item type-${t.id} ${isActive ? 'active' : ''}" onclick="setFilter('type:${t.id}')">
           <span class="type-icon">${Utils.SvgIcons.typeIcon(14, t.id)}</span>
           ${typeLabels[t.id]}
-          <span class="count">${typeCounts[t.id]}</span>
+          <span class="count">${typeCounts[t.id] || 0}</span>
         </div>
       `;
     });
@@ -34,8 +34,8 @@ function renderSidebar() {
   // 渲染个人区域（全部密码 / 收藏 / 回收站）
   const personalContainer = document.getElementById('nav-personal');
   if (personalContainer) {
-    const favCount = App.state.entries.filter(e => e.favorite).length;
-    const total = App.state.entries.length;
+    const favCount = stats.favCount;
+    const total = stats.total;
     personalContainer.innerHTML = `
       <div class="nav-item ${App.state.currentFilter === 'all' ? 'active' : ''}" onclick="setFilter('all')">
         ${Utils.SvgIcons.typeIcon(15, 'app')}
@@ -50,14 +50,14 @@ function renderSidebar() {
       <div class="nav-item ${App.state.currentFilter === 'recycle' ? 'active' : ''}" onclick="setFilter('recycle')">
         ${Utils.SvgIcons.trash(15)}
         回收站
-        <span class="count">${App.state.deleted.length}</span>
+        <span class="count">${stats.deletedCount}</span>
       </div>
     `;
   }
 
   // 渲染热门标签
   const container = document.getElementById('nav-categories');
-  const counts = App.getTagCounts();
+  const counts = stats.tagCounts;
   const tagDefs = App.state.tagDefs || {};
   const topTags = App.getTopTags(8); // 最多显示 8 个热门标签
 
@@ -183,8 +183,8 @@ function getFilteredEntries() {
     });
   }
   
-  // 排序：收藏优先，然后按更新时间
-  return list.sort((a, b) => {
+  // 排序：收藏优先，然后按更新时间（slice 避免就地排序污染 App.state.entries）
+  return list.slice().sort((a, b) => {
     if ((b.favorite || false) !== (a.favorite || false)) {
       return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0);
     }
@@ -318,25 +318,25 @@ function vsRender() {
   const viewH = scroller.clientHeight || 600;
 
   // 首次渲染：用估算高度，渲染后从真实 DOM 测量
-  var itemH = _vsItemH || VS_ESTIMATE_H;
-  var total = _vsList.length;
+  const itemH = _vsItemH || VS_ESTIMATE_H;
+  const total = _vsList.length;
 
-  var viewTop = Math.max(0, scrollTop - topOffset);
-  var viewBottom = viewTop + viewH;
+  const viewTop = Math.max(0, scrollTop - topOffset);
+  const viewBottom = viewTop + viewH;
 
-  var start = Math.max(0, Math.floor(viewTop / itemH) - VS_OVERSCAN);
-  var end = Math.min(total, Math.ceil(viewBottom / itemH) + VS_OVERSCAN);
+  const start = Math.max(0, Math.floor(viewTop / itemH) - VS_OVERSCAN);
+  let end = Math.min(total, Math.ceil(viewBottom / itemH) + VS_OVERSCAN);
   if (start >= end) end = Math.min(total, start + 1);
 
-  var topPad = start * itemH;
-  var bottomPad = (total - end) * itemH;
+  const topPad = start * itemH;
+  const bottomPad = (total - end) * itemH;
 
   // O(1) 跳过：如果可见窗口索引未变且列表未变，无需更新 DOM
-  var rangeKey = start + '-' + end;
+  const rangeKey = start + '-' + end;
   if (!_vsDirty && _vsLastRange === rangeKey) return;
   _vsLastRange = rangeKey;
 
-  var html = '<div class="vs-spacer" style="height:' + topPad + 'px"></div>' +
+  const html = '<div class="vs-spacer" style="height:' + topPad + 'px"></div>' +
     _vsList.slice(start, end).map(buildEntryCard).join('') +
     '<div class="vs-spacer" style="height:' + bottomPad + 'px"></div>';
 
@@ -345,7 +345,7 @@ function vsRender() {
 
   // 首次渲染后从真实 DOM 测量卡片高度（修正估算误差）
   if (!_vsItemH) {
-    var first = container.querySelector('.entry-card');
+    const first = container.querySelector('.entry-card');
     if (first) {
       _vsItemH = first.offsetHeight + VS_GAP;
       // 如果测量值与估算差异大，重新渲染以修正 padding

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 use tauri::Manager;
 
@@ -79,11 +80,90 @@ fn file_store_delete(app: tauri::AppHandle, relative_path: String) -> Result<(),
     Ok(())
 }
 
+/// 导出文本文件（用户通过系统保存对话框选定路径后写入）
+/// 仅做基本校验：拒绝空路径、限制为文件而非目录；自动创建父目录
+#[tauri::command]
+fn export_text_file(path: String, contents: String) -> Result<(), String> {
+    if path.trim().is_empty() {
+        return Err("保存路径不能为空".into());
+    }
+    if path.contains('\0') {
+        return Err("保存路径包含非法字符".into());
+    }
+    let full = PathBuf::from(&path);
+    if full.is_dir() {
+        return Err("保存路径不能是目录".into());
+    }
+    if let Some(parent) = full.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+        }
+    }
+    fs::write(&full, contents).map_err(|e| format!("写入文件失败: {e}"))
+}
+
+/// 读取文本文件（拖放导入用）
+/// 限制文件大小 ≤ 10MB，防止超大文件拖垮前端
+#[tauri::command]
+fn read_text_file_any(path: String) -> Result<String, String> {
+    if path.trim().is_empty() {
+        return Err("文件路径不能为空".into());
+    }
+    if path.contains('\0') {
+        return Err("文件路径包含非法字符".into());
+    }
+    let full = PathBuf::from(&path);
+    let meta = fs::metadata(&full).map_err(|e| format!("无法访问文件: {e}"))?;
+    if !meta.is_file() {
+        return Err("目标不是文件".into());
+    }
+    if meta.len() > 10 * 1024 * 1024 {
+        return Err("文件过大（超过 10MB），无法读取".into());
+    }
+    fs::read_to_string(&full).map_err(|e| format!("读取文件失败: {e}"))
+}
+
 /// 返回数据根目录绝对路径（供设置界面展示）
 #[tauri::command]
 fn file_store_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     let root = data_root(&app)?;
     Ok(root.to_string_lossy().to_string())
+}
+
+/// 用系统默认浏览器打开外部链接
+/// 仅允许 http://、https://、mailto: 协议，防命令注入 / 非法链接
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:"))
+    {
+        return Err(format!("不允许的链接协议: {url}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", "", &url]);
+        c
+    };
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+
+    cmd.spawn()
+        .map_err(|e| format!("打开链接失败: {e}"))?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -98,6 +178,9 @@ pub fn run() {
             file_store_exists,
             file_store_delete,
             file_store_data_dir,
+            export_text_file,
+            read_text_file_any,
+            open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockPass tauri application");

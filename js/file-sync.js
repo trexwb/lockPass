@@ -13,6 +13,9 @@ const FILE_SYNC_NAME = 'LockPass-vault.json';
 const LS_SYNC_BOUND = 'lp_sync_bound'; // 标记曾绑定过（用于 UI 引导提示）
 
 const FileSync = {
+  /** 最近一次同步失败信息（null 表示无失败；供设置面板展示，不阻断主流程） */
+  lastSyncError: null,
+
   /** 是否支持文件系统访问 API */
   isSupported() {
     return typeof window.showDirectoryPicker === 'function';
@@ -82,12 +85,57 @@ const FileSync = {
     }
   },
 
+  /** 判断 IndexedDB 中是否已有保险箱数据（meta.salt 存在即已初始化） */
+  async _dbHasVault() {
+    await DBUtils.openDB();
+    const rec = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
+    return !!rec;
+  },
+
+  /** 获取目录中的同步文件句柄（不存在返回 null） */
+  async _getExistingSyncFile(dirHandle) {
+    try {
+      return await dirHandle.getFileHandle(FILE_SYNC_NAME);
+    } catch (e) {
+      return null;
+    }
+  },
+
   /** 弹出目录选择并绑定，立即同步一次 */
   async bindDirectory() {
     if (!this.isSupported()) {
       throw new Error('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开');
     }
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+
+    const dbHasVault = await this._dbHasVault();
+    const existingFile = await this._getExistingSyncFile(handle);
+
+    // 目录中已有同步文件：优先用已有文件恢复，禁止静默覆盖旧文件
+    if (existingFile) {
+      if (!dbHasVault) {
+        // IndexedDB 全新状态：直接用已有文件恢复并绑定（恢复失败时不保存句柄、不写文件）
+        const payload = await this.restoreFromDirectory(handle);
+        return { restored: true, handle, payload };
+      }
+      // IndexedDB 已有数据（可能是刚创建的空库）：让用户明确选择，防止误覆盖旧同步文件
+      // 使用项目自定义确认弹窗（替代系统 confirm，桌面/手机/Pad 表现一致）
+      const useFile = await Utils.confirm({
+        title: '目录中已有同步文件',
+        message: '所选目录中已有 LockPass-vault.json 同步文件。\n\n' +
+          '点击「用文件恢复」：将该文件内容同步到本地数据（当前本地数据将被覆盖）；\n' +
+          '点击「保留当前数据」：保留当前本地数据（目录文件将被当前数据覆盖）。',
+        confirmText: '用文件恢复',
+        cancelText: '保留当前数据'
+      });
+      if (useFile) {
+        const payload = await this.restoreFromDirectory(handle);
+        return { restored: true, handle, payload };
+      }
+      // 用户明确选择保留当前数据，继续走正常绑定 + 覆盖
+    }
+
+    // 普通绑定路径：先保存句柄再同步（恢复场景不经过此处，避免恢复失败后误绑定）
     await this.saveDirHandle(handle);
     localStorage.setItem(LS_SYNC_BOUND, '1');
     const result = await this.syncNow();

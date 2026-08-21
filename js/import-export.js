@@ -18,7 +18,7 @@ function openExportModal() {
       </button>
     </div>
     <div class="modal-body">
-      <p style="margin-bottom:16px;color:var(--text-muted)">选择导出格式：</p>
+      <p class="mb-4 text-muted">选择导出格式：</p>
       <div class="export-options">
         <div class="export-option" onclick="exportVault()" tabindex="1" role="button">
           <div class="export-option-icon">
@@ -30,7 +30,7 @@ function openExportModal() {
           </div>
         </div>
         <div class="export-option" onclick="exportCSV()" tabindex="2" role="button">
-          <div class="export-option-icon" style="color:var(--warning)">
+          <div class="export-option-icon text-warning">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           </div>
           <div class="export-option-info">
@@ -53,8 +53,8 @@ function openExportModal() {
 async function exportVault() {
   const modal = document.getElementById('modal');
   modal.querySelector('.modal-body').innerHTML = `
-    <div style="text-align:center;padding:32px 0">
-      <div class="spinner" style="margin:0 auto 16px"></div>
+    <div class="spinner-wrap">
+      <div class="spinner mx-auto mb-4"></div>
       <div>正在加密并导出…</div>
     </div>
   `;
@@ -113,8 +113,8 @@ async function exportCSV() {
 
   const modal = document.getElementById('modal');
   modal.querySelector('.modal-body').innerHTML = `
-    <div style="text-align:center;padding:32px 0">
-      <div class="spinner" style="margin:0 auto 16px"></div>
+    <div class="spinner-wrap">
+      <div class="spinner mx-auto mb-4"></div>
       <div>正在生成 CSV 文件…</div>
     </div>
   `;
@@ -179,16 +179,16 @@ function openImportModal() {
     </div>
     <div class="modal-body">
       <div class="file-drop" id="file-drop" onclick="document.getElementById('import-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleFileDrop(event)" tabindex="1" role="button">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mx-auto mb-3">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="17 8 12 3 7 8"/>
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
         <div>拖拽文件到这里，或点击选择文件</div>
         <div class="text-muted text-sm mt-1">支持 .vault (加密) 或 .csv (明文)</div>
-        <input type="file" id="import-file" accept=".vault,.json,.csv" style="display:none" onchange="handleFileSelect(event)" />
+        <input type="file" id="import-file" accept=".vault,.json,.csv" onchange="handleFileSelect(event)" />
       </div>
-      <div id="import-preview" class="hidden" style="margin-top:16px">
+      <div id="import-preview" class="hidden mt-4">
         <div class="divider"></div>
         <div id="import-preview-content"></div>
       </div>
@@ -200,12 +200,12 @@ function openImportModal() {
         导入
       </button>
     </div>
-    <div id="import-progress" class="hidden" style="padding:0 20px 20px">
+    <div id="import-progress" class="hidden content-pad">
       <div class="progress-bar">
         <div class="progress-fill" id="import-progress-fill" style="width:0%"></div>
       </div>
       <div class="text-sm text-muted mt-1" id="import-progress-text">正在导入…</div>
-      <button class="btn btn-secondary btn-sm mt-2" id="import-cancel-btn" onclick="cancelImport()" style="align-self:flex-end">取消</button>
+      <button class="btn btn-secondary btn-sm mt-2 align-self-end" id="import-cancel-btn" onclick="cancelImport()">取消</button>
     </div>
   `;
   App.openModal();
@@ -254,7 +254,7 @@ async function processFile(file) {
  * 预览 CSV
  */
 function previewCSV(text) {
-  const lines = text.trim().split('\n');
+  const lines = Utils.splitCSVLines(text);
   if (lines.length < 2) {
     Utils.showToast('CSV 文件为空或格式错误', 'error');
     return;
@@ -267,7 +267,7 @@ function previewCSV(text) {
   document.getElementById('import-preview').classList.remove('hidden');
   document.getElementById('import-preview-content').innerHTML = `
     <div class="text-sm"><strong>CSV 文件</strong></div>
-    <div class="text-muted text-sm mt-1">共 ${rows.length - 1} 条记录（不含表头） · 字段：${Utils.escHtml(headers.join(', '))}</div>
+    <div class="text-muted text-sm mt-1">共 ${count} 条记录（不含表头） · 字段：${Utils.escHtml(headers.join(', '))}</div>
     <div class="text-warning text-sm mt-2">⚠️ CSV 为明文格式；累加模式；重复条目将逐条询问；点「确认」开始导入</div>
   `;
   
@@ -290,8 +290,8 @@ function previewVault(text) {
         <div class="text-sm"><strong>加密备份文件</strong></div>
         <div class="text-muted text-sm mt-1">导出时间：${Utils.escHtml(data.exportedAt || '未知')}</div>
         <div class="text-muted text-sm">需要主密码才能解密导入；导入采用合并模式，与现有数据冲突的条目将作为新数据添加</div>
-        <div class="form-group mt-2" style="margin-bottom:0">
-          <input class="form-input" id="import-password" type="password" placeholder="输入主密码解密" style="width:100%" tabindex="2" />
+        <div class="form-group mt-2 mb-0">
+          <input class="form-input" id="import-password" type="password" placeholder="输入主密码解密" tabindex="2" />
         </div>
       `;
       importData = { ...data, type: 'encrypted-vault' };

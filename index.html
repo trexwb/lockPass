@@ -2,8 +2,22 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>密码保险箱</title>
+
+  <!-- Content Security Policy（onclick 内联事件由 AGENTS.md 允许，需保留 script-src unsafe-inline） -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost" />
+
+  <!-- PWA -->
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="安全本地存储的密码管理器" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="密码保险箱" />
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
@@ -16,6 +30,9 @@
 <div id="app"></div>
 
 <!-- Vendor 库按需懒加载（QR 功能触发时动态注入，不阻塞首屏） -->
+
+<!-- PWA Service Worker 注册（页面渲染完再注册，不阻塞首屏） -->
+<script defer src="js/sw-register.js"></script>
 
 <!-- 应用模块（defer 保证按序执行，不阻塞 HTML 解析） -->
 <script defer src="js/template.js"></script>

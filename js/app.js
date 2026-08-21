@@ -7,89 +7,39 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.2';
+const APP_VERSION = 'v1.0.10';
 
 /**
- * Session Storage 键名（用于刷新后自动恢复）
+ * 旧版 Session Storage 键名（仅用于向后清理，不再写入）
+ * v1.0.4 起主密码不再存入 storage，会话仅保存在内存模块级变量中
  */
 const SESSION_KEY = 'lockpass_session';
 const SESSION_NONCE_KEY = 'lockpass_session_nonce';
 
 /**
- * 生成随机 nonce
+ * 内存会话密码（模块级变量，刷新后为空，需重新解锁）
  */
-function generateNonce() {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-}
+let sessionPassword = '';
 
 /**
- * 使用 XOR 混淆密码（基于 nonce）
- * 注意：这不是强加密，只是防止明码存储在 storage 中
- */
-function obfuscatePassword(password, nonce) {
-  if (!password || !nonce) return '';
-  const nonceBytes = nonce.match(/.{2}/g).map(h => parseInt(h, 16));
-  let result = '';
-  for (let i = 0; i < password.length; i++) {
-    const charCode = password.charCodeAt(i) ^ nonceBytes[i % nonceBytes.length];
-    result += String.fromCharCode(charCode);
-  }
-  // Base64 encode to handle binary chars
-  return btoa(result);
-}
-
-/**
- * 解混淆密码
- */
-function deobfuscatePassword(obfuscated, nonce) {
-  if (!obfuscated || !nonce) return '';
-  try {
-    const nonceBytes = nonce.match(/.{2}/g).map(h => parseInt(h, 16));
-    const password = atob(obfuscated);
-    let result = '';
-    for (let i = 0; i < password.length; i++) {
-      const charCode = password.charCodeAt(i) ^ nonceBytes[i % nonceBytes.length];
-      result += String.fromCharCode(charCode);
-    }
-    return result;
-  } catch (e) {
-    return '';
-  }
-}
-
-/**
- * 保存会话到 sessionStorage（刷新后自动恢复）
- * 使用 XOR 混淆，避免明码存储
+ * 保存会话：仅写入内存，不再写入 sessionStorage
  */
 function saveSession(password) {
-  try {
-    const nonce = generateNonce();
-    const obfuscated = obfuscatePassword(password, nonce);
-    sessionStorage.setItem(SESSION_KEY, obfuscated);
-    sessionStorage.setItem(SESSION_NONCE_KEY, nonce);
-  } catch (e) {}
+  sessionPassword = password || '';
 }
 
 /**
- * 获取会话密码
+ * 获取会话密码：仅返回内存变量（刷新后为空）
  */
 function getSession() {
-  try {
-    const obfuscated = sessionStorage.getItem(SESSION_KEY);
-    const nonce = sessionStorage.getItem(SESSION_NONCE_KEY);
-    if (!obfuscated || !nonce) return '';
-    return deobfuscatePassword(obfuscated, nonce);
-  } catch (e) {
-    return '';
-  }
+  return sessionPassword;
 }
 
 /**
- * 清除会话（退出登录）
+ * 清除会话（退出登录）：清空内存并清理旧版 storage 键
  */
 function clearSession() {
+  sessionPassword = '';
   try {
     sessionStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_NONCE_KEY);
@@ -274,13 +224,26 @@ function migrateVaultData(data) {
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
- * 检查保险箱是否已初始化
+ * 检查保险箱状态
+ * @returns {Promise<{initialized: boolean, hasBindingHistory: boolean}>}
+ *   initialized       — IndexedDB 中是否有盐（是否有本地数据）
+ *   hasBindingHistory — 过去是否绑定过数据目录（localStorage 有记录）
+ */
+async function checkVaultStatus() {
+  await DBUtils.openDB();
+  const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
+  const initialized = !!saltRecord;
+  const hasBindingHistory = FileSync.wasBound();
+  return { initialized, hasBindingHistory };
+}
+
+/**
+ * 检查保险箱是否已初始化（兼容旧调用方）
  * @returns {Promise<boolean>}
  */
 async function isVaultInitialized() {
-  await DBUtils.openDB();
-  const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
-  return !!saltRecord;
+  const { initialized } = await checkVaultStatus();
+  return initialized;
 }
 
 /**
@@ -291,7 +254,8 @@ async function isVaultInitialized() {
 async function createVault(password) {
   const salt = CryptoUtils.generateSalt();
   const saltBase64 = CryptoUtils.arrayBufferToBase64(salt);
-  const key = await CryptoUtils.deriveKey(password, salt);
+  // iterations 固定 100000，与下方 meta 写入保持一致
+  const key = await CryptoUtils.deriveKey(password, salt, 100000);
   
   const initialData = {
     entries: [],
@@ -325,7 +289,10 @@ async function unlockVault(password) {
   }
   
   const salt = CryptoUtils.base64ToArrayBuffer(saltRecord.value);
-  const key = await CryptoUtils.deriveKey(password, new Uint8Array(salt));
+  // 读取 meta 中的 iterations（旧数据无该字段时使用默认值 100000）
+  const iterRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'iterations');
+  const iterations = iterRecord ? (Number(iterRecord.value) || 100000) : 100000;
+  const key = await CryptoUtils.deriveKey(password, new Uint8Array(salt), iterations);
   
   const vaultRecord = await DBUtils.dbGet(DBUtils.STORE_VAULT, 'main');
   if (!vaultRecord) {
@@ -644,7 +611,9 @@ async function handleUnlock(autoPassword) {
   const btnText = document.getElementById('unlock-btn-text');
   const btn = document.getElementById('unlock-btn');
   
-  const password = autoPassword || pwInput.value;
+  // 仅接受字符串密码：click 事件会把 MouseEvent 传入 autoPassword（truthy），
+  // 若直接 `||` 取值会导致 password 变成事件对象，与确认框字符串恒不相等
+  const password = typeof autoPassword === 'string' ? autoPassword : pwInput.value;
   if (!password) {
     shakeAndShowError('请输入主密码');
     return;
@@ -656,9 +625,33 @@ async function handleUnlock(autoPassword) {
   
   let initialized = false;
   try {
-    initialized = await isVaultInitialized();
-    
+    const vaultStatus = await checkVaultStatus();
+    initialized = vaultStatus.initialized;
+
     if (!initialized) {
+      // ── IndexedDB 无数据 ─────────────────────────────
+
+      if (vaultStatus.hasBindingHistory) {
+        // 曾绑定过数据目录：让用户选择「从绑定目录恢复」或「继续创建新库」，
+        // 防止用户误以为创建新库后仍能自动找回原有同步文件
+        // 使用项目自定义确认弹窗（替代系统 confirm，桌面/手机/Pad 表现一致）
+        const proceed = await Utils.confirm({
+          title: '检测到曾绑定的数据目录',
+          message: '检测到您曾绑定过本地数据目录，但当前浏览器本地数据为空。\n\n' +
+            '点击「从绑定目录恢复」：尝试从绑定目录恢复数据（目录中需存在 LockPass-vault.json 同步文件）；\n' +
+            '点击「继续创建」：创建全新保险箱（原有同步文件将无法自动找回）。',
+          confirmText: '从绑定目录恢复',
+          cancelText: '继续创建'
+        });
+        if (proceed) {
+          btnText.textContent = '…';
+          btn.disabled = true;
+          await restoreFromBoundDirectory(password, { btn, btnText, pwInput });
+          return;
+        }
+        // 用户明确选择继续创建：落入下方创建流程
+      }
+
       // 首次使用：创建保险箱
       const confirmPw = confirmInput.value;
       if (password.length < 8) {
@@ -669,12 +662,20 @@ async function handleUnlock(autoPassword) {
       }
       if (password !== confirmPw) {
         // 区分「确认框未输入」与「两框输入不一致」，便于识别浏览器自动填充干扰
-        shakeAndShowError(confirmPw ? '两次密码不一致' : '请再次输入确认密码');
+        if (confirmPw) {
+          // 自动填充/密码管理器可能向确认框填入与主密码框不同的值，
+          // 清空确认框并聚焦，引导用户手动重输一次即可消除干扰
+          shakeAndShowError('两次密码不一致，请重新输入确认密码');
+          confirmInput.value = '';
+          confirmInput.focus();
+        } else {
+          shakeAndShowError('请再次输入确认密码');
+        }
         btnText.textContent = '创建';
         btn.disabled = false;
         return;
       }
-      
+
       btnText.textContent = '创建中…';
       const { key } = await createVault(password);
       AppState.cryptoKey = key;
@@ -721,6 +722,38 @@ async function handleUnlock(autoPassword) {
 }
 
 /**
+ * IndexedDB 无数据但曾绑定过数据目录时调用（hasBindingHistory）：
+ * 获取绑定目录（句柄随 IndexedDB 丢失时重新弹出选择），
+ * 从目录中已有的 LockPass-vault.json 恢复数据，随后复用解锁流程校验主密码。
+ */
+async function restoreFromBoundDirectory(password, { btn, btnText, pwInput }) {
+  try {
+    let handle = await FileSync.getDirHandle();
+    if (!handle) {
+      // 目录句柄存于 IndexedDB，缓存清空后随之丢失：重新弹出目录选择
+      if (!FileSync.isSupported()) {
+        throw new Error('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开');
+      }
+      handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    }
+    // 从目录恢复：校验文件存在与格式，成功后重建 IndexedDB 并重新绑定目录
+    await FileSync.restoreFromDirectory(handle);
+    // 恢复后 initialized=true，复用解锁流程校验主密码并加载数据
+    await handleUnlock(password);
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      // 用户取消目录选择：恢复按钮状态，停留在当前界面
+      btnText.textContent = '创建';
+      btn.disabled = false;
+      return;
+    }
+    shakeAndShowError(e.message || '从绑定目录恢复失败');
+    btnText.textContent = '创建';
+    btn.disabled = false;
+  }
+}
+
+/**
  * 若未绑定数据目录则在页面顶部显示醒目横幅（替代弹窗，更可靠更显眼）
  * 触发场景：首次创建保险箱 + 解锁已有保险箱；已绑定数据目录则不显示
  * 「暂不」后本次会话不再显示（sessionStorage 键 lp_bind_prompted，异常时降级为内存变量），
@@ -729,6 +762,12 @@ async function handleUnlock(autoPassword) {
  */
 let _bindBannerDismissedFallback = false; // sessionStorage 不可用时的内存降级标记
 async function showBindBannerIfNeeded() {
+  // macOS 桌面应用：数据已自动保存在本地文件（应用数据目录），
+  // 且 WebView 无文件系统访问权限，无需也无法绑定数据目录 → 不显示绑定横幅
+  if (window.FileStore && window.FileStore.isTauri &&
+      navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
+    return;
+  }
   try {
     // 本会话已点过「暂不」则不再显示：优先读 sessionStorage 标记，异常时用内存变量
     let dismissed = false;
@@ -816,17 +855,35 @@ function toggleLockPw() {
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
+ * 单次遍历聚合侧边栏统计（类型/收藏/回收站/标签计数）
+ * 消除 renderSidebar 多次 filter 与 getTagCounts 的重复遍历
+ * @returns {Object} { total, favCount, deletedCount, typeCounts, tagCounts }
+ */
+function computeSidebarStats() {
+  const stats = {
+    total: AppState.entries.length,
+    favCount: 0,
+    deletedCount: AppState.deleted.length,
+    typeCounts: {},
+    tagCounts: {},
+  };
+  AppState.entries.forEach(entry => {
+    const type = entry.entryType || 'website';
+    stats.typeCounts[type] = (stats.typeCounts[type] || 0) + 1;
+    if (entry.favorite) stats.favCount += 1;
+    (entry.tags || []).forEach(t => {
+      stats.tagCounts[t] = (stats.tagCounts[t] || 0) + 1;
+    });
+  });
+  return stats;
+}
+
+/**
  * 获取标签使用量（按条目数量排序）
  * @returns {Object} { [tagName]: count }
  */
 function getTagCounts() {
-  const counts = {};
-  AppState.entries.forEach(entry => {
-    (entry.tags || []).forEach(t => {
-      counts[t] = (counts[t] || 0) + 1;
-    });
-  });
-  return counts;
+  return computeSidebarStats().tagCounts;
 }
 
 /**
@@ -888,6 +945,7 @@ window.App = {
   clearSession,
   getTagCounts,
   getTopTags,
+  computeSidebarStats,
   registerTag,
   unregisterTag,
 };

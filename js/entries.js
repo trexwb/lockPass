@@ -2,6 +2,13 @@
    LockPass — 条目管理模块
    ═══════════════════════════════════════════════════════════════════ */
 
+/* UI 反馈定时器时长（毫秒） */
+const DETAIL_ANIM_CLOSE_DURATION = 320;  // 详情面板收回再弹出动画时长
+const DETAIL_ANIM_FADE_OUT_DELAY = 30;   // 淡入结束后移除动画类延迟
+const FLOAT_TIP_VISIBLE_DURATION = 1200; // 复制悬浮提示显示时长
+const FLOAT_TIP_FADE_OUT_DELAY = 400;    // 悬浮提示淡出后移除延迟
+const COPIED_FEEDBACK_DURATION = 1500;   // 复制成功高亮时长
+
 /**
  * 根据 ID 查找条目（先查活动条目，再查回收站）
  * @param {string} id - 条目 ID
@@ -40,8 +47,8 @@ function selectEntry(id, event) {
     detailAnimTimer = setTimeout(() => {
       renderDetailPanel(entry);
       panel.classList.add('open');
-      detailAnimTimer = setTimeout(() => panel.classList.remove('animating'), 30);
-    }, 320);
+      detailAnimTimer = setTimeout(() => panel.classList.remove('animating'), DETAIL_ANIM_FADE_OUT_DELAY);
+    }, DETAIL_ANIM_CLOSE_DURATION);
   } else {
     renderDetailPanel(entry);
     panel.classList.add('open');
@@ -99,15 +106,15 @@ function renderDetailPanel(entry) {
       <div class="detail-field-label">${label}</div>
       <div class="detail-field-value mono">
         <span class="${showPw ? '' : 'masked'}">${mask(val)}</span>
-        <span style="margin-left:auto"></span>
-        <button class="btn-icon" style="width:24px;height:24px" onclick="toggleDetailPassword()" title="${showPw ? '隐藏' : '显示'}">
+        <span class="ml-auto"></span>
+        <button class="btn-icon btn-icon-sm" onclick="toggleDetailPassword()" title="${showPw ? '隐藏' : '显示'}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             ${showPw
               ? Utils.SvgIcons.eyeClosedPaths
               : Utils.SvgIcons.eyeOpenPaths}
           </svg>
         </button>
-        <button class="btn-icon" style="width:24px;height:24px" data-copy-val="${Utils.escHtml(copyVal || val)}" onclick="copyFieldByData(this)" title="复制">
+        <button class="btn-icon btn-icon-sm" data-copy-val="${Utils.escHtml(copyVal || val)}" onclick="copyFieldByData(this)" title="复制">
           ${Utils.SvgIcons.copy(12)}
         </button>
       </div>
@@ -119,7 +126,7 @@ function renderDetailPanel(entry) {
         <div class="detail-field-label">${label}</div>
         <div class="detail-field-value">
           ${Utils.escHtml(val)}
-          <button class="btn-icon" style="width:24px;height:24px;margin-left:auto" data-copy-val="${Utils.escHtml(copyVal || val)}" onclick="copyFieldByData(this)" title="复制">
+          <button class="btn-icon btn-icon-sm ml-auto" data-copy-val="${Utils.escHtml(copyVal || val)}" onclick="copyFieldByData(this)" title="复制">
             ${Utils.SvgIcons.copy(12)}
           </button>
         </div>
@@ -220,7 +227,7 @@ function renderDetailPanel(entry) {
     html += `
       <div class="detail-field">
         <div class="detail-field-label">标签</div>
-        <div class="detail-field-value tag-list" style="flex-wrap:wrap">
+        <div class="detail-field-value tag-list">
           ${entry.tags.map(t => Utils.renderTagChip(tagDefs, t, false)).join('')}
         </div>
       </div>
@@ -258,7 +265,7 @@ function renderDetailFooter(entry, isRecycle) {
   
   if (isRecycle) {
     footer.innerHTML = `
-      <button class="btn btn-secondary" style="flex:1" onclick="restoreEntry('${entry.id}')">
+      <button class="btn btn-secondary flex-1" onclick="restoreEntry('${entry.id}')">
         ${Utils.SvgIcons.restore(14)}
         恢复
       </button>
@@ -269,7 +276,7 @@ function renderDetailFooter(entry, isRecycle) {
     `;
   } else {
     footer.innerHTML = `
-      <button class="btn btn-secondary" style="flex:1" onclick="editCurrentEntry()">
+      <button class="btn btn-secondary flex-1" onclick="editCurrentEntry()">
         ${Utils.SvgIcons.edit(14)}
         编辑
       </button>
@@ -379,9 +386,9 @@ async function copyToClipboard(text, entryId, btnEl = null) {
       setTimeout(() => {
         if (floatTip.parentNode) {
           floatTip.style.opacity = '0';
-          setTimeout(() => floatTip.remove(), 400);
+          setTimeout(() => floatTip.remove(), FLOAT_TIP_FADE_OUT_DELAY);
         }
-      }, 1200);
+      }, FLOAT_TIP_VISIBLE_DURATION);
     }
 
     // 清除旧的定时器
@@ -429,7 +436,7 @@ async function copyToClipboard(text, entryId, btnEl = null) {
       const buttons = document.querySelectorAll(`.entry-card[onclick*="${entryId}"] .copy-btn`);
       buttons.forEach(b => {
         b.classList.add('copied');
-        setTimeout(() => b.classList.remove('copied'), 1500);
+        setTimeout(() => b.classList.remove('copied'), COPIED_FEEDBACK_DURATION);
       });
     }
   } catch {
