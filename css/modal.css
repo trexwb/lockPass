@@ -21,6 +21,7 @@
   width: 100%;
   max-width: 520px;
   max-height: 90vh;
+  max-height: 90dvh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
@@ -49,6 +50,19 @@
   flex-direction: column;
   gap: 8px;
   z-index: 300;
+}
+@media (max-width: 480px) {
+  /* 移动端：toast 避开底部弹窗（bottom sheet），上移到顶部安全区下方 */
+  #toast-container {
+    bottom: auto;
+    top: calc(env(safe-area-inset-top, 0px) + 60px);
+    right: 12px;
+    left: 12px;
+    align-items: flex-end;
+  }
+  #toast-container .toast {
+    max-width: 100%;
+  }
 }
 .toast {
   background: var(--bg-secondary);

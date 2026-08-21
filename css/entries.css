@@ -258,6 +258,7 @@
 }
 .modal-footer {
   padding: 14px 20px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
@@ -311,6 +312,7 @@
   top: 0;
   bottom: 0;
   height: 100vh;
+  height: 100dvh;
   z-index: 200;
 }
 #detail-panel.open { transform: translateX(0); visibility: visible; transition: transform 0.3s ease; }
@@ -406,6 +408,7 @@
 
 .detail-footer {
   padding: 14px 20px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   display: flex;
   gap: 8px;

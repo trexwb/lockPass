@@ -113,6 +113,19 @@ a:hover { text-decoration: underline; }
 /* 主界面外壳（UI 由 js/template.js 动态渲染到 #app 内） */
 #app-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
+/* ── 横幅与 header 不重叠 ──────────────────────────────────
+   #lp-bind-banner 为 position:fixed;top:0，会覆盖 sticky header。
+   使用 :has() 在 banner 存在时为 #app 添加 padding-top 推开内容。 */
+body:has(#lp-bind-banner) #app {
+  padding-top: 42px;
+}
+@media (max-width: 640px) {
+  /* 移动端 banner 内部纵向排列，高度更大 */
+  body:has(#lp-bind-banner) #app {
+    padding-top: 72px;
+  }
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -363,5 +376,19 @@ kbd {
   .shortcut-table-wrap {
     max-height: 320px;
     overflow-y: auto;
+  }
+}
+/* 窄屏：表格收缩适配弹窗内容区，避免横向滚动（长快捷键组合允许折行） */
+@media (max-width: 480px) {
+  .shortcut-table {
+    min-width: 0;
+  }
+  .shortcut-table th,
+  .shortcut-table td {
+    padding: 6px 8px;
+  }
+  .shortcut-table .shortcut-name,
+  .shortcut-table .shortcut-keys {
+    white-space: normal;
   }
 }
