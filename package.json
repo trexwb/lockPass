@@ -1,6 +1,6 @@
 {
   "name": "lockpass",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "description": "LockPass 密码保险箱",
   "scripts": {
@@ -10,7 +10,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "make-dmg": "bash scripts/make-dmg.sh",
-    "icons": "tauri icon app-icon.png"
+    "icons": "tauri icon app-icon.png",
+    "version:set": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/check-version.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

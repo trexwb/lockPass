@@ -7,7 +7,7 @@
    不缓存的内容：任何带 ?timestamp= 或 query 的动态请求
    ═══════════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'lockpass-v1.0.7';
+const CACHE_NAME = 'lockpass-v1.0.8';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
