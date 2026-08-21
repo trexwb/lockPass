@@ -26,10 +26,12 @@
     try {
       var isCsv = /\.csv($|\?)/i.test(filename);
       var savePath = await T.core.invoke('plugin:dialog|save', {
-        defaultPath: filename,
-        filters: isCsv
-          ? [{ name: 'CSV 明文备份', extensions: ['csv'] }]
-          : [{ name: 'LockPass 加密备份', extensions: ['vault'] }]
+        options: {
+          defaultPath: filename,
+          filters: isCsv
+            ? [{ name: 'CSV 明文备份', extensions: ['csv'] }]
+            : [{ name: 'LockPass 加密备份', extensions: ['vault'] }]
+        }
       });
       if (!savePath) return false; // 用户取消
       await T.core.invoke('plugin:fs|write_text_file', {
@@ -97,5 +99,26 @@
     }
   } catch (e) {
     console.warn('[LockPass/Tauri] 拖放事件注册失败（不影响按钮导入）:', e);
+  }
+
+  /* ── 4. 外部链接：拦截 target=_blank，交由系统浏览器打开 ────────
+     Tauri webview 中 target=_blank 默认不调起系统浏览器（点击静默失败），
+     这里全局拦截后调用 open_url 命令，用系统默认浏览器打开。 */
+  try {
+    document.addEventListener('click', function (e) {
+      var el = e.target;
+      if (!el || typeof el.closest !== 'function') return;
+      var a = el.closest('a[target="_blank"]');
+      if (!a || !a.href) return;
+      e.preventDefault();
+      invoke('open_url', { url: a.href }).catch(function (err) {
+        console.error('[LockPass/Tauri] 打开外部链接失败:', err);
+        if (typeof Utils !== 'undefined' && Utils.showToast) {
+          Utils.showToast('打开链接失败：' + (err && err.message ? err.message : err), 'error');
+        }
+      });
+    });
+  } catch (e) {
+    console.warn('[LockPass/Tauri] 外部链接点击委托注册失败:', e);
   }
 })();

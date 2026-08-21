@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 use tauri::Manager;
 
@@ -86,6 +87,42 @@ fn file_store_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     Ok(root.to_string_lossy().to_string())
 }
 
+/// 用系统默认浏览器打开外部链接
+/// 仅允许 http://、https://、mailto: 协议，防命令注入 / 非法链接
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:"))
+    {
+        return Err(format!("不允许的链接协议: {url}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", "", &url]);
+        c
+    };
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+
+    cmd.spawn()
+        .map_err(|e| format!("打开链接失败: {e}"))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -98,6 +135,7 @@ pub fn run() {
             file_store_exists,
             file_store_delete,
             file_store_data_dir,
+            open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockPass tauri application");

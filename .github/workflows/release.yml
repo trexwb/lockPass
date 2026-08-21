@@ -5,15 +5,10 @@
 # 产物：
 #   • Windows:  NSIS 安装包(.exe) + MSI 安装包(.msi)
 #   • macOS:   .app 压缩包(.zip) + .dmg（hdiutil 生成，无 GUI 依赖）
-#              签名 + 公证后可直接双击打开，无 Gatekeeper 拦截
 # 说明：
+#   • macOS 产物为 ad-hoc 签名（无 Developer ID 证书），分发到其他 Mac
+#     首次打开需在终端执行一条解除隔离的命令（见 README.md）。
 #   • Windows 产物未签名，SmartScreen 会提示"更多信息 → 仍要运行"。
-#   • macOS 签名+公证依赖仓库 Secrets：
-#       APPLE_CERTIFICATE       — Base64 编码的 .p12 开发者证书
-#       APPLE_CERTIFICATE_PASSWORD — 导出 p12 时的密码
-#       APPLE_SIGNING_IDENTITY   — "Developer ID Application: 姓名 (TEAM_ID)"
-#       APPLE_ID / APPLE_PASSWORD — App-Specific Password（公证用）
-#     若未配置 Secrets，CI 自动降级为 ad-hoc 签名（仅构建机可用）。
 #   • 所有产物先上传为 Actions Artifact，再汇总到 Draft Release，
 #     人工确认后点"Publish release"正式发布。
 # ═══════════════════════════════════════════════════════════════════
@@ -75,12 +70,12 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
 
-  # ── macOS：签名 + 公证 + .app/.dmg ───────────────────────────────
+  # ── macOS：.app + .dmg（ad-hoc 签名，仅构建机可用）───────────────
   # macos-latest 为 arm64 原生 runner，产物即 aarch64；
   # dmg 由 scripts/make-dmg.sh 用 hdiutil 生成（Tauri 自带 create-dmg
   # 依赖 AppleScript，在 CI 无 GUI 环境会失败，故不用）。
   build-macos:
-    name: macOS (app + dmg + notarize)
+    name: macOS (app + dmg)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,66 +94,12 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # ── Apple 签名证书（条件：有 Secrets 才导入，否则跳过）────────
-      - name: 读取证书状态
-        id: cert-status
-        run: |
-          if [[ "${{ vars.APPLE_SIGNING_IDENTITY }}" == "" || "${{ secrets.APPLE_CERTIFICATE }}" == "" ]]; then
-            echo "ENABLED=false" >> $GITHUB_OUTPUT
-            echo "signing=disabled"
-            echo "证书未配置，跳过签名（仅 ad-hoc，仅构建机可用）"
-          else
-            echo "ENABLED=true" >> $GITHUB_OUTPUT
-          fi
-
-      # 导入 Developer ID 证书（仅在签名启用时执行）
-      - name: 导入 Apple Developer 证书
-        if: steps.cert-status.outputs.ENABLED == 'true'
-        env:
-          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-        run: |
-          # 创建临时钥匙串
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-
-          # 解码并导入证书
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 \
-            -P "$KEYCHAIN_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k $KEYCHAIN_PATH
-          security set-key-partition-list \
-            -S apple-tool,apple,signing-identity \
-            -s \
-            -k "" $KEYCHAIN_PATH
-
-          # 写入证书名供后续步骤使用
-          echo "SIGN_ID=${{ vars.APPLE_SIGNING_IDENTITY }}" >> $GITHUB_OUTPUT
-          echo "✅ Developer ID 证书已导入"
-
       - name: 安装 npm 依赖
         run: npm ci
 
       - name: 构建 Tauri 应用（仅 .app）
         run: npm run tauri:build
 
-      # ── 签名（条件：有证书才执行）────────────────────────────────
-      - name: 用 Developer ID 签名 .app
-        if: steps.cert-status.outputs.ENABLED == 'true'
-        env:
-          SIGN_ID: ${{ vars.APPLE_SIGNING_IDENTITY }}
-        run: |
-          echo ">>> 签名 $RUNNER_TEMP/LockPass.app"
-          codesign --force --deep --sign "$SIGN_ID" \
-            src-tauri/target/release/bundle/macos/LockPass.app
-          echo "✅ .app 签名完成"
-
-      # ── 生成 dmg + zip ───────────────────────────────────────────
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make-dmg
 
@@ -167,31 +108,6 @@ jobs:
           cd "src-tauri/target/release/bundle/macos"
           ditto -c -k --keepParent "LockPass.app" "$RUNNER_TEMP/LockPass-macos-aarch64.zip"
 
-      # ── 公证（条件：有证书才执行）────────────────────────────────
-      - name: 上传 .dmg 到 Apple 公证服务
-        if: steps.cert-status.outputs.ENABLED == 'true'
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-        run: |
-          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -1)
-          echo ">>> 上传公证: $DMG"
-          xcrun notarytool submit "$DMG" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "${{ vars.APPLE_TEAM_ID }}" \
-            --wait
-          echo "✅ 公证通过"
-
-      - name: 附加公证票据到 .dmg
-        if: steps.cert-status.outputs.ENABLED == 'true'
-        run: |
-          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -1)
-          xcrun stapler staple "$DMG"
-          echo "✅ 公证票据已附加到 .dmg"
-
-      # ── 上传产物 ─────────────────────────────────────────────────
       - name: 上传产物到 Actions Artifact
         uses: actions/upload-artifact@v4
         with:

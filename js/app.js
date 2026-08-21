@@ -7,7 +7,7 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.2';
+const APP_VERSION = 'v1.0.3';
 
 /**
  * Session Storage 键名（用于刷新后自动恢复）

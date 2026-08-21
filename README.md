@@ -199,8 +199,44 @@ LockPass/
 | macOS | .app 压缩包 (.zip) + .dmg |
 
 产物先上传 Actions Artifact，再汇总到 **Draft Release**，人工确认后发布。
-macOS 产物为 ad-hoc 签名，首次打开需右键 → 打开；Windows 会有 SmartScreen 提示。
-（正式分发需配置 Apple Developer ID / 代码签名证书，见 TAURI.md）
+Windows 安装包会有 SmartScreen 提示，点击"更多信息 → 仍要运行"即可。
+
+#### macOS 安装说明（首次打开）
+
+macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到其他 Mac 首次打开时，
+系统会拦截并提示"已损坏，无法打开"。这是正常的 Gatekeeper 安全机制，解除方法如下：
+
+**下载 dmg 后（以 .dmg 为例）：**
+
+1. 双击挂载 dmg，拖动 LockPass.app 到 Applications 文件夹
+2. **打开 Finder → 应用程序**，找到 LockPass.app
+3. **首次运行**：不要直接双击，改用以下任一方式打开：
+
+   **方式一（推荐）：右键打开**
+   - 按住 `Control` 键，同时单击 LockPass.app
+   - 在弹出菜单中选择"打开"
+   - 弹出提示框，点"打开"
+
+   **方式二（终端命令）：**
+   ```bash
+   # 解除隔离属性（只需执行一次）
+   xattr -rd com.apple.quarantine /Applications/LockPass.app
+
+   # 然后正常双击打开
+   open /Applications/LockPass.app
+   ```
+
+   **方式三（适用于 .zip 方式）：**
+   ```bash
+   # 解压后，同样解除隔离
+   xattr -rd com.apple.quarantine ~/Downloads/LockPass-macos-aarch64/LockPass.app
+
+   # 打开
+   open ~/Downloads/LockPass-macos-aarch64/LockPass.app
+   ```
+
+> **注意**：每次下载新版本安装时，都需要重新执行上述解除隔离步骤。
+> 如果不需要桌面版，也可以直接使用[在线版](https://trexwb.github.io/lockPass/)，无需安装。
 
 ### 在线版（GitHub Pages）
 
@@ -262,6 +298,16 @@ macOS 产物为 ad-hoc 签名，首次打开需右键 → 打开；Windows 会�
 ---
 
 ## 更新日志
+
+### v1.0.3 (2026-08-21)
+
+- 修复 Tauri 桌面版导出失败（dialog save 命令参数结构错误 `invalid args options`）：
+  - `js/tauri-bridge.js` 中 `plugin:dialog|save` 调用将 `defaultPath`/`filters` 包进 `options` 对象，符合 Tauri v2 `tauri-plugin-dialog` 命令签名
+  - 导出 `.vault` 加密备份与 `.csv` 明文备份恢复正常
+- 修复 Tauri 桌面版链接点击无效（webview 中 `target=_blank` 不调起系统浏览器）：
+  - `src-tauri/src/lib.rs` 新增 `open_url` 命令：协议白名单校验（仅 `http://` / `https://` / `mailto:`），按平台用 `open` / `cmd /C start` / `xdg-open` 调起系统浏览器
+  - `js/tauri-bridge.js` 新增全局点击委托：拦截 `a[target="_blank"]` 链接，`preventDefault` 后调用 `open_url` 用系统浏览器打开
+  - 网址链接与备注 markdown 解析链接点击恢复正常
 
 ### v1.0.2 (2026-08-20)
 
