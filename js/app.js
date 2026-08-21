@@ -7,7 +7,7 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.4';
+const APP_VERSION = 'v1.0.6';
 
 /**
  * 旧版 Session Storage 键名（仅用于向后清理，不再写入）
@@ -630,11 +630,24 @@ async function handleUnlock(autoPassword) {
       // ── IndexedDB 无数据 ─────────────────────────────
 
       if (vaultStatus.hasBindingHistory) {
-        // 曾绑定过数据目录 → 引导从绑定目录恢复
-        btnText.textContent = '…';
-        btn.disabled = true;
-        await restoreFromBoundDirectory(password, { btn, btnText, pwInput });
-        return;
+        // 曾绑定过数据目录：让用户选择「从绑定目录恢复」或「继续创建新库」，
+        // 防止用户误以为创建新库后仍能自动找回原有同步文件
+        // 使用项目自定义确认弹窗（替代系统 confirm，桌面/手机/Pad 表现一致）
+        const proceed = await Utils.confirm({
+          title: '检测到曾绑定的数据目录',
+          message: '检测到您曾绑定过本地数据目录，但当前浏览器本地数据为空。\n\n' +
+            '点击「从绑定目录恢复」：尝试从绑定目录恢复数据（目录中需存在 LockPass-vault.json 同步文件）；\n' +
+            '点击「继续创建」：创建全新保险箱（原有同步文件将无法自动找回）。',
+          confirmText: '从绑定目录恢复',
+          cancelText: '继续创建'
+        });
+        if (proceed) {
+          btnText.textContent = '…';
+          btn.disabled = true;
+          await restoreFromBoundDirectory(password, { btn, btnText, pwInput });
+          return;
+        }
+        // 用户明确选择继续创建：落入下方创建流程
       }
 
       // 首次使用：创建保险箱

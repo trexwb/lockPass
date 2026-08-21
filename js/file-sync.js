@@ -107,22 +107,37 @@ const FileSync = {
       throw new Error('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开');
     }
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    await this.saveDirHandle(handle);
-    localStorage.setItem(LS_SYNC_BOUND, '1');
 
-    // IndexedDB 无数据但目录中已有同步文件：用已有文件恢复（浏览器清空缓存后的找回场景）
     const dbHasVault = await this._dbHasVault();
     const existingFile = await this._getExistingSyncFile(handle);
-    if (!dbHasVault && existingFile) {
-      try {
+
+    // 目录中已有同步文件：优先用已有文件恢复，禁止静默覆盖旧文件
+    if (existingFile) {
+      if (!dbHasVault) {
+        // IndexedDB 全新状态：直接用已有文件恢复并绑定（恢复失败时不保存句柄、不写文件）
         const payload = await this.restoreFromDirectory(handle);
         return { restored: true, handle, payload };
-      } catch (e) {
-        // 文件存在但校验/恢复失败：明确报错，防止用户误以为已恢复后新建库覆盖旧文件
-        throw new Error('目录中已有 LockPass-vault.json 但恢复失败：' + (e && e.message ? e.message : e));
       }
+      // IndexedDB 已有数据（可能是刚创建的空库）：让用户明确选择，防止误覆盖旧同步文件
+      // 使用项目自定义确认弹窗（替代系统 confirm，桌面/手机/Pad 表现一致）
+      const useFile = await Utils.confirm({
+        title: '目录中已有同步文件',
+        message: '所选目录中已有 LockPass-vault.json 同步文件。\n\n' +
+          '点击「用文件恢复」：将该文件内容同步到本地数据（当前本地数据将被覆盖）；\n' +
+          '点击「保留当前数据」：保留当前本地数据（目录文件将被当前数据覆盖）。',
+        confirmText: '用文件恢复',
+        cancelText: '保留当前数据'
+      });
+      if (useFile) {
+        const payload = await this.restoreFromDirectory(handle);
+        return { restored: true, handle, payload };
+      }
+      // 用户明确选择保留当前数据，继续走正常绑定 + 覆盖
     }
 
+    // 普通绑定路径：先保存句柄再同步（恢复场景不经过此处，避免恢复失败后误绑定）
+    await this.saveDirHandle(handle);
+    localStorage.setItem(LS_SYNC_BOUND, '1');
     const result = await this.syncNow();
     return { handle, result };
   },
