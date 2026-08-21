@@ -186,7 +186,8 @@ function openImportModal() {
         </svg>
         <div>拖拽文件到这里，或点击选择文件</div>
         <div class="text-muted text-sm mt-1">支持 .vault (加密) 或 .csv (明文)</div>
-        <input type="file" id="import-file" accept=".vault,.json,.csv" onchange="handleFileSelect(event)" />
+        <!-- accept 追加通用 MIME：iOS 文件选择器按 UTI 匹配，.vault/.csv 等自定义扩展名无对应 UTI 会显示灰色不可选，application/octet-stream / text/csv 可放开 -->
+        <input type="file" id="import-file" accept=".vault,.json,.csv,application/octet-stream,application/json,text/csv" onchange="handleFileSelect(event)" />
       </div>
       <div id="import-preview" class="hidden mt-4">
         <div class="divider"></div>
