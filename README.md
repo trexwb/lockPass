@@ -299,6 +299,23 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.12 (2026-08-21)
+
+- 修复手机端侧边栏抽屉顶部按钮被 iOS 状态栏/刘海遮挡的问题：
+  - `css/layout.css`：移动端抽屉 `#sidebar` 增加 `padding-top: env(safe-area-inset-top)`，使「添加密码」等顶部按钮避开系统状态栏
+  - `css/entries.css`：移动端全屏详情面板 `#detail-panel` 同步增加 `padding-top: env(safe-area-inset-top)`，避免关闭按钮被刘海遮挡
+- 版本号统一 v1.0.12
+
+### v1.0.11 (2026-08-21)
+
+- 修复 iPhone Safari 横屏显示 PC 布局的问题：
+  - 根因：iPhone 横屏视口宽度 844~932px 超过原有 768px 断点，媒体查询不匹配导致 PC 布局（侧边栏常驻、无汉堡按钮）被应用
+  - 平板断点 `max-width: 768px` → `max-width: 1024px`（覆盖 iPhone 横屏 + iPad 全系列），影响 `layout.css` / `settings.css`
+  - 移动端断点 `max-width: 480px` → `max-width: 480px), (max-height: 500px`（通过 `max-height` 捕获横屏矮屏 375~430px），影响 `layout.css` / `base.css` / `modal.css` / `settings.css`
+  - `base.css` 中 `max-width: 640px` 断点同步增加 `max-height: 500px` 条件（横幅布局 / 快捷键表格等）
+  - CSS 变量 `--breakpoint-tablet` 从 768px 更新为 1024px
+- 回归测试 19 项全通过：桌面 9 项 + iPhone 竖屏 5 项 + iPhone 横屏 5 项（含侧边栏抽屉 / 详情面板 / 添加条目）
+
 ### v1.0.10 (2026-08-21)
 
 - 前端代码规范全面治理（按「前端开发规范」Skill 逐项修复）：

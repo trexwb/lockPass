@@ -25,10 +25,10 @@
   gap: 10px;
   margin-bottom: 14px;
 }
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .data-info-cards { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 500px) {
   .data-info-cards { grid-template-columns: repeat(2, 1fr); }
 }
 .data-info-card {

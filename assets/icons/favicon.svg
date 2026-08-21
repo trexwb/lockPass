@@ -1,32 +1,67 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1a2332"/>
-      <stop offset="1" stop-color="#0d1117"/>
+    <!-- 背景：青绿色渐变（对齐 app-icon.png 保险箱柜门主色） -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#46e2c2"/>
+      <stop offset="0.45" stop-color="#1ed0ab"/>
+      <stop offset="1" stop-color="#0b9c82"/>
     </linearGradient>
-    <linearGradient id="safe" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#40e0d0"/>
-      <stop offset="0.45" stop-color="#00d4aa"/>
-      <stop offset="1" stop-color="#008b8b"/>
+    <!-- 顶部高光（3D 光泽） -->
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
+    <!-- 转盘金属外环 -->
     <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#b2ebf2"/>
+      <stop offset="0" stop-color="#f6fcfb"/>
+      <stop offset="0.5" stop-color="#d3e2df"/>
+      <stop offset="1" stop-color="#9db8b4"/>
+    </linearGradient>
+    <!-- 转盘内盘（青绿径向，模拟凸起） -->
+    <radialGradient id="dial" cx="0.38" cy="0.32" r="0.95">
+      <stop offset="0" stop-color="#4ee6c8"/>
+      <stop offset="1" stop-color="#0aa588"/>
+    </radialGradient>
+    <!-- 锁栓（左高右暗，模拟 3D 凸块） -->
+    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#35d8b6"/>
+      <stop offset="0.55" stop-color="#12b397"/>
+      <stop offset="1" stop-color="#0a8a76"/>
+    </linearGradient>
+    <!-- 底部投影（悬浮感） -->
+    <linearGradient id="shadow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a8a76" stop-opacity="0"/>
+      <stop offset="1" stop-color="#06493e" stop-opacity="0.55"/>
     </linearGradient>
   </defs>
+
+  <!-- 背景：圆角青绿方块（柜门） -->
   <rect width="100" height="100" rx="22" fill="url(#bg)"/>
-  <!-- 左侧铰链（3D 凸块） -->
-  <rect x="23" y="40" width="7" height="13" rx="2.5" fill="#00d4aa"/>
-  <rect x="23" y="60" width="7" height="13" rx="2.5" fill="#00d4aa"/>
-  <!-- 保险箱主体 -->
-  <rect x="30" y="28" width="46" height="50" rx="9" fill="url(#safe)"/>
-  <!-- 顶部高光 -->
-  <rect x="30" y="28" width="46" height="9" rx="4.5" fill="#ffffff" opacity="0.25"/>
-  <!-- 转盘：银白外环 + 青色内盘 -->
-  <circle cx="53" cy="55" r="14" fill="url(#ring)"/>
-  <circle cx="53" cy="55" r="10" fill="#00bfa0"/>
+
+  <!-- 顶部高光弧 -->
+  <path d="M22 12 L78 12 Q90 12 90 24 L90 34 Q90 26 82 26 L18 26 Q10 26 10 34 L10 24 Q10 12 22 12 Z" fill="url(#sheen)"/>
+
+  <!-- 左侧锁栓（上） -->
+  <rect x="17" y="31" width="10" height="16" rx="3" fill="url(#bolt)"/>
+  <rect x="17" y="31" width="10" height="4.5" rx="2.2" fill="#ffffff" opacity="0.4"/>
+  <!-- 左侧锁栓（下） -->
+  <rect x="17" y="58" width="10" height="16" rx="3" fill="url(#bolt)"/>
+  <rect x="17" y="58" width="10" height="4.5" rx="2.2" fill="#ffffff" opacity="0.4"/>
+
+  <!-- 转盘投影（凸起阴影） -->
+  <ellipse cx="56" cy="54.5" rx="19.5" ry="19.5" fill="#0a8a76" opacity="0.28"/>
+
+  <!-- 中央转盘：银白金属外环 -->
+  <circle cx="55" cy="52" r="19" fill="url(#ring)"/>
+  <circle cx="55" cy="52" r="19" fill="none" stroke="#8fb5b0" stroke-width="1"/>
+  <!-- 内盘（青绿凸起） -->
+  <circle cx="55" cy="52" r="13.5" fill="url(#dial)"/>
   <!-- 内盘高光点 -->
-  <circle cx="50" cy="51.5" r="3" fill="#ffffff" opacity="0.85"/>
-  <!-- 锁孔中心 -->
-  <circle cx="53" cy="56" r="2.6" fill="#0d1117"/>
+  <circle cx="51.3" cy="47.2" r="4.2" fill="#ffffff" opacity="0.55"/>
+  <!-- 锁孔 -->
+  <circle cx="55" cy="54" r="3.2" fill="#0d3b33"/>
+  <rect x="52.9" y="53.6" width="4.2" height="5.2" rx="2" fill="#0d3b33"/>
+
+  <!-- 底部内阴影（体积感） -->
+  <rect x="10" y="78" width="80" height="14" rx="7" fill="url(#shadow)"/>
 </svg>

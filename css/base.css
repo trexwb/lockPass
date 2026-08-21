@@ -74,13 +74,13 @@
   --border-dim: rgba(48,54,61,0.5);     /* 细分隔线/浅边框 */
   --danger-border: rgba(248,81,73,0.3); /* 危险操作边框 */
   
-  /* 响应式断点变量 */
-  --breakpoint-tablet: 768px;
+  /* 响应式断点变量（仅作文档参考，@media 不支持 var()） */
+  --breakpoint-tablet: 1024px;
   --breakpoint-mobile: 480px;
 }
 
 html { font-size: 14px; overflow-x: hidden; }
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 500px) {
   html { font-size: 14px; }
 }
 body {
@@ -139,7 +139,7 @@ a:hover { text-decoration: underline; }
 body:has(#lp-bind-banner) #app {
   padding-top: 42px;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) {
   /* 移动端 banner 内部纵向排列，高度更大 */
   body:has(#lp-bind-banner) #app {
     padding-top: 72px;
@@ -306,7 +306,7 @@ kbd {
   font-size: 0.8rem;
   white-space: nowrap;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) {
   #lp-bind-banner {
     padding: 10px 12px;
     font-size: 0.8rem;
@@ -392,14 +392,14 @@ kbd {
   font-size: 0.75rem;
   font-weight: 600;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) {
   .shortcut-table-wrap {
     max-height: 320px;
     overflow-y: auto;
   }
 }
 /* 窄屏：表格收缩适配弹窗内容区，避免横向滚动（长快捷键组合允许折行） */
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 500px) {
   .shortcut-table {
     min-width: 0;
   }
