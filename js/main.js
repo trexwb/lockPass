@@ -71,8 +71,17 @@ async function init() {
       const masterInput = document.getElementById('master-password');
       const confirmInput = document.getElementById('confirm-password');
       masterInput.setAttribute('autocomplete', 'new-password');
+      confirmInput.setAttribute('autocomplete', 'new-password');
       masterInput.value = '';
       confirmInput.value = '';
+      // 移动端浏览器/密码管理器常在页面加载完成后异步填充（晚于上方同步清空），
+      // 延迟再清空一次；仅当两个框均未被聚焦时执行，避免误清用户已输入内容
+      setTimeout(function () {
+        if (document.activeElement !== masterInput && document.activeElement !== confirmInput) {
+          masterInput.value = '';
+          confirmInput.value = '';
+        }
+      }, 250);
       
       // 首次使用且 IndexedDB 为空时，始终提供「从本地文件恢复」入口
       // （使用 <input type="file">，所有浏览器均可用）

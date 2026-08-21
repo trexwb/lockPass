@@ -313,6 +313,10 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
   - 侧栏统计合并为单次遍历；清理占位符/死代码/冗余赋值；deriveKey 支持读取 meta iterations
   - 确认框快捷键独立映射（Enter 直接点击确认）
   - CSS 按注释分区拆分为 base/layout/entries/editor/settings/modal/particles 七个子文件（main.css 保留 @import 入口）
+- 修复手机端「两次密码不一致」误报（本次修复不升版本号，并入 v1.0.4）：
+  - 创建保险箱两个密码输入框移除 `name` 属性并增加 `autocapitalize="off"` / `autocorrect="off"` / `spellcheck="false"`，降低移动端浏览器/密码管理器将页面识别为密码表单并自动填充的概率
+  - 创建场景初始化后 250ms 再清空一次输入框（仅当两框均未聚焦时），对抗移动端异步自动填充晚于同步清空的问题
+  - 校验不一致时清空确认框并聚焦，提示「两次密码不一致，请重新输入确认密码」，引导手动重输消除自动填充干扰
 
 ### v1.0.3 (2026-08-21)
 

@@ -322,10 +322,16 @@ async function refreshFileSyncStatus() {
  */
 async function bindDataDirectory() {
   try {
-    const { result } = await FileSync.bindDirectory();
-    if (result.ok) {
+    const out = await FileSync.bindDirectory();
+    if (out.restored) {
+      // IndexedDB 已从目录中已有的 LockPass-vault.json 重建：
+      // 回到锁屏，等待用户输入主密码解锁查看恢复的数据
+      App.lockVault();
+      document.getElementById('lock-subtitle').textContent = '已从本地文件恢复，输入主密码解锁';
+      Utils.showToast('已从本地文件恢复数据', 'success');
+    } else if (out.result.ok) {
       Utils.showToast('已绑定本地目录，数据将自动同步', 'success');
-    } else if (result.reason === 'empty') {
+    } else if (out.result.reason === 'empty') {
       Utils.showToast('目录已绑定，创建保险箱后将自动同步', 'success');
     } else {
       Utils.showToast('目录已绑定，但同步未完成', 'warning');

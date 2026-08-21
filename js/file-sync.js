@@ -85,6 +85,22 @@ const FileSync = {
     }
   },
 
+  /** 判断 IndexedDB 中是否已有保险箱数据（meta.salt 存在即已初始化） */
+  async _dbHasVault() {
+    await DBUtils.openDB();
+    const rec = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
+    return !!rec;
+  },
+
+  /** 获取目录中的同步文件句柄（不存在返回 null） */
+  async _getExistingSyncFile(dirHandle) {
+    try {
+      return await dirHandle.getFileHandle(FILE_SYNC_NAME);
+    } catch (e) {
+      return null;
+    }
+  },
+
   /** 弹出目录选择并绑定，立即同步一次 */
   async bindDirectory() {
     if (!this.isSupported()) {
@@ -93,6 +109,20 @@ const FileSync = {
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
     await this.saveDirHandle(handle);
     localStorage.setItem(LS_SYNC_BOUND, '1');
+
+    // IndexedDB 无数据但目录中已有同步文件：用已有文件恢复（浏览器清空缓存后的找回场景）
+    const dbHasVault = await this._dbHasVault();
+    const existingFile = await this._getExistingSyncFile(handle);
+    if (!dbHasVault && existingFile) {
+      try {
+        const payload = await this.restoreFromDirectory(handle);
+        return { restored: true, handle, payload };
+      } catch (e) {
+        // 文件存在但校验/恢复失败：明确报错，防止用户误以为已恢复后新建库覆盖旧文件
+        throw new Error('目录中已有 LockPass-vault.json 但恢复失败：' + (e && e.message ? e.message : e));
+      }
+    }
+
     const result = await this.syncNow();
     return { handle, result };
   },

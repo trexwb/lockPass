@@ -224,13 +224,26 @@ function migrateVaultData(data) {
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
- * 检查保险箱是否已初始化
+ * 检查保险箱状态
+ * @returns {Promise<{initialized: boolean, hasBindingHistory: boolean}>}
+ *   initialized       — IndexedDB 中是否有盐（是否有本地数据）
+ *   hasBindingHistory — 过去是否绑定过数据目录（localStorage 有记录）
+ */
+async function checkVaultStatus() {
+  await DBUtils.openDB();
+  const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
+  const initialized = !!saltRecord;
+  const hasBindingHistory = FileSync.wasBound();
+  return { initialized, hasBindingHistory };
+}
+
+/**
+ * 检查保险箱是否已初始化（兼容旧调用方）
  * @returns {Promise<boolean>}
  */
 async function isVaultInitialized() {
-  await DBUtils.openDB();
-  const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
-  return !!saltRecord;
+  const { initialized } = await checkVaultStatus();
+  return initialized;
 }
 
 /**
@@ -610,9 +623,20 @@ async function handleUnlock(autoPassword) {
   
   let initialized = false;
   try {
-    initialized = await isVaultInitialized();
-    
+    const vaultStatus = await checkVaultStatus();
+    initialized = vaultStatus.initialized;
+
     if (!initialized) {
+      // ── IndexedDB 无数据 ─────────────────────────────
+
+      if (vaultStatus.hasBindingHistory) {
+        // 曾绑定过数据目录 → 引导从绑定目录恢复
+        btnText.textContent = '…';
+        btn.disabled = true;
+        await restoreFromBoundDirectory(password, { btn, btnText, pwInput });
+        return;
+      }
+
       // 首次使用：创建保险箱
       const confirmPw = confirmInput.value;
       if (password.length < 8) {
@@ -623,12 +647,20 @@ async function handleUnlock(autoPassword) {
       }
       if (password !== confirmPw) {
         // 区分「确认框未输入」与「两框输入不一致」，便于识别浏览器自动填充干扰
-        shakeAndShowError(confirmPw ? '两次密码不一致' : '请再次输入确认密码');
+        if (confirmPw) {
+          // 自动填充/密码管理器可能向确认框填入与主密码框不同的值，
+          // 清空确认框并聚焦，引导用户手动重输一次即可消除干扰
+          shakeAndShowError('两次密码不一致，请重新输入确认密码');
+          confirmInput.value = '';
+          confirmInput.focus();
+        } else {
+          shakeAndShowError('请再次输入确认密码');
+        }
         btnText.textContent = '创建';
         btn.disabled = false;
         return;
       }
-      
+
       btnText.textContent = '创建中…';
       const { key } = await createVault(password);
       AppState.cryptoKey = key;
@@ -670,6 +702,38 @@ async function handleUnlock(autoPassword) {
   } catch (e) {
     shakeAndShowError(e.message || '密码错误');
     btnText.textContent = initialized ? '解锁' : '创建';
+    btn.disabled = false;
+  }
+}
+
+/**
+ * IndexedDB 无数据但曾绑定过数据目录时调用（hasBindingHistory）：
+ * 获取绑定目录（句柄随 IndexedDB 丢失时重新弹出选择），
+ * 从目录中已有的 LockPass-vault.json 恢复数据，随后复用解锁流程校验主密码。
+ */
+async function restoreFromBoundDirectory(password, { btn, btnText, pwInput }) {
+  try {
+    let handle = await FileSync.getDirHandle();
+    if (!handle) {
+      // 目录句柄存于 IndexedDB，缓存清空后随之丢失：重新弹出目录选择
+      if (!FileSync.isSupported()) {
+        throw new Error('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开');
+      }
+      handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    }
+    // 从目录恢复：校验文件存在与格式，成功后重建 IndexedDB 并重新绑定目录
+    await FileSync.restoreFromDirectory(handle);
+    // 恢复后 initialized=true，复用解锁流程校验主密码并加载数据
+    await handleUnlock(password);
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      // 用户取消目录选择：恢复按钮状态，停留在当前界面
+      btnText.textContent = '创建';
+      btn.disabled = false;
+      return;
+    }
+    shakeAndShowError(e.message || '从绑定目录恢复失败');
+    btnText.textContent = '创建';
     btn.disabled = false;
   }
 }
