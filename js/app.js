@@ -507,6 +507,9 @@ function openModal() {
   const overlay = document.getElementById('modal-overlay');
   overlay.classList.remove('hidden');
 
+  // 抽屉模式下打开任意模态框时收回侧边栏（收起遮罩层）
+  closeSidebar();
+
   // ── 焦点陷阱：Tab 键循环在模态框内，Escape 关闭 ──────────────
   const modal = document.getElementById('modal');
   const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
