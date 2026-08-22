@@ -74,13 +74,14 @@ async function exportVault() {
   );
   
   const saltRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'salt');
+  const iterRecord = await DBUtils.dbGet(DBUtils.STORE_META, 'iterations');
   
   const exportData = {
     version: 1,
     exportedAt: now.toISOString(),
     format: 'encrypted',
     salt: saltRecord.value,
-    iterations: 100000,
+    iterations: iterRecord ? (Number(iterRecord.value) || 100000) : 100000,
     iv,
     data,
     tagDefs: App.state.tagDefs
@@ -376,7 +377,7 @@ function findDuplicateByTitleUser(title, username) {
  *  - 跳过：忽略该行
  */
 async function importCSV(text) {
-  const lines = text.trim().split('\n');
+  const lines = Utils.splitCSVLines(text);
   const headerLine = lines[0];
   const headers = Utils.parseCSVLine(headerLine).map(h => h.toLowerCase().trim());
 
@@ -544,9 +545,10 @@ async function importEncryptedVault(data) {
   }
   
   try {
-    // 使用文件的 salt 和 iv 解密
+    // 使用文件的 salt、iterations 和 iv 解密（兼容性：旧文件无 iterations 字段时默认 100000）
     const salt = CryptoUtils.base64ToArrayBuffer(data.salt);
-    const key = await CryptoUtils.deriveKey(password, new Uint8Array(salt));
+    const iterations = Number(data.iterations) || 100000;
+    const key = await CryptoUtils.deriveKey(password, new Uint8Array(salt), iterations);
     const decrypted = await CryptoUtils.decrypt(data.data, data.iv, key);
     
     let added = 0;

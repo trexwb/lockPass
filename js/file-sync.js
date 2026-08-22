@@ -78,9 +78,12 @@ const FileSync = {
       const writable = await fileHandle.createWritable();
       await writable.write(JSON.stringify(payload, null, 2));
       await writable.close();
+      this.lastSyncError = null;
       return { ok: true };
     } catch (e) {
       console.error('[FileSync] 同步失败:', e);
+      this.lastSyncError = e;
+      try { Utils.showToast('本地文件同步失败：' + (e.message || e), 'error'); } catch (_) {}
       return { ok: false, reason: 'error', error: e };
     }
   },

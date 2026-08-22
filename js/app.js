@@ -7,7 +7,7 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.12';
+const APP_VERSION = 'v1.0.13';
 
 /**
  * 旧版 Session Storage 键名（仅用于向后清理，不再写入）
@@ -506,6 +506,9 @@ async function afterUnlock() {
 function openModal() {
   const overlay = document.getElementById('modal-overlay');
   overlay.classList.remove('hidden');
+
+  // 抽屉模式下打开任意模态框时收回侧边栏（收起遮罩层）
+  closeSidebar();
 
   // ── 焦点陷阱：Tab 键循环在模态框内，Escape 关闭 ──────────────
   const modal = document.getElementById('modal');

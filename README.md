@@ -299,6 +299,16 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.13 (2026-08-22)
+
+数据同步相关 Bug 全面修复（共 4 项）：
+
+- **Bug 1：CSV 导入切行不一致** — 备注/密码等字段内含换行（RFC 4180 引号字段内换行）时，`previewCSV` 用 `Utils.splitCSVLines` 正确切行，但 `importCSV` 实际导入使用 `text.trim().split('\n')` 将一条记录拆成多条，导致导入错位/失败。修复：`importCSV` 统一切行方式为 `Utils.splitCSVLines`。
+- **Bug 2：FileSync.syncNow() 同步失败无反馈** — 本地文件同步写入失败时只 `console.error`，既没有设置 `FileSync.lastSyncError`（设置面板状态标签始终显示「已同步」），也没有 Toast 提示用户。修复：成功清空 `lastSyncError`；失败写入 `this.lastSyncError = e` 并 `Utils.showToast` 提示。
+- **Bug 3：exportVault 导出 iterations 硬编码为 100000** — `.vault` 加密备份导出时 `iterations` 直接写死 `100000`，未从 `DBUtils.meta.iterations` 读取实际存储值；若未来开放「修改迭代次数」功能，该导出文件会和实际加密参数不一致。修复：`iterRecord = await DBUtils.dbGet('iterations')`，与 `file-sync.js:_readPayload` 保持一致逻辑。
+- **Bug 4：importEncryptedVault 解密未使用导入文件自带 iterations** — 与 Bug 3 成对存在：导入 `.vault` 解密时 `CryptoUtils.deriveKey(password, salt)` 未传第 3 参数，默认用 `100000` 次，完全忽略了导入文件 `data.iterations` 字段。修复：`iterations = Number(data.iterations) || 100000` 后传入 `deriveKey`，与导出逻辑对称。
+- 版本号统一 v1.0.13（AGENTS.md / SPEC.md 头尾 / js/app.js / package.json / tauri.conf.json / Cargo.toml / sw.js 共 9 处同步）
+
 ### v1.0.12 (2026-08-21)
 
 - 修复手机端侧边栏抽屉顶部按钮被 iOS 状态栏/刘海遮挡的问题：
