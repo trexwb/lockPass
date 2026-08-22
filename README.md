@@ -301,8 +301,16 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ### v1.0.13 (2026-08-22)
 
-数据同步相关 Bug 全面修复（共 4 项）：
+PWA 更新机制修复 — 解决「添加到主屏幕」后线上代码更新无法触达用户的问题：
 
+- **sw.js fetch 策略重构**：
+  - 导航请求（index.html）从「缓存优先」改为「网络优先」— 用户每次打开 PWA 先尝试拿最新 HTML，网络失败时回退缓存保底离线可用
+  - 静态资源（JS/CSS）从「缓存优先」改为「Stale-While-Revalidate」— 先返回缓存秒开，同时后台拉取新版写入缓存，下次打开生效
+  - 旧策略的问题：缓存优先导致即使 SW 激活了新版本，所有资源仍命中旧缓存，用户永远拿不到新代码
+- **sw-register.js 新增 controllerchange 自动刷新**：
+  - 新 SW 激活并接管页面时，自动 `window.location.reload()` 一次，确保用户立即使用最新资源
+  - `refreshed` 标志位防止重复刷新
+- 版本号统一 v1.0.13（AGENTS.md / SPEC.md 头尾 / js/app.js / package.json / tauri.conf.json / Cargo.toml / sw.js 共 9 处同步）
 - **Bug 1：CSV 导入切行不一致** — 备注/密码等字段内含换行（RFC 4180 引号字段内换行）时，`previewCSV` 用 `Utils.splitCSVLines` 正确切行，但 `importCSV` 实际导入使用 `text.trim().split('\n')` 将一条记录拆成多条，导致导入错位/失败。修复：`importCSV` 统一切行方式为 `Utils.splitCSVLines`。
 - **Bug 2：FileSync.syncNow() 同步失败无反馈** — 本地文件同步写入失败时只 `console.error`，既没有设置 `FileSync.lastSyncError`（设置面板状态标签始终显示「已同步」），也没有 Toast 提示用户。修复：成功清空 `lastSyncError`；失败写入 `this.lastSyncError = e` 并 `Utils.showToast` 提示。
 - **Bug 3：exportVault 导出 iterations 硬编码为 100000** — `.vault` 加密备份导出时 `iterations` 直接写死 `100000`，未从 `DBUtils.meta.iterations` 读取实际存储值；若未来开放「修改迭代次数」功能，该导出文件会和实际加密参数不一致。修复：`iterRecord = await DBUtils.dbGet('iterations')`，与 `file-sync.js:_readPayload` 保持一致逻辑。

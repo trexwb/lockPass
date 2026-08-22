@@ -1,10 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════════
    LockPass PWA — Service Worker
    策略：
-     • 首次访问 → 缓存所有静态资源
-     • 再次访问 → 缓存优先（秒开）
-     • 在线更新 → 网络优先，发现新版本后静默更新缓存
-   不缓存的内容：任何带 ?timestamp= 或 query 的动态请求
+     • 首次访问 → 预缓存所有静态资源
+     • 导航请求 (index.html) → 网络优先，确保用户拿到最新 HTML
+     • 静态资源 (JS/CSS) → Stale-While-Revalidate：缓存秒开 + 后台更新
+     • 动态请求 (带 query) → 网络优先，离线回退缓存
+     • 离线 → 回退 index.html 保底
+   更新机制：每次发版改 CACHE_NAME → SW 字节变化 → 自动激活 →
+   导航请求走网络拿到新版 HTML → 引用的 JS/CSS 后台 SWR 更新 →
+   用户下次打开 PWA 即使用最新代码
    ═══════════════════════════════════════════════════════════════════ */
 
 const CACHE_NAME = 'lockpass-v1.0.13';
@@ -69,7 +73,7 @@ self.addEventListener('activate', (event) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// 拦截请求：缓存优先，失败则网络回退
+// 拦截请求：按资源类型分策略
 // ═══════════════════════════════════════════════════════════════════
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -88,22 +92,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 静态资源 → 缓存优先，秒开体验
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-
-      return fetch(request).then((response) => {
-        // 缓存有效的响应（非 opaque）
+  // 导航请求 (HTML 页面) → 网络优先
+  // 确保用户每次打开 PWA 先尝试拿最新 index.html
+  // 网络失败时回退缓存（离线可用）
+  if (request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html')) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        // 成功拿到新版 → 更新缓存
         if (response && response.status === 200 && response.type !== 'opaque') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
       }).catch(() => {
-        // 网络全挂 → 返回离线页（如果有）
-        return caches.match('/index.html');
-      });
+        // 离线 → 返回缓存的 index.html
+        return caches.match(request).then((cached) => cached || caches.match('/index.html'));
+      })
+    );
+    return;
+  }
+
+  // 静态资源 (JS/CSS/图片等) → Stale-While-Revalidate
+  // 先返回缓存（秒开），同时后台拉取新版写入缓存，下次打开生效
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      // 后台更新：无论是否有缓存，都尝试拉新版
+      const fetchPromise = fetch(request).then((response) => {
+        if (response && response.status === 200 && response.type !== 'opaque') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => cached); // 网络失败静默忽略，保持缓存不变
+
+      // 有缓存 → 先返回缓存，后台更新不阻塞用户
+      // 无缓存 → 等网络响应
+      return cached || fetchPromise;
     })
   );
 });
