@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台
 
-一款纯前端离线密码管理器，无需后端服务器，双击 `index.html` 即可在浏览器中使用。
+一款纯前端离线密码管理器，无需后端服务器，双击 `src/index.html` 即可在浏览器中使用。
 
 ---
 
@@ -157,27 +157,33 @@ open index.html
 
 ```
 LockPass/
-├── index.html           # 主 HTML 文件（轻量化，仅结构）
-├── css/
-│   └── main.css         # 主样式文件（734 行）
-├── js/
-│   ├── crypto.js        # 加密工具模块（AES-256-GCM）
-│   ├── database.js      # IndexedDB 存储模块
-│   ├── generator.js     # 密码生成器模块
-│   ├── utils.js         # 工具函数模块
-│   ├── app.js           # 主应用逻辑模块
-│   ├── ui.js            # UI 渲染模块
-│   ├── entries.js       # 条目管理模块
-│   ├── editor.js        # 条目编辑模块
-│   ├── import-export.js # 导入导出模块
-│   ├── settings.js      # 设置模块
-│   ├── shortcuts.js     # 快捷键模块
-│   └── main.js          # 主初始化模块
-├── assets/
-│   └── icons/
-│       └── favicon.svg  # 网站图标
-├── SPEC.md              # 产品规格文档
-└── README.md            # 使用说明（本文件）
+├── src/                   # 前端源码（唯一真源）
+│   ├── index.html         # 主 HTML 文件（轻量化，仅结构）
+│   ├── sw.js              # Service Worker（PWA 离线缓存）
+│   ├── manifest.json      # PWA 清单
+│   ├── css/
+│   │   └── main.css       # 主样式文件（734 行）
+│   ├── js/
+│   │   ├── crypto.js      # 加密工具模块（AES-256-GCM）
+│   │   ├── database.js    # IndexedDB 存储模块
+│   │   ├── generator.js   # 密码生成器模块
+│   │   ├── utils.js       # 工具函数模块
+│   │   ├── app.js         # 主应用逻辑模块
+│   │   ├── ui.js          # UI 渲染模块
+│   │   ├── entries.js     # 条目管理模块
+│   │   ├── editor.js      # 条目编辑模块
+│   │   ├── import-export.js # 导入导出模块
+│   │   ├── settings.js    # 设置模块
+│   │   ├── shortcuts.js   # 快捷键模块
+│   │   └── main.js        # 主初始化模块
+│   └── assets/
+│       └── icons/
+│           └── favicon.svg # 网站图标
+├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
+├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
+├── dist/                  # 构建产物（由 scripts/copy-frontend.mjs 从 src/ 生成，不手动修改）
+├── SPEC.md                # 产品规格文档
+└── README.md              # 使用说明（本文件）
 ```
 
 **模块化优势**：

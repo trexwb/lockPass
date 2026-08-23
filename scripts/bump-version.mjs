@@ -68,8 +68,8 @@ patchJson('src-tauri/tauri.conf.json', (d) => { d.version = V; }, `version -> ${
 
 /* ── 文本类 ─────────────────────────────────────────────────────── */
 patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}`);
-patchText('js/app.js', /const APP_VERSION = 'v\d+\.\d+\.\d+'/, `const APP_VERSION = '${VV}'`, `APP_VERSION -> ${VV}`);
-patchText('sw.js', /const CACHE_NAME = 'lockpass-v\d+\.\d+\.\d+'/, `const CACHE_NAME = 'lockpass-${VV}'`, `CACHE_NAME -> lockpass-${VV}`);
+patchText('src/js/app.js', /const APP_VERSION = 'v\d+\.\d+\.\d+'/, `const APP_VERSION = '${VV}'`, `APP_VERSION -> ${VV}`);
+patchText('src/sw.js', /const CACHE_NAME = 'lockpass-v\d+\.\d+\.\d+'/, `const CACHE_NAME = 'lockpass-${VV}'`, `CACHE_NAME -> lockpass-${VV}`);
 patchText('AGENTS.md', /\*\*当前版本\*\*：`v\d+\.\d+\.\d+`/, `**当前版本**：\`${VV}\``, `当前版本 -> ${VV}`);
 patchText('SPEC.md', /版本：v\d+\.\d+\.\d+/, `版本：${VV}`, `头部 -> ${VV}`);
 patchText('SPEC.md', /\*\*文档版本：v\d+\.\d+\.\d+\*\*/, `**文档版本：${VV}**`, `文档版本 -> ${VV}`);

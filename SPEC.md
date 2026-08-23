@@ -272,10 +272,13 @@ Entropy = log2(charset_size ^ length)
 
 ```
 LockPass/
-├── index.html     # 入口（模块化 script 按序加载）
-├── css/main.css   # 样式
-├── js/            # 业务模块（crypto/database/file-store/file-sync/generator/utils/...）
-├── assets/        # favicon、vendor 库
+├── src/           # 前端源码（唯一真源）
+│   ├── index.html # 入口（模块化 script 按序加载）
+│   ├── sw.js      # Service Worker（PWA 离线缓存）
+│   ├── manifest.json # PWA 清单
+│   ├── css/main.css   # 样式
+│   ├── js/        # 业务模块（crypto/database/file-store/file-sync/generator/utils/...）
+│   └── assets/    # favicon、vendor 库
 ├── scripts/       # 构建辅助（copy-frontend、make-dmg、gen-icons）
 ├── src-tauri/     # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 ├── SPEC.md        # 产品规格文档（本文件）

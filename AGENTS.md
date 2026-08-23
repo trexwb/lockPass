@@ -6,7 +6,7 @@
 
 ## 项目概述
 
-**LockPass** 是一款纯前端离线密码管理器，无需后端服务器，双击 `index.html` 即可在浏览器中使用。
+**LockPass** 是一款纯前端离线密码管理器，无需后端服务器，双击 `src/index.html` 即可在浏览器中使用。
 
 **核心原则**：安全 → 简洁 → 离线优先
 
@@ -44,7 +44,7 @@
 
 1. **`AGENTS.md`** - 本文件头部的「当前版本」字段
 2. **`SPEC.md`** - 文件头部的版本号
-3. **`js/app.js`** - `APP_VERSION` 常量
+3. **`src/js/app.js`** - `APP_VERSION` 常量
 
 ### 更新流程
 
@@ -112,26 +112,32 @@
 
 ```
 LockPass/
-├── index.html           # 主 HTML 文件（仅结构，不包含逻辑）
-├── css/
-│   └── main.css         # 主样式文件
-├── js/
-│   ├── crypto.js        # 加密工具模块
-│   ├── database.js      # IndexedDB 存储模块
-│   ├── generator.js     # 密码生成器模块
-│   ├── utils.js         # 工具函数模块
-│   ├── related.js       # 关联密码模块（同 IP/域名/账号）
-│   ├── app.js           # 主应用逻辑模块
-│   ├── ui.js            # UI 渲染模块
-│   ├── entries.js       # 条目管理模块
-│   ├── editor.js        # 条目编辑模块
-│   ├── import-export.js # 导入导出模块
-│   ├── settings.js      # 设置模块
-│   ├── shortcuts.js     # 快捷键模块
-│   └── main.js          # 主初始化模块
-├── assets/
-│   └── icons/
-│       └── favicon.svg  # 网站图标
+├── src/                   # 前端源码（唯一真源，构建产物由它生成）
+│   ├── index.html         # 主 HTML 文件（仅结构，不包含逻辑）
+│   ├── sw.js              # Service Worker（PWA 离线缓存）
+│   ├── manifest.json      # PWA 清单
+│   ├── css/
+│   │   └── main.css       # 主样式文件
+│   ├── js/
+│   │   ├── crypto.js      # 加密工具模块
+│   │   ├── database.js    # IndexedDB 存储模块
+│   │   ├── generator.js   # 密码生成器模块
+│   │   ├── utils.js       # 工具函数模块
+│   │   ├── related.js     # 关联密码模块（同 IP/域名/账号）
+│   │   ├── app.js         # 主应用逻辑模块
+│   │   ├── ui.js          # UI 渲染模块
+│   │   ├── entries.js     # 条目管理模块
+│   │   ├── editor.js      # 条目编辑模块
+│   │   ├── import-export.js # 导入导出模块
+│   │   ├── settings.js    # 设置模块
+│   │   ├── shortcuts.js   # 快捷键模块
+│   │   └── main.js        # 主初始化模块
+│   └── assets/
+│       └── icons/
+│           └── favicon.svg  # 网站图标
+├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
+├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
+├── dist/                  # 构建产物（由 copy-frontend.mjs 从 src/ 生成，不手动修改）
 ├── memory/              # 工作记录（按日期）
 │   └── YYYY-MM-DD.md
 ├── SPEC.md              # 产品规格文档
@@ -260,9 +266,9 @@ Closes #12
 ### Q: 如何添加新功能？
 
 1. 阅读 `SPEC.md` 了解产品规格
-2. 在 `js/` 创建新模块或修改现有模块
-3. 更新 `index.html` 添加必要的 UI 元素
-4. 更新 `css/main.css` 添加样式（如需要）
+2. 在 `src/js/` 创建新模块或修改现有模块
+3. 更新 `src/index.html` 添加必要的 UI 元素
+4. 更新 `src/css/main.css` 添加样式（如需要）
 5. 测试所有功能
 6. 更新 `README.md` 和 `SPEC.md`
 
