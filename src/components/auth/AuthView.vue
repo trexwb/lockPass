@@ -3,13 +3,19 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 
-const { handleUnlock } = useVault()
+const { handleUnlock, openRestoreFilePicker, handleRestoreFileSelect, bindRestoreFromDirectory } = useVault()
 
 const password = ref('')
 const confirmPassword = ref('')
 const showPw = ref(false)
 
 const isCreateMode = computed(() => !vaultState.initialized)
+// 浏览器环境（非 Tauri）且支持文件系统 API 时，提供「绑定已有数据目录」恢复
+const canBindRestore = computed(() =>
+  isCreateMode.value &&
+  !(window.FileStore && window.FileStore.isTauri) &&
+  !!(window.FileSync && window.FileSync.isSupported()),
+)
 const titleText = computed(() => (vaultState.initialized ? '密码保险箱' : '创建密码保险箱'))
 const subtitleText = computed(() =>
   vaultState.initialized ? '输入主密码解锁您的密码库' : '设置一个主密码保护您的所有密码',
@@ -123,6 +129,39 @@ onBeforeUnmount(() => {
           {{ btnText }}
         </button>
       </form>
+
+      <!-- 首次使用：从本地备份 / 绑定数据目录恢复（与原生 main.js 行为一致） -->
+      <div v-if="isCreateMode" id="restore-section" class="lock-restore">
+        <div class="lock-restore-divider"><span>或从已有数据恢复</span></div>
+        <input
+          id="restore-file-input"
+          class="hidden"
+          type="file"
+          accept=".json,.lockpass,.vault,application/json"
+          @change="handleRestoreFileSelect"
+        />
+        <button id="restore-file-btn" class="btn btn-ghost btn-sm btn-full" type="button" tabindex="4" @click="openRestoreFilePicker()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          从本地文件恢复
+        </button>
+        <button
+          v-if="canBindRestore"
+          id="bind-restore-btn"
+          class="btn btn-ghost btn-sm btn-full"
+          type="button"
+          tabindex="5"
+          @click="bindRestoreFromDirectory()"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          绑定已有数据目录
+        </button>
+      </div>
 
       <p class="lock-hint">数据仅保存在本地设备，不会上传到任何服务器</p>
     </div>

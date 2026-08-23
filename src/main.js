@@ -12,6 +12,8 @@ import './core/utils.js'
 import './core/tauri-bridge.js'
 import './core/related.js'
 import './core/sw-register.js'
+// 粒子动效（锁屏/工作区背景，暴露 window.LockParticles）
+import './js/particles.js'
 
 // 样式（保留原设计令牌，按组件拆分的样式由各 SFC 引入）
 import './styles/main.css'

@@ -6,7 +6,7 @@ import HeaderBar from './layout/HeaderBar.vue'
 import SidebarNav from './layout/SidebarNav.vue'
 import DetailPanel from './entries/DetailPanel.vue'
 
-const { getFilteredEntries } = useVault()
+const { getFilteredEntries, emptyRecycleBin, restoreEntry } = useVault()
 
 const filteredEntries = computed(() => getFilteredEntries())
 
@@ -60,7 +60,7 @@ onBeforeUnmount(() => {
                 id="empty-recycle-btn"
                 class="btn btn-ghost btn-sm"
                 title="清空回收站"
-                @click="$emit('empty-recycle')"
+                @click="emptyRecycleBin()"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6" />
@@ -86,6 +86,18 @@ onBeforeUnmount(() => {
               </div>
               <div class="entry-card-meta">
                 <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" class="entry-card-tag">{{ tag }}</span>
+                <button
+                  v-if="vaultState.currentFilter === 'recycle'"
+                  class="btn btn-ghost btn-xs card-restore-btn"
+                  title="恢复此密码"
+                  @click.stop="restoreEntry(entry.id)"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                    <polyline points="3 3 3 8 8 8" />
+                  </svg>
+                  恢复
+                </button>
               </div>
             </div>
 

@@ -1,29 +1,18 @@
 <script setup>
 /* LockPass — 顶栏（Logo / 全局搜索 / 设置入口） */
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 
 const { openModal } = useVault()
 
 const searchInput = ref(null)
 
+// 搜索框内 Escape 失焦；⌘K 聚焦由全局快捷键 useShortcuts 统一处理
 function onSearchKeydown(e) {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-    e.preventDefault()
-    searchInput.value?.focus()
-  }
   if (e.key === 'Escape') {
     e.target.blur()
   }
 }
-
-onMounted(() => {
-  document.addEventListener('keydown', onSearchKeydown)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onSearchKeydown)
-})
 </script>
 
 <template>

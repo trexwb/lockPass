@@ -1,77 +1,22 @@
 <script setup>
-/* LockPass — 密码详情面板 */
+/* LockPass — 密码详情面板
+   Vue 3 迁移：复刻原生 entries.js 的 renderDetailPanel / renderDetailFooter，
+   含各类型字段行、命令提示行、root 分区、markdown 备注、关联密码、回收站分支。 */
 import { computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 
 const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
-  softDelete, openEntryModal, openModal,
+  softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
 } = useVault()
 
 const entry = computed(() => (vaultState.selectedEntry ? getEntryById(vaultState.selectedEntry) : null))
 
-const FIELD_DEFS = {
-  website: [
-    { key: 'url', label: '网址' },
-    { key: 'username', label: '用户名' },
-    { key: 'password', label: '密码', secret: true },
-  ],
-  server: [
-    { key: 'host', label: '地址' },
-    { key: 'port', label: '端口' },
-    { key: 'username', label: '用户名' },
-    { key: 'password', label: '密码', secret: true },
-  ],
-  database: [
-    { key: 'dbType', label: '类型' },
-    { key: 'host', label: '地址' },
-    { key: 'port', label: '端口' },
-    { key: 'dbName', label: '数据库名' },
-    { key: 'username', label: '用户名' },
-    { key: 'password', label: '密码', secret: true },
-  ],
-  ai: [
-    { key: 'apiKey', label: 'API Key', secret: true },
-    { key: 'organization', label: '组织 / 项目' },
-    { key: 'baseUrl', label: 'Base URL' },
-  ],
-  app: [
-    { key: 'account', label: '账号' },
-    { key: 'password', label: '密码', secret: true },
-  ],
-  other: [
-    { key: 'username', label: '用户名 / 账号' },
-    { key: 'password', label: '密码 / 凭证值', secret: true },
-  ],
-}
+const isRecycleView = computed(() => vaultState.currentFilter === 'recycle')
+const showPw = computed(() => vaultState.detailPwVisible)
 
-const visibleFields = computed(() => {
-  if (!entry.value) return []
-  const defs = FIELD_DEFS[entry.value.entryType] || FIELD_DEFS.other
-  return defs.filter(f => {
-    const v = entry.value[f.key]
-    return v !== undefined && v !== null && String(v) !== ''
-  })
-})
-
-const entryUrl = computed(() => {
-  const u = entry.value?.url || ''
-  return /^https?:\/\//i.test(u) ? u : u ? 'https://' + u : ''
-})
-
-function tagStyle(name) {
-  const def = vaultState.tagDefs[name]
-  return def
-    ? { color: def.color, borderColor: def.color + '44', background: def.color + '18' }
-    : {}
-}
-
-function safeOpenUrl() {
-  if (!entryUrl.value) return
-  const url = safeUrl(entryUrl.value)
-  if (!url) return
-  if (window.TauriBridge?.openExternal) window.TauriBridge.openExternal(url)
-  else window.open(url, '_blank', 'noopener')
+function maskValue(v) {
+  return showPw.value ? String(v ?? '') : '••••••••'
 }
 
 function safeUrl(raw) {
@@ -82,8 +27,63 @@ function safeUrl(raw) {
   return null
 }
 
-async function onDelete() {
-  await softDelete(entry.value?.id)
+function tagStyle(name) {
+  const def = vaultState.tagDefs[name]
+  return def
+    ? { '--chip-color': def.color }
+    : {}
+}
+
+function formatDate(iso) {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  } catch (e) {
+    return ''
+  }
+}
+
+function entryTypeLabel(type) {
+  const map = { website: '网站', server: '服务器', database: '数据库', ai: 'AI', app: '应用', other: '其他' }
+  return map[type] || type || '网站'
+}
+
+/* ── 命令提示行（server / database） ─────────────────────── */
+
+function sshCommand() {
+  const e = entry.value
+  if (!e || !e.username || !e.url) return ''
+  const sshPort = e.port ? ` -p ${e.port}` : ''
+  return `ssh${sshPort} ${e.username}@${e.url}`
+}
+
+function mysqlCommand() {
+  const e = entry.value
+  if (!e || !e.url || !e.username) return ''
+  const dbPort = e.port ? ` -P ${e.port}` : ''
+  return `mysql -h ${e.url}${dbPort} -u ${e.username} -p`
+}
+
+/* ── 关联密码（core/related.js 已挂载到 window.RelatedEntries） ── */
+
+const relatedEntries = computed(() => {
+  const e = entry.value
+  if (!e || !window.RelatedEntries) return []
+  return window.RelatedEntries.getRelatedEntries(e)
+})
+
+function selectRelated(id) {
+  vaultState.selectedEntry = id
+}
+
+function onDelete() {
+  softDelete(entry.value?.id)
+}
+
+function renderNotes() {
+  if (!entry.value?.notes || !window.Utils?.parseMarkdown) return ''
+  return window.Utils.parseMarkdown(entry.value.notes)
 }
 </script>
 
@@ -94,6 +94,7 @@ async function onDelete() {
         <h3 id="detail-title">{{ entry.title }}</h3>
         <div class="detail-header-actions">
           <button
+            v-if="!isRecycleView"
             class="btn-icon"
             :class="{ 'is-fav': entry.favorite }"
             title="收藏"
@@ -113,91 +114,288 @@ async function onDelete() {
       </div>
 
       <div class="detail-body">
-        <div class="detail-entry-type">{{ entry.entryType || 'website' }}</div>
+        <div class="detail-entry-type">{{ entryTypeLabel(entry.entryType) }}</div>
 
-        <div v-if="visibleFields.length" class="detail-fields">
-          <div v-for="f in visibleFields" :key="f.key" class="detail-field">
-            <div class="detail-field-label">{{ f.label }}</div>
-            <div class="detail-field-value">
-              <span v-if="!f.secret">{{ entry[f.key] }}</span>
-              <span v-else class="pw-dots">••••••••</span>
-              <button
-                v-if="f.secret"
-                class="btn-icon btn-icon-sm"
-                title="复制"
-                @click="copyPassword(entry.id)"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              </button>
-              <button
-                v-if="!f.secret && entry[f.key]"
-                class="btn-icon btn-icon-sm"
-                title="复制"
-                @click="copyField(entry[f.key])"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              </button>
+        <div class="detail-fields">
+          <!-- 网站 -->
+          <template v-if="(entry.entryType || 'website') === 'website'">
+            <div v-if="entry.username" class="detail-field">
+              <div class="detail-field-label">用户名</div>
+              <div class="detail-field-value">{{ entry.username }}
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
             </div>
+            <div class="detail-field">
+              <div class="detail-field-label">密码</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div v-if="entry.url" class="detail-field">
+              <div class="detail-field-label">网址</div>
+              <div class="detail-field-value">
+                <a v-if="safeUrl(entry.url)" :href="safeUrl(entry.url)" target="_blank" rel="noopener">{{ entry.url }}</a>
+                <template v-else>{{ entry.url }}</template>
+              </div>
+            </div>
+          </template>
+
+          <!-- 服务器 -->
+          <template v-else-if="entry.entryType === 'server'">
+            <div v-if="entry.url" class="detail-field">
+              <div class="detail-field-label">连接地址</div>
+              <div class="detail-field-value">
+                <a v-if="safeUrl(entry.url)" :href="safeUrl(entry.url)" target="_blank" rel="noopener">{{ entry.url }}</a>
+                <template v-else>{{ entry.url }}</template>
+              </div>
+            </div>
+            <div v-if="entry.username" class="detail-field">
+              <div class="detail-field-label">登录账号</div>
+              <div class="detail-field-value">{{ entry.username }}
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-field-label">登录密码</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div v-if="sshCommand()" class="detail-field cmd-field">
+              <div class="detail-field-label">连接命令</div>
+              <div class="detail-field-value cmd-value">
+                <code class="cmd-text">{{ sshCommand() }}</code>
+                <button class="btn-icon" title="复制命令" @click="copyField(sshCommand())"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <template v-if="entry.root && (entry.root.username || entry.root.password)">
+              <div class="detail-section-divider"><span>root</span></div>
+              <div v-if="entry.root.username" class="detail-field">
+                <div class="detail-field-label">root 账号</div>
+                <div class="detail-field-value">{{ entry.root.username }}
+                  <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.root.username)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                </div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">root 密码</div>
+                <div class="detail-field-value mono">
+                  <span :class="{ masked: !showPw }">{{ maskValue(entry.root.password) }}</span>
+                  <span class="ml-auto"></span>
+                  <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                    <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                    <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                  </button>
+                  <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.root.password)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                </div>
+              </div>
+            </template>
+          </template>
+
+          <!-- 数据库 -->
+          <template v-else-if="entry.entryType === 'database'">
+            <div v-if="entry.url" class="detail-field">
+              <div class="detail-field-label">数据库地址</div>
+              <div class="detail-field-value">{{ entry.port ? entry.url + ':' + entry.port : entry.url }}</div>
+            </div>
+            <div v-if="entry.username" class="detail-field">
+              <div class="detail-field-label">用户名</div>
+              <div class="detail-field-value">{{ entry.username }}
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-field-label">密码</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div v-if="mysqlCommand()" class="detail-field cmd-field">
+              <div class="detail-field-label">连接命令</div>
+              <div class="detail-field-value cmd-value">
+                <code class="cmd-text">{{ mysqlCommand() }}</code>
+                <button class="btn-icon" title="复制命令" @click="copyField(mysqlCommand())"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+          </template>
+
+          <!-- AI -->
+          <template v-else-if="entry.entryType === 'ai'">
+            <div v-if="entry.username" class="detail-field">
+              <div class="detail-field-label">服务名称</div>
+              <div class="detail-field-value">{{ entry.username }}</div>
+            </div>
+            <div v-if="entry.url" class="detail-field">
+              <div class="detail-field-label">API 地址</div>
+              <div class="detail-field-value">
+                <a v-if="safeUrl(entry.url)" :href="safeUrl(entry.url)" target="_blank" rel="noopener">{{ entry.url }}</a>
+                <template v-else>{{ entry.url }}</template>
+              </div>
+            </div>
+            <div v-if="entry.password" class="detail-field">
+              <div class="detail-field-label">Token</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+          </template>
+
+          <!-- 应用 -->
+          <template v-else-if="entry.entryType === 'app'">
+            <div v-if="entry.appId" class="detail-field">
+              <div class="detail-field-label">App ID</div>
+              <div class="detail-field-value">{{ entry.appId }}
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.appId)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-field-label">公钥</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div v-if="entry.privateKey" class="detail-field">
+              <div class="detail-field-label">私钥</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.privateKey) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.privateKey)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+          </template>
+
+          <!-- 其他 -->
+          <template v-else>
+            <div v-if="entry.username" class="detail-field">
+              <div class="detail-field-label">凭证名称</div>
+              <div class="detail-field-value">{{ entry.username }}
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-field-label">凭证值</div>
+              <div class="detail-field-value mono">
+                <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
+                <span class="ml-auto"></span>
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="vaultState.detailPwVisible = !showPw">
+                  <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                </button>
+                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div v-if="entry.tags && entry.tags.length" class="detail-field">
+          <div class="detail-field-label">标签</div>
+          <div class="detail-field-value tag-list">
+            <span v-for="t in entry.tags" :key="t" class="tag-chip" :style="tagStyle(t)">{{ t }}</span>
           </div>
         </div>
 
-        <div v-if="entry.tags && entry.tags.length" class="detail-tags">
-          <span v-for="t in entry.tags" :key="t" class="detail-tag" :style="tagStyle(t)">{{ t }}</span>
-        </div>
-
-        <div v-if="entry.notes" class="detail-notes">
+        <div v-if="entry.notes" class="detail-field">
           <div class="detail-field-label">备注</div>
-          <div class="notes-content">{{ entry.notes }}</div>
+          <div class="detail-field-value markdown-body" v-html="renderNotes()"></div>
         </div>
 
-        <a v-if="entryUrl" class="detail-url" href="#" @click.prevent="safeOpenUrl()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-          打开网址
-        </a>
+        <!-- 关联密码（同 IP / 同域名 / 同账号） -->
+        <div v-if="relatedEntries.length" class="related-section">
+          <div class="related-header">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            关联密码（{{ relatedEntries.length }}）
+          </div>
+          <div class="related-list">
+            <div
+              v-for="item in relatedEntries"
+              :key="item.entry.id"
+              class="related-item"
+              @click="selectRelated(item.entry.id)"
+            >
+              <div class="entry-icon">{{ item.entry.title?.slice(0, 1)?.toUpperCase() || '?' }}</div>
+              <div class="entry-info">
+                <div class="entry-title">{{ item.entry.title }}</div>
+                <div class="entry-meta">
+                  <span v-if="item.entry.username">{{ item.entry.username }}</span>
+                  <span class="entry-date">{{ formatDate(item.entry.updatedAt || item.entry.createdAt) }}</span>
+                </div>
+              </div>
+              <div class="related-reasons">
+                <span
+                  v-for="reason in item.reasons"
+                  :key="reason.type + reason.label"
+                  class="related-reason"
+                  :class="reason.type"
+                  :title="reason.detail"
+                >{{ reason.label }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="detail-footer">
-        <button class="btn btn-secondary flex-1" @click="openEntryModal(entry.id)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-          </svg>
-          编辑
-        </button>
-        <button class="btn btn-secondary" @click="copyPassword(entry.id)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-          复制
-        </button>
-        <button class="btn btn-secondary" title="分享为二维码" @click="openModal('qr-share')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <path d="M14 14h3v3h-3z" />
-            <path d="M21 14v3h-3" />
-          </svg>
-          二维码
-        </button>
-        <button class="btn btn-danger" @click="onDelete()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-          </svg>
-          删除
-        </button>
+        <template v-if="isRecycleView">
+          <button class="btn btn-secondary flex-1" @click="restoreEntry(entry.id)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><polyline points="3 3 3 8 8 8" /></svg>
+            恢复
+          </button>
+          <button class="btn btn-danger" @click="permanentDelete(entry.id)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+            彻底删除
+          </button>
+        </template>
+        <template v-else>
+          <button class="btn btn-secondary flex-1" @click="openEntryModal(entry.id)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+            编辑
+          </button>
+          <button class="btn btn-secondary" @click="copyPassword(entry.id)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            复制
+          </button>
+          <button class="btn btn-secondary" title="分享为二维码" @click="openModal('qr-share')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3z" /><path d="M21 14v3h-3" /></svg>
+            二维码
+          </button>
+          <button class="btn btn-danger" @click="onDelete()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+            删除
+          </button>
+        </template>
       </div>
     </template>
   </aside>

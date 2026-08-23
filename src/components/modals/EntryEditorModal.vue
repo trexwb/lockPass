@@ -1,5 +1,7 @@
 <script setup>
-/* LockPass — 密码条目编辑器（新增 / 编辑） */
+/* LockPass — 密码条目编辑器（新增 / 编辑）
+   Vue 3 迁移：对齐原生 editor.js —— app 类型（App ID/公钥/私钥）、
+   密码生成面板（长度/字符集/排除歧义/强度条）、保存按钮 id=entry-editor-save */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
@@ -21,7 +23,7 @@ const TYPE_FIELD_KEYS = {
   server: ['host', 'port', 'username', 'password'],
   database: ['dbType', 'host', 'port', 'dbName', 'username', 'password'],
   ai: ['apiKey', 'organization', 'baseUrl'],
-  app: ['account', 'password'],
+  app: ['appId', 'password', 'privateKey'],
   other: ['username', 'password'],
 }
 
@@ -36,7 +38,8 @@ const FIELD_LABELS = {
   apiKey: 'API Key',
   organization: '组织 / 项目',
   baseUrl: 'Base URL',
-  account: '账号',
+  appId: 'App ID',
+  privateKey: '私钥',
 }
 
 const FIELD_PLACEHOLDERS = {
@@ -50,14 +53,18 @@ const FIELD_PLACEHOLDERS = {
   apiKey: 'sk-...',
   organization: 'org-...',
   baseUrl: 'https://api.openai.com',
-  account: '账号',
+  appId: '示例：2019031163548107',
+  privateKey: '输入私钥（证书级长度）',
 }
 
 const currentKeys = computed(() => TYPE_FIELD_KEYS[entryType.value] || TYPE_FIELD_KEYS.other)
 
 const allTagNames = computed(() => Object.keys(vaultState.tagDefs))
 
-const isSecretField = (k) => k === 'password' || k === 'apiKey'
+const isSecretField = (k) => k === 'password' || k === 'apiKey' || k === 'privateKey'
+// app 类型的 password 字段语义为公钥，标签单独处理
+const fieldLabel = (k) => (k === 'password' && entryType.value === 'app' ? '公钥' : FIELD_LABELS[k] || k)
+const isTextareaField = (k) => k === 'privateKey' || (k === 'password' && entryType.value === 'app')
 
 const DRAFT_NEW_KEY = 'lockpass_draft_new'
 
@@ -108,17 +115,81 @@ function addNewTag() {
   newTag.value = ''
 }
 
-function generatePw() {
-  const pw = window.PasswordGenerator.generatePassword({
-    length: 16,
-    uppercase: true,
-    lowercase: true,
-    numbers: true,
-    symbols: true,
-    noAmbiguous: true,
-  })
-  fields.password = pw
+function toggleSecret(k) {
+  showFields[k] = !showFields[k]
 }
+
+/* ── 密码生成面板 ─────────────────────────────── */
+
+const genPanelOpen = ref(false)
+const genOptions = reactive({
+  length: 16,
+  upper: true,
+  lower: true,
+  number: true,
+  symbol: true,
+  noAmbig: false,
+})
+const genPreview = ref('')
+
+function genPasswordNow() {
+  const pw = window.PasswordGenerator.generatePassword({
+    length: genOptions.length,
+    uppercase: genOptions.upper,
+    lowercase: genOptions.lower,
+    numbers: genOptions.number,
+    symbols: genOptions.symbol,
+    noAmbiguous: genOptions.noAmbig,
+  })
+  genPreview.value = pw
+  return pw
+}
+
+const genStrength = computed(() => {
+  if (!genPreview.value) return { label: '', pct: 0, color: '' }
+  const info = window.PasswordGenerator.calcStrength(genPreview.value)
+  return { label: `${info.label} · ${info.entropy.toFixed(0)} 位熵`, pct: info.pct, color: info.color }
+})
+
+function toggleGenPanel() {
+  genPanelOpen.value = !genPanelOpen.value
+  if (genPanelOpen.value && !genPreview.value) genPasswordNow()
+}
+
+function useGeneratedPassword() {
+  if (!genPreview.value) return
+  fields.password = genPreview.value
+  showFields.password = true
+  genPanelOpen.value = false
+}
+
+function generatePw() {
+  // 快捷生成：直接填入密码字段（与原生“生成”按钮等价）
+  const pw = genPasswordNow()
+  fields.password = pw
+  showFields.password = true
+  updateStrength()
+}
+
+/* ── 密码强度条 ───────────────────────────────── */
+
+const strength = ref({ label: '', pct: 0, color: '' })
+
+function updateStrength() {
+  const pw = fields.password
+  if (!pw) {
+    strength.value = { label: '', pct: 0, color: '' }
+    return
+  }
+  try {
+    const info = window.PasswordGenerator.calcStrength(pw)
+    strength.value = { label: `${info.label} · ${info.entropy.toFixed(0)} 位熵`, pct: info.pct, color: info.color }
+  } catch (e) {
+    strength.value = { label: '', pct: 0, color: '' }
+  }
+}
+
+/* ── 保存 ─────────────────────────────────────── */
 
 async function onSave() {
   const payload = {
@@ -164,6 +235,7 @@ onMounted(() => {
     if (fields.rootUser === undefined) fields.rootUser = ''
     if (fields.rootPwd === undefined) fields.rootPwd = ''
   }
+  updateStrength()
 })
 
 watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { deep: true })
@@ -206,12 +278,23 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
       <div class="form-group">
         <label class="form-label">字段</label>
         <div v-for="k in currentKeys" :key="k" class="form-field-row">
+          <textarea
+            v-if="isTextareaField(k)"
+            v-model="fields[k]"
+            class="form-input mono mono-textarea"
+            rows="3"
+            :placeholder="FIELD_PLACEHOLDERS[k] || fieldLabel(k)"
+            autocomplete="off"
+          ></textarea>
           <input
+            v-else
             v-model="fields[k]"
             class="form-input"
+            :class="{ mono: k === 'appId' }"
             :type="isSecretField(k) ? (showFields[k] ? 'text' : 'password') : 'text'"
-            :placeholder="FIELD_PLACEHOLDERS[k] || FIELD_LABELS[k]"
+            :placeholder="FIELD_PLACEHOLDERS[k] || fieldLabel(k)"
             autocomplete="off"
+            @input="k === 'password' && updateStrength()"
           />
           <button
             v-if="isSecretField(k)"
@@ -228,16 +311,60 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
               <line v-if="showFields[k]" x1="1" y1="1" x2="23" y2="23" />
             </svg>
           </button>
-          <span class="form-field-label">{{ FIELD_LABELS[k] }}</span>
+          <span class="form-field-label">{{ fieldLabel(k) }}</span>
           <button
             v-if="k === 'password'"
             class="btn btn-ghost btn-sm"
             type="button"
             title="生成随机密码"
-            @click="generatePw()"
+            @click="toggleGenPanel()"
           >
             生成
           </button>
+        </div>
+
+        <!-- 密码强度条 -->
+        <div v-if="fields.password && !isTextareaField('password')" class="pw-strength mt-1">
+          <div class="pw-strength-bar-bg">
+            <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
+          </div>
+          <div class="pw-strength-text text-muted">{{ strength.label }}</div>
+        </div>
+
+        <!-- 生成面板 -->
+        <div v-if="genPanelOpen" class="pw-gen-panel">
+          <div class="pw-gen-preview">
+            <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
+            <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+            </button>
+          </div>
+          <div class="pw-gen-controls">
+            <div class="pw-gen-row">
+              <label>长度</label>
+              <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
+              <span>{{ genOptions.length }}</span>
+            </div>
+            <div class="pw-gen-charsets">
+              <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
+              <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
+              <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
+              <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+            </div>
+            <div class="pw-gen-row gap-8 mt-1">
+              <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+            </div>
+            <div>
+              <div class="pw-strength-bar-bg">
+                <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
+              </div>
+              <div class="pw-strength-text text-muted">{{ genStrength.label }}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+              使用此密码
+            </button>
+          </div>
         </div>
 
         <template v-if="entryType === 'server'">
@@ -246,7 +373,16 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
             <span class="form-field-label">Root 用户</span>
           </div>
           <div class="form-field-row">
-            <input v-model="fields.rootPwd" class="form-input" type="password" placeholder="root 密码（可选）" autocomplete="off" />
+            <input v-model="fields.rootPwd" class="form-input" :type="showFields.rootPwd ? 'text' : 'password'" placeholder="root 密码（可选）" autocomplete="off" />
+            <button class="btn btn-ghost btn-sm" type="button" title="显示/隐藏" @click="toggleSecret('rootPwd')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path v-if="!showFields.rootPwd" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle v-if="!showFields.rootPwd" cx="12" cy="12" r="3" />
+                <path v-if="showFields.rootPwd" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path v-if="showFields.rootPwd" d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line v-if="showFields.rootPwd" x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            </button>
             <span class="form-field-label">Root 密码</span>
           </div>
         </template>
@@ -290,7 +426,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
 
     <div class="modal-footer">
       <button class="btn btn-secondary" @click="closeModal()">取消</button>
-      <button class="btn btn-primary" @click="onSave()">保存</button>
+      <button id="entry-editor-save" class="btn btn-primary" @click="onSave()">保存</button>
     </div>
   </ModalBase>
 </template>

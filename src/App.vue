@@ -10,11 +10,13 @@
 /* LockPass — 根组件：认证视图 / 主界面切换 */
 import { onMounted } from 'vue'
 import { useVault, vaultState } from './composables/useVault'
+import { useShortcuts } from './composables/useShortcuts'
 import AuthView from './components/auth/AuthView.vue'
 import AppShell from './components/AppShell.vue'
 import ModalHost from './components/ModalHost.vue'
 
 const { boot } = useVault()
+useShortcuts()
 
 onMounted(() => {
   boot()

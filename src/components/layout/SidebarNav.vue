@@ -29,25 +29,12 @@ function onDocClick(e) {
   }
 }
 
-function onKeydown(e) {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
-    e.preventDefault()
-    openEntryModal()
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') {
-    e.preventDefault()
-    openModal('qr-import')
-  }
-}
-
 onMounted(() => {
   document.addEventListener('click', onDocClick)
-  document.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
-  document.removeEventListener('keydown', onKeydown)
 })
 </script>
 

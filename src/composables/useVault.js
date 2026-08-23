@@ -75,6 +75,8 @@ export const vaultState = reactive({
   lockError: '',
   lockBusy: false,
   restoreFilePending: false,
+  // 详情面板密码显隐（供 ⌥P 快捷键与详情面板切换）
+  detailPwVisible: false,
 })
 
 /* ── 会话（内存级，刷新即失） ─────────────────────────────── */
@@ -163,6 +165,12 @@ export function useVault() {
 
   async function boot() {
     if (vaultState.booted) return
+    // 兼容桥：core/related.js 依赖 window.App.state，注入状态引用（不覆盖原生 App）
+    if (!window.App) {
+      window.App = { state: vaultState }
+    } else if (!window.App.state) {
+      window.App.state = vaultState
+    }
     await window.DBUtils.openDB()
     const { initialized, hasBindingHistory } = await checkVaultStatus()
     vaultState.initialized = initialized
@@ -277,6 +285,8 @@ export function useVault() {
           }
         }
         await createVault(password)
+        // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
+        saveSession(password)
         await afterUnlock(password)
         return
       }
@@ -309,6 +319,58 @@ export function useVault() {
     }
     resetLockTimer()
     vaultState.lockError = ''
+  }
+
+  /* ── 从本地文件 / 绑定目录恢复（锁屏入口） ─── */
+
+  function openRestoreFilePicker() {
+    const input = document.getElementById('restore-file-input')
+    if (input) input.click()
+  }
+
+  async function handleRestoreFileSelect(event) {
+    const file = event.target.files && event.target.files[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      vaultState.lockError = ''
+      const payload = JSON.parse(await file.text())
+      await window.FileSync.restorePayload(payload)
+      await afterUnlock()
+      window.Utils.showToast('已从本地文件恢复', 'success')
+    } catch (e) {
+      console.error('恢复失败:', e)
+      vaultState.lockError = '恢复失败：' + (e.message || '文件格式不正确或数据损坏')
+    }
+  }
+
+  async function bindRestoreFromDirectory() {
+    try {
+      vaultState.lockError = ''
+      if (!window.FileSync.isSupported()) {
+        vaultState.lockError = '当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开'
+        return
+      }
+      const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
+      const restored = await window.FileSync.restoreFromDirectory(dir)
+      if (!restored) {
+        vaultState.lockError = '目录中未找到 LockPass-vault.json，未执行恢复'
+        return
+      }
+      await afterUnlock()
+      window.Utils.showToast('已从绑定目录恢复', 'success')
+    } catch (e) {
+      console.error('绑定目录恢复失败:', e)
+      if (e && e.name === 'AbortError') return // 用户取消选择
+      vaultState.lockError = '绑定目录恢复失败：' + (e.message || '未知错误')
+    }
+  }
+
+  /* ── 快捷键辅助 ────────────────────────────── */
+
+  function editCurrentEntry() {
+    if (!vaultState.selectedEntry) return
+    openEntryModal(vaultState.selectedEntry.id)
   }
 
   /* ── 锁定 / 退出 ────────────────────────────── */
@@ -353,6 +415,11 @@ export function useVault() {
   function setFilter(filter) {
     vaultState.currentFilter = filter
     if (filter === 'recycle') closeDetail()
+    // 更新 URL hash（用于刷新后保持状态），与原生 setFilter 行为一致
+    try {
+      const hash = filter === 'all' ? '' : `#filter=${encodeURIComponent(filter)}`
+      history.replaceState(null, '', hash || window.location.pathname)
+    } catch (e) {}
   }
 
   function restoreFilterFromHash() {
@@ -538,11 +605,18 @@ export function useVault() {
   async function copyPassword(id) {
     const entry = getEntryById(id)
     if (!entry) return
-    await copyToClipboard(entry.password || '', id)
+    // 与原生 copyDetailPassword 一致：app 类型取 App ID（无则取公钥/密码）
+    let val = entry.password
+    if ((entry.entryType || 'website') === 'app') val = entry.appId || entry.password
+    await copyToClipboard(val || '', id)
   }
 
   async function copyField(value) {
     await copyToClipboard(value || '', null)
+  }
+
+  function toggleDetailPassword() {
+    vaultState.detailPwVisible = !vaultState.detailPwVisible
   }
 
   /* ── 模态框 ────────────────────────────────── */
@@ -640,9 +714,14 @@ export function useVault() {
     copyToClipboard,
     copyPassword,
     copyField,
+    toggleDetailPassword,
     openEntryModal,
     openModal,
     closeModal,
     saveEntry,
+    openRestoreFilePicker,
+    handleRestoreFileSelect,
+    bindRestoreFromDirectory,
+    editCurrentEntry,
   }
 }
