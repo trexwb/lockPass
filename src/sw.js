@@ -11,7 +11,7 @@
    用户下次打开 PWA 即使用最新代码
    ═══════════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'lockpass-v1.0.13';
+const CACHE_NAME = 'lockpass-v1.0.0';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
