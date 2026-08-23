@@ -1,0 +1,23 @@
+/* ═══════════════════════════════════════════════════════════════════
+   LockPass — Vue 入口
+   ═══════════════════════════════════════════════════════════════════ */
+
+// 核心逻辑层：原样迁移，保持 window.* 挂载，零算法改动
+import './core/crypto.js'
+import './core/database.js'
+import './core/file-store.js'
+import './core/file-sync.js'
+import './core/generator.js'
+import './core/utils.js'
+import './core/tauri-bridge.js'
+import './core/related.js'
+import './core/sw-register.js'
+
+// 样式（保留原设计令牌，按组件拆分的样式由各 SFC 引入）
+import './styles/main.css'
+
+// Vue 应用
+import { createApp } from 'vue'
+import App from './App.vue'
+
+createApp(App).mount('#app')
