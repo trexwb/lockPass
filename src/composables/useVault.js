@@ -79,6 +79,31 @@ export const vaultState = reactive({
   detailPwVisible: false,
 })
 
+/* ── 自动锁定：用户交互重置（G2 修复） ───────────────
+   解锁后监听用户交互（mousemove/keydown/touch/scroll），
+   每次交互重置自动锁定计时器，符合 SPEC 5.2。
+   监听在 boot 时挂载一次，handler 内部用 isUnlocked 守卫，
+   锁定后空转不做事。 */
+const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']
+let activityResetFn = null
+let activityBound = false
+let lastActivityReset = 0
+
+function onUserActivity() {
+  if (!vaultState.isUnlocked) return
+  if (vaultState.lockTimeoutMs <= 0) return
+  const now = Date.now()
+  if (now - lastActivityReset < 1000) return // 节流：至少间隔 1s 才重置，避免 mousemove 高频重置
+  lastActivityReset = now
+  if (typeof activityResetFn === 'function') activityResetFn()
+}
+
+function setupActivityListeners() {
+  if (activityBound) return
+  ACTIVITY_EVENTS.forEach(e => document.addEventListener(e, onUserActivity, { passive: true }))
+  activityBound = true
+}
+
 /* ── 会话（内存级，刷新即失） ─────────────────────────────── */
 
 let sessionPassword = ''
@@ -160,6 +185,8 @@ function migrateVaultData(data) {
 /* ── 主 composable ────────────────────────────────────────── */
 
 export function useVault() {
+  // 让全局交互监听回调指向本实例最新的 resetLockTimer
+  activityResetFn = resetLockTimer
 
   /* ── 启动与状态检查 ─────────────────────────── */
 
@@ -176,6 +203,7 @@ export function useVault() {
     vaultState.initialized = initialized
     vaultState.hasBindingHistory = hasBindingHistory
     vaultState.booted = true
+    setupActivityListeners()
   }
 
   async function checkVaultStatus() {
