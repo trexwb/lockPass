@@ -1,6 +1,6 @@
 <script setup>
 /* LockPass — 侧边栏（添加 / 个人筛选 / 类型筛选 / 热门标签 / 退出） */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 
 const {
@@ -8,7 +8,7 @@ const {
 } = useVault()
 
 const addDropdownOpen = ref(false)
-const tagSectionOpen = ref(true)
+const tagSectionOpen = ref((() => { try { return localStorage.getItem('lockpass_tags_collapsed') !== '1' } catch (e) { return true } })())
 const sidebarOpen = ref(false)
 
 const stats = computed(() => computeSidebarStats())
@@ -33,6 +33,11 @@ onMounted(() => {
   document.addEventListener('click', onDocClick)
 })
 
+// 折叠状态持久化（对齐原生 main.js TAGS_COLLAPSE_KEY）
+watch(tagSectionOpen, (v) => {
+  try { localStorage.setItem('lockpass_tags_collapsed', v ? '0' : '1') } catch (e) {}
+})
+
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
 })
@@ -50,7 +55,7 @@ function tagIconSvg(name) {
 </script>
 
 <template>
-  <aside id="sidebar" :class="{ 'sidebar-open': vaultState.sidebarOpen }">
+  <aside id="sidebar" :class="{ open: vaultState.sidebarOpen }">
     <div class="sidebar-scroll">
       <div class="sidebar-section">
         <div class="btn-dropdown" id="add-entry-dropdown">
@@ -97,7 +102,7 @@ function tagIconSvg(name) {
               <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
             全部密码
-            <span class="nav-badge">{{ stats.total }}</span>
+            <span class="count">{{ stats.total }}</span>
           </div>
           <div
             class="nav-item"
@@ -108,7 +113,7 @@ function tagIconSvg(name) {
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
             收藏
-            <span class="nav-badge">{{ stats.favorites }}</span>
+            <span class="count">{{ stats.favorites }}</span>
           </div>
           <div
             class="nav-item"
@@ -119,7 +124,7 @@ function tagIconSvg(name) {
               <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
             </svg>
             回收站
-            <span v-if="stats.recycle" class="count">{{ stats.recycle }}</span>
+            <span class="count">{{ stats.recycle }}</span>
           </div>
         </nav>
       </div>
@@ -136,7 +141,7 @@ function tagIconSvg(name) {
           >
             <span class="type-icon" v-html="typeIconSvg(t.id)"></span>
             {{ typeLabels[t.id] }}
-            <span class="nav-badge">{{ stats.byType[t.id] || 0 }}</span>
+            <span class="count">{{ stats.byType[t.id] || 0 }}</span>
           </div>
         </nav>
       </div>
@@ -144,7 +149,7 @@ function tagIconSvg(name) {
       <div class="sidebar-section">
         <div class="sidebar-section-title sidebar-title-clickable" id="tags-toggle" title="折叠/展开热门标签" @click="tagSectionOpen = !tagSectionOpen">
           热门标签
-          <svg class="tag-chevron" :class="{ rotated: !tagSectionOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="tag-chevron" :style="{ transform: !tagSectionOpen ? 'rotate(-90deg)' : 'rotate(0deg)' }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </div>

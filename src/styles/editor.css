@@ -286,26 +286,3 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
   cursor: pointer;
 }
 .charset-label input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; }
-
-/* 锁屏恢复区（AuthView 首次使用入口，对齐原生 main.js） */
-.lock-restore {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.lock-restore-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  margin-bottom: 2px;
-}
-.lock-restore-divider::before,
-.lock-restore-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}

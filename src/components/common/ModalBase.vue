@@ -55,34 +55,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="overlayRef" class="modal-overlay">
-    <div class="modal" :style="{ maxWidth: props.maxWidth }">
+  <div ref="overlayRef" id="modal-overlay">
+    <div id="modal">
       <slot />
     </div>
   </div>
 </template>
 
-<style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-.modal {
-  background: var(--surface, #1c2128);
-  border: 1px solid var(--border, #30363d);
-  border-radius: var(--radius, 14px);
-  width: 100%;
-  max-width: 480px;
-  max-height: min(82vh, 720px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-</style>

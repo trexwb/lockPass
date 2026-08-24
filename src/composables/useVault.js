@@ -587,13 +587,32 @@ export function useVault() {
 
   /* ── 条目操作 ───────────────────────────────── */
 
-  function selectEntry(id) {
+  function selectEntry(id, event) {
+    if (event) event.stopPropagation()
     const entry = getEntryById(id)
     if (!entry) return
+    const panel = document.getElementById('detail-panel')
+    const alreadyOpen = !!panel?.classList.contains('open')
+    const sameEntry = vaultState.selectedEntry === id
     vaultState.selectedEntry = id
+    if (alreadyOpen && !sameEntry) {
+      // 收回再弹出动画（对齐原版 entries.js selectEntry）
+      clearTimeout(vaultState.detailAnimTimer)
+      panel.classList.remove('open')
+      panel.classList.add('animating')
+      vaultState.detailAnimTimer = setTimeout(() => {
+        panel.classList.add('open')
+        vaultState.detailAnimTimer = setTimeout(() => panel.classList.remove('animating'), 30)
+      }, 320)
+    } else if (panel) {
+      panel.classList.add('open')
+    }
   }
 
   function closeDetail() {
+    clearTimeout(vaultState.detailAnimTimer)
+    const panel = document.getElementById('detail-panel')
+    panel?.classList.remove('open', 'animating')
     vaultState.selectedEntry = null
   }
 
@@ -676,31 +695,107 @@ export function useVault() {
 
   /* ── 剪贴板 ────────────────────────────────── */
 
-  async function copyToClipboard(text, entryId = null) {
+  let clipboardCleanupFn = null
+
+  async function copyToClipboard(text, entryId = null, btnEl = null) {
     try {
       await navigator.clipboard.writeText(text)
       window.Utils.showToast('已复制到剪贴板', 'success')
 
+      // ── 浮动「已复制」提示（靠近按钮位置，对齐原版 entries.js） ──
+      let cleanupFloatTip = null
+      if (btnEl) {
+        const floatTip = document.createElement('div')
+        floatTip.textContent = '✓ 已复制'
+        Object.assign(floatTip.style, {
+          position: 'fixed',
+          top: '-28px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--accent, #4f86f7)',
+          color: '#fff',
+          fontSize: '11px',
+          padding: '2px 7px',
+          borderRadius: '8px',
+          pointerEvents: 'none',
+          zIndex: '99999',
+          whiteSpace: 'nowrap',
+          opacity: '1',
+          transition: 'opacity 0.4s',
+        })
+        const rect = btnEl.getBoundingClientRect()
+        floatTip.style.left = rect.left + rect.width / 2 + 'px'
+        floatTip.style.top = rect.top + 'px'
+        document.body.appendChild(floatTip)
+        cleanupFloatTip = () => floatTip.remove()
+        setTimeout(() => {
+          if (floatTip.parentNode) {
+            floatTip.style.opacity = '0'
+            setTimeout(() => floatTip.remove(), 400)
+          }
+        }, 1200)
+      }
+
+      // 清除旧的定时器与浮动提示
       clearTimeout(vaultState.clipboardTimer)
+      const prevCleanup = clipboardCleanupFn
+      clipboardCleanupFn = () => {
+        if (cleanupFloatTip) cleanupFloatTip()
+        if (prevCleanup) prevCleanup()
+      }
+
+      // 自动清除剪贴板
       vaultState.clipboardTimer = setTimeout(async () => {
         try { await navigator.clipboard.writeText('') } catch (e) {}
+        const note = document.getElementById('clipboard-note')
+        if (note) note.classList.add('hidden')
+        if (clipboardCleanupFn) {
+          clipboardCleanupFn()
+          clipboardCleanupFn = null
+        }
       }, vaultState.clipboardClearMs)
+
+      // 详情面板倒计时提示（对齐原版 entries.js clipboard-note）
+      if (entryId === vaultState.selectedEntry) {
+        const note = document.getElementById('clipboard-note')
+        if (note) {
+          note.classList.remove('hidden')
+          let remaining = vaultState.clipboardClearMs / 1000
+          note.innerHTML = `✓ 已复制，${remaining}秒后清除`
+          const tick = setInterval(() => {
+            remaining--
+            if (note) note.innerHTML = `✓ 已复制，${remaining}秒后清除`
+            if (remaining <= 0) {
+              clearInterval(tick)
+              if (note) note.classList.add('hidden')
+            }
+          }, 1000)
+        }
+      }
+
+      // 卡片复制按钮高亮（对齐原版 .copy-btn.copied）
+      if (entryId) {
+        document.querySelectorAll(`.entry-card[data-id="${CSS.escape(String(entryId))}"] .copy-btn`).forEach(b => {
+          b.classList.add('copied')
+          setTimeout(() => b.classList.remove('copied'), 1500)
+        })
+      }
     } catch (e) {
       window.Utils.showToast('复制失败，请手动复制', 'error')
     }
   }
 
-  async function copyPassword(id) {
+  async function copyPassword(id, btnEl = null) {
     const entry = getEntryById(id)
     if (!entry) return
     // 与原生 copyDetailPassword 一致：app 类型取 App ID（无则取公钥/密码）
     let val = entry.password
     if ((entry.entryType || 'website') === 'app') val = entry.appId || entry.password
-    await copyToClipboard(val || '', id)
+    await copyToClipboard(val || '', id, btnEl)
   }
 
-  async function copyField(value) {
-    await copyToClipboard(value || '', null)
+  async function copyField(value, btnEl = null) {
+    await copyToClipboard(value || '', null, btnEl)
   }
 
   function toggleDetailPassword() {

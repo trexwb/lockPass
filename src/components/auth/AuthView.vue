@@ -139,19 +139,17 @@ onBeforeUnmount(() => {
         <button id="unlock-btn" class="btn btn-primary btn-full" type="submit" :disabled="vaultState.lockBusy" tabindex="3">
           {{ btnText }}
         </button>
-      </form>
 
-      <!-- 首次使用：从本地备份 / 绑定数据目录恢复（与原生 main.js 行为一致） -->
-      <div v-if="isCreateMode" id="restore-section" class="lock-restore">
-        <div class="lock-restore-divider"><span>或从已有数据恢复</span></div>
+        <!-- 首次使用：从本地备份 / 绑定数据目录恢复（与原生 main.js 行为一致，按钮位于 form 内且无分隔线） -->
         <input
+          v-if="isCreateMode"
           id="restore-file-input"
           class="hidden"
           type="file"
-          accept=".json,.lockpass,.vault,application/json"
+          accept=".vault,.json,application/octet-stream,application/json"
           @change="handleRestoreFileSelect"
         />
-        <button id="restore-file-btn" class="btn btn-ghost btn-sm btn-full" type="button" tabindex="4" @click="openRestoreFilePicker()">
+        <button v-if="isCreateMode" id="restore-file-btn" class="btn btn-ghost btn-full" type="button" tabindex="4" @click="openRestoreFilePicker()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
@@ -162,7 +160,7 @@ onBeforeUnmount(() => {
         <button
           v-if="canBindRestore"
           id="bind-restore-btn"
-          class="btn btn-ghost btn-sm btn-full"
+          class="btn btn-ghost btn-full"
           type="button"
           tabindex="5"
           @click="bindRestoreFromDirectory()"
@@ -172,7 +170,7 @@ onBeforeUnmount(() => {
           </svg>
           绑定已有数据目录
         </button>
-      </div>
+      </form>
 
       <p class="lock-hint">数据仅保存在本地设备，不会上传到任何服务器</p>
     </div>

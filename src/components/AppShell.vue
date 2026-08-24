@@ -6,6 +6,10 @@ import HeaderBar from './layout/HeaderBar.vue'
 import SidebarNav from './layout/SidebarNav.vue'
 import DetailPanel from './entries/DetailPanel.vue'
 
+// 模板中直接引用 window 会被 Vue 编译为 _ctx.window（undefined）而抛错，
+// 故在 setup 作用域暴露 Utils，模板统一使用 Utils.xxx
+const Utils = window.Utils
+
 const {
   getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
   toggleFavorite, copyPassword, softDelete,
@@ -99,11 +103,6 @@ function contentTitle() {
   return `标签：${vaultState.currentFilter}`
 }
 
-function filterDesc() {
-  if (vaultState.currentFilter === 'recycle') return '已删除的密码将在这里保留 30 天'
-  return '点击左侧筛选或搜索查找密码'
-}
-
 onMounted(() => {
   // 主界面：启动工作区粒子背景（LockParticles.stop 语义 = 停止锁屏、启动工作区）
   if (window.LockParticles) window.LockParticles.stop()
@@ -130,7 +129,6 @@ onBeforeUnmount(() => {
           <div class="content-toolbar">
             <div>
               <h2 id="content-title">{{ contentTitle() }}</h2>
-              <p class="text-muted text-sm" v-if="vaultState.currentFilter === 'recycle'">{{ filterDesc() }}</p>
             </div>
             <div class="toolbar-right">
               <span id="entry-count" class="text-muted text-sm">{{ filteredEntries.length }} 项</span>
@@ -177,21 +175,21 @@ onBeforeUnmount(() => {
               <div class="entry-actions" @click="onActionsClick">
                 <template v-if="isRecycleView">
                   <button class="restore-btn" title="恢复" @click="restoreEntry(entry.id)">
-                    <span v-html="window.Utils?.SvgIcons?.restore(13)"></span>
+                    <span v-html="Utils?.SvgIcons?.restore(13)"></span>
                   </button>
-                  <button class="copy-btn" title="复制密码" @click="copyPassword(entry.id)">
-                    <span v-html="window.Utils?.SvgIcons?.copy(13)"></span>
+                  <button class="copy-btn" title="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
+                    <span v-html="Utils?.SvgIcons?.copy(13)"></span>
                   </button>
                 </template>
                 <template v-else>
                   <button class="star-btn" :class="{ active: entry.favorite }" title="收藏" @click="toggleFavorite(entry.id)">
                     <span v-html="favIconHtml(entry)"></span>
                   </button>
-                  <button class="copy-btn" title="复制" @click="copyPassword(entry.id)">
-                    <span v-html="window.Utils?.SvgIcons?.copy(13)"></span>
+                  <button class="copy-btn" title="复制" @click="copyPassword(entry.id, $event.currentTarget)">
+                    <span v-html="Utils?.SvgIcons?.copy(13)"></span>
                   </button>
                   <button class="delete-btn" title="删除" @click="softDelete(entry.id)">
-                    <span v-html="window.Utils?.SvgIcons?.trash(13)"></span>
+                    <span v-html="Utils?.SvgIcons?.trash(13)"></span>
                   </button>
                 </template>
               </div>
