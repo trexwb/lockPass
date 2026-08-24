@@ -8,7 +8,6 @@
     "dev": "vite",
     "build": "npm run vite:build && npm run tauri:build && npm run make-dmg",
     "vite:build": "vite build",
-    "vite:build:tauri": "vite build --mode tauri",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
@@ -18,12 +17,12 @@
     "version:check": "node scripts/check-version.mjs"
   },
   "dependencies": {
-    "vue": "^3.4.38"
+    "vue": "^3.5.41"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "@vitejs/plugin-vue": "^5.1.2",
-    "vite": "^5.4.2",
-    "vite-plugin-singlefile": "^2.0.2"
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.2",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

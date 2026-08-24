@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.lockpass",
   "build": {
-    "frontendDist": "../dist",
-    "beforeBuildCommand": "vite build",
+    "frontendDist": "../dist-tauri",
+    "beforeBuildCommand": "vite build --mode tauri",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev"
   },
