@@ -74,8 +74,6 @@ export const vaultState = reactive({
   // 锁屏交互状态
   lockError: '',
   lockBusy: false,
-  // 详情面板密码显隐（供 ⌥P 快捷键与详情面板切换）
-  detailPwVisible: false,
 })
 
 /* ── 自动锁定：用户交互重置（G2 修复） ───────────────
@@ -337,15 +335,38 @@ export function useVault() {
             cancelText: '继续创建',
           })
           if (proceed) {
-            const restored = await window.FileSync.restoreFromBoundDir()
+            // D1 修复：对齐原版 restoreFromBoundDirectory → 从目录恢复数据，
+            // 恢复后置 initialized=true 并递归复用 handleUnlock 解锁流程，
+            // 校验主密码并加载数据，一次输入即完成登录（不再停留锁屏需二次输入）
+            let handle = null
+            try { handle = await window.FileSync.getDirHandle() } catch (e) {}
+            if (!handle) {
+              if (!window.FileSync.isSupported()) {
+                vaultState.lockError = '当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开'
+                vaultState.lockBusy = false
+                return
+              }
+              handle = await window.showDirectoryPicker({ mode: 'readwrite' })
+            }
+            const restored = await window.FileSync.restoreFromDirectory(handle)
             if (!restored) {
-              vaultState.lockError = '未能从绑定目录恢复：绑定句柄已失效或目录中缺少 LockPass-vault.json，请点击「绑定已有数据目录」重新选择'
+              vaultState.lockError = '未能从绑定目录恢复：目录中缺少 LockPass-vault.json，请点击「绑定已有数据目录」重新选择'
               vaultState.lockBusy = false
               return
             }
-            await afterUnlock(password)
+            // 恢复成功后 initialized=true（对应原版重建 IndexedDB），
+            // 复位 busy 后递归复用解锁流程：校验主密码并加载数据
+            vaultState.initialized = true
+            vaultState.lockBusy = false
+            await handleUnlock(password)
             return
           }
+        }
+        // D3 修复：创建模式校验主密码长度（对齐原版 password.length < 8 报错）
+        if (password.length < 8) {
+          vaultState.lockError = '主密码至少需要 8 位'
+          vaultState.lockBusy = false
+          return
         }
         const { key } = await createVault(password)
         // 首次创建：注入初始状态（与原生 app.js 对齐）
@@ -359,6 +380,8 @@ export function useVault() {
         saveSession(password)
         vaultState.isUnlocked = true
         await afterUnlock(password)
+        // D2 修复：首次创建成功后引导绑定数据目录（对齐原版）
+        await showBindBannerIfNeeded()
         return
       }
 
@@ -375,7 +398,11 @@ export function useVault() {
       saveSession(password)
       vaultState.isUnlocked = true
       await afterUnlock()
+      // D2 修复：解锁成功后若未绑定数据目录则引导绑定（对齐原版）
+      await showBindBannerIfNeeded()
     } catch (e) {
+      // 用户取消目录选择（showDirectoryPicker AbortError）：静默停留当前界面（对齐原版）
+      if (e && e.name === 'AbortError') return
       vaultState.lockError = e.message || '解锁失败'
     } finally {
       vaultState.lockBusy = false
@@ -390,6 +417,93 @@ export function useVault() {
     }
     resetLockTimer()
     vaultState.lockError = ''
+  }
+
+  /* ── D2 修复：绑定引导横幅（对齐原版 app.js showBindBannerIfNeeded） ── */
+
+  let _bindBannerDismissedFallback = false // sessionStorage 不可用时的内存降级标记
+
+  async function showBindBannerIfNeeded() {
+    // macOS 桌面应用：数据已自动保存在本地文件（应用数据目录）且 WebView 无文件系统
+    // 访问权限，无需也无法绑定数据目录 → 不显示绑定横幅
+    if (window.FileStore && window.FileStore.isTauri &&
+        navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
+      return
+    }
+    try {
+      // 本会话已点过「暂不」则不再显示：优先读 sessionStorage 标记，异常时用内存变量
+      let dismissed = false
+      try {
+        dismissed = !!sessionStorage.getItem('lp_bind_prompted')
+      } catch (e) {
+        dismissed = _bindBannerDismissedFallback
+      }
+      if (dismissed) return
+
+      // 同一时刻只保留一个横幅实例：先移除旧的再创建
+      const old = document.getElementById('lp-bind-banner')
+      if (old) old.remove()
+
+      if (!window.FileSync) return
+      const handle = await window.FileSync.getDirHandle()
+      if (handle) return // 已绑定数据目录，不显示横幅
+
+      const unsupported = !window.FileSync.isSupported()
+      const banner = document.createElement('div')
+      banner.id = 'lp-bind-banner'
+      banner.setAttribute('role', 'alert')
+
+      const text = unsupported
+        ? '当前浏览器不支持本地文件同步，请使用 Chrome / Edge 打开本页面后绑定数据目录'
+        : '建议绑定数据目录：绑定后每次修改密码库会自动写入加密的 LockPass-vault.json 文件，即使浏览器清空缓存，数据也不会丢失'
+
+      banner.innerHTML =
+        '<div class="lp-bind-banner-inner">' +
+          '<span class="lp-bind-banner-text">' + window.Utils.escHtml(text) + '</span>' +
+          '<span class="lp-bind-banner-actions">' +
+            (unsupported ? '' : '<button class="btn btn-primary btn-sm" id="lp-bind-banner-bind">立即绑定</button>') +
+            '<button class="btn btn-secondary btn-sm" id="lp-bind-banner-dismiss">暂不</button>' +
+          '</span>' +
+        '</div>'
+
+      document.body.insertBefore(banner, document.body.firstChild)
+
+      const bindBtn = document.getElementById('lp-bind-banner-bind')
+      if (bindBtn) {
+        bindBtn.addEventListener('click', async () => {
+          try {
+            const out = await window.FileSync.bindDirectory()
+            if (out.restored) {
+              // 从绑定目录恢复数据：回到锁屏等待解锁（与 SettingsModal.lockVaultAndNotice 对齐）
+              lockVault()
+              vaultState.initialized = true
+              window.Utils.showToast('已从本地文件恢复数据，输入主密码解锁', 'success')
+            } else if (out.result && out.result.ok) {
+              window.Utils.showToast('已绑定本地目录，数据将自动同步', 'success')
+            } else if (out.result && out.result.reason === 'empty') {
+              window.Utils.showToast('目录已绑定，创建保险箱后将自动同步', 'success')
+            } else {
+              window.Utils.showToast('目录已绑定，但同步未完成', 'warning')
+            }
+            // 仅当确认已保存目录句柄（绑定成功）才移除横幅并刷新状态；用户取消/失败时保留横幅
+            const bound = await window.FileSync.getDirHandle()
+            if (bound) banner.remove()
+          } catch (e) {
+            // 绑定失败：保留横幅，允许再次尝试
+          }
+        })
+      }
+
+      const dismissBtn = document.getElementById('lp-bind-banner-dismiss')
+      if (dismissBtn) {
+        dismissBtn.addEventListener('click', () => {
+          banner.remove()
+          try { sessionStorage.setItem('lp_bind_prompted', '1') } catch (e) { _bindBannerDismissedFallback = true }
+        })
+      }
+    } catch (e) {
+      // 静默忽略：横幅展示失败不阻塞用户进入工作区
+    }
   }
 
   /* ── 从本地文件 / 绑定目录恢复（锁屏入口） ─── */
@@ -465,7 +579,6 @@ export function useVault() {
     vaultState.tags = []
     vaultState.deleted = []
     vaultState.selectedEntry = null
-    vaultState.detailPwVisible = false
   }
 
   function logout() {
@@ -480,7 +593,6 @@ export function useVault() {
     vaultState.selectedEntry = null
     vaultState.activeModal = null
     vaultState.editingEntryId = null
-    vaultState.detailPwVisible = false
     vaultState.lockError = ''
     if (vaultState.lockTimer) {
       clearTimeout(vaultState.lockTimer)
@@ -799,7 +911,10 @@ export function useVault() {
   }
 
   function toggleDetailPassword() {
-    vaultState.detailPwVisible = !vaultState.detailPwVisible
+    // D5 修复：密码显隐按条目记忆（对齐原版 entry.showPassword 切换），不再用全局开关
+    if (!vaultState.selectedEntry) return
+    const entry = getEntryById(vaultState.selectedEntry)
+    if (entry) entry.showPassword = !entry.showPassword
   }
 
   /* ── 模态框 ────────────────────────────────── */
@@ -829,10 +944,22 @@ export function useVault() {
       return false
     }
     const passwordField = fields.password
-    const needPw = type === 'website' || type === 'server' || type === 'database' || type === 'ai' || type === 'app' || type === 'other'
-    if (needPw && !passwordField) {
-      window.Utils.showToast('请输入密码或凭证值', 'error')
-      return false
+    // D10 修复：对齐原版——app 类型可不填密码（只需 App ID），其余类型按需必填
+    if (type === 'website' || type === 'server' || type === 'database') {
+      if (!passwordField) {
+        window.Utils.showToast('请输入密码', 'error')
+        return false
+      }
+    } else if (type === 'ai') {
+      if (!passwordField) {
+        window.Utils.showToast('请输入 Token', 'error')
+        return false
+      }
+    } else if (type === 'other') {
+      if (!passwordField) {
+        window.Utils.showToast('请输入凭证值', 'error')
+        return false
+      }
     }
 
     const id = vaultState.editingEntryId || crypto.randomUUID()
@@ -844,6 +971,8 @@ export function useVault() {
       entryType: type,
       tags: tags || [],
       notes: notes || '',
+      // D5 修复：对齐原版数据模型，密码显隐按条目记忆
+      showPassword: false,
       updatedAt: now,
     }
     if (!vaultState.editingEntryId) base.createdAt = now
@@ -886,6 +1015,7 @@ export function useVault() {
     saveVault,
     handleUnlock,
     afterUnlock,
+    showBindBannerIfNeeded,
     lockVault,
     logout,
     resetLockTimer,

@@ -8,6 +8,8 @@ const { handleUnlock, openRestoreFilePicker, handleRestoreFileSelect, bindRestor
 const password = ref('')
 const confirmPassword = ref('')
 const showPw = ref(false)
+// D9 修复：非安全上下文（http 非 localhost）下 Web Crypto 不可用，阻断并禁用解锁按钮
+const blocked = ref(false)
 
 const isCreateMode = computed(() => !vaultState.initialized)
 // 浏览器环境（非 Tauri）且支持文件系统 API 时，提供「绑定已有数据目录」恢复
@@ -17,12 +19,14 @@ const canBindRestore = computed(() =>
   !!(window.FileSync && window.FileSync.isSupported()),
 )
 const titleText = computed(() => (vaultState.initialized ? '密码保险箱' : '创建密码保险箱'))
+// D12 修复：创建模式副标题对齐原版「设置一个强主密码来保护您的所有密码」
 const subtitleText = computed(() =>
-  vaultState.initialized ? '输入主密码解锁您的密码库' : '设置一个主密码保护您的所有密码',
+  vaultState.initialized ? '输入主密码解锁您的密码库' : '设置一个强主密码来保护您的所有密码',
 )
 const btnText = computed(() => {
   if (vaultState.lockBusy) return '…'
-  return vaultState.initialized ? '解锁' : '创建保险箱'
+  // D12 修复：创建模式按钮文案对齐原版「创建」
+  return vaultState.initialized ? '解锁' : '创建'
 })
 
 const strength = ref({ label: '', pct: 0, color: '' })
@@ -64,7 +68,27 @@ watch(
 
 onMounted(() => {
   if (window.LockParticles) window.LockParticles.start()
-  // 安全上下文：非安全环境（如 file://）下 Web Crypto 部分能力受限的提示保持静默
+  // D9 修复：非安全上下文（http 非 localhost / file://）下 Web Crypto 不可用，
+  // 对齐原版 main.js init——阻断创建/解锁并给出明确提示，解锁按钮禁用
+  if (!window.isSecureContext) {
+    blocked.value = true
+    vaultState.lockError = window.location.protocol === 'file:'
+      ? '本地文件环境（file://）加密功能受限。建议使用本地 HTTP 服务器（python -m http.server）以获得最佳体验，或双击 index.html 直接运行。'
+      : '当前通过 http 访问，浏览器禁用了加密功能（Web Crypto）。请改用 https 访问，或本地双击 index.html 使用。'
+    return
+  }
+  // D11 修复：创建模式防浏览器密码管理器异步自动填充（对齐原版 main.js init），
+  // 等浏览器完成自动填充后清空密码框，避免主密码被错误预填
+  if (isCreateMode.value) {
+    setTimeout(() => {
+      const master = document.getElementById('master-password')
+      const confirm = document.getElementById('confirm-password')
+      if (document.activeElement !== master && document.activeElement !== confirm) {
+        if (master) master.value = ''
+        if (confirm) confirm.value = ''
+      }
+    }, 250)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -93,7 +117,7 @@ onBeforeUnmount(() => {
             v-model="password"
             :type="showPw ? 'text' : 'password'"
             :placeholder="isCreateMode ? '设置主密码' : '输入主密码'"
-            autocomplete="new-password"
+            :autocomplete="isCreateMode ? 'new-password' : 'current-password'"
             autocapitalize="off"
             autocorrect="off"
             spellcheck="false"
@@ -136,7 +160,7 @@ onBeforeUnmount(() => {
 
         <div id="lock-error" v-if="vaultState.lockError" class="text-danger text-sm mt-1">{{ vaultState.lockError }}</div>
 
-        <button id="unlock-btn" class="btn btn-primary btn-full" type="submit" :disabled="vaultState.lockBusy" tabindex="3">
+        <button id="unlock-btn" class="btn btn-primary btn-full" type="submit" :disabled="blocked || vaultState.lockBusy" tabindex="3">
           {{ btnText }}
         </button>
 
