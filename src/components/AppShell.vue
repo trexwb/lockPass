@@ -27,12 +27,21 @@ function filterDesc() {
   return '点击左侧筛选或搜索查找密码'
 }
 
+// 卡片类型图标：复用旧版 SvgIcons.typeIcon（恢复旧版「类型图标 + 颜色」展示）
+function cardTypeIcon(type) {
+  return window.Utils && window.Utils.SvgIcons
+    ? window.Utils.SvgIcons.typeIcon(16, type || 'website')
+    : ''
+}
+
 onMounted(() => {
-  if (window.LockParticles) window.LockParticles.start()
+  // 主界面：启动工作区粒子背景（LockParticles.stop 语义 = 停止锁屏、启动工作区）
+  if (window.LockParticles) window.LockParticles.stop()
 })
 
 onBeforeUnmount(() => {
-  if (window.LockParticles) window.LockParticles.stop()
+  // 离开主界面（如锁定）：交还锁屏粒子（LockParticles.start 语义 = 启动锁屏、停止工作区）
+  if (window.LockParticles) window.LockParticles.start()
 })
 </script>
 
@@ -79,7 +88,7 @@ onBeforeUnmount(() => {
               :class="{ active: vaultState.selectedEntry === entry.id }"
               @click="vaultState.selectedEntry = entry.id"
             >
-              <div class="entry-card-icon">{{ entry.title?.slice(0, 1)?.toUpperCase() || '?' }}</div>
+              <div class="entry-card-icon type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" v-html="cardTypeIcon(entry.entryType)"></div>
               <div class="entry-card-info">
                 <div class="entry-card-title">{{ entry.title }}</div>
                 <div class="entry-card-sub">{{ entry.username || entry.url || '' }}</div>

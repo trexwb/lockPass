@@ -24,9 +24,12 @@ const IMPLEMENTED = {
   'qr-share': '二维码分享',
 }
 
+// activeName 返回模态框 key（'entry' | 'settings' | ...），
+// 模板分支按 key 匹配；IMPLEMENTED 仅用于判定该 modal 是否已实现。
 const activeName = computed(() => {
   if (vaultState.activeModal === 'entry') return 'entry'
-  return IMPLEMENTED[vaultState.activeModal] || ''
+  if (vaultState.activeModal && IMPLEMENTED[vaultState.activeModal]) return vaultState.activeModal
+  return ''
 })
 </script>
 

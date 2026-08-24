@@ -36,6 +36,17 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
 })
+
+// 类型图标：复用 window.Utils.SvgIcons.typeIcon
+function typeIconSvg(type, size = 14) {
+  return window.Utils?.SvgIcons?.typeIcon(size, type) || ''
+}
+
+// 标签图标：复用旧版 getCategoryIcon
+function tagIconSvg(name) {
+  const def = vaultState.tagDefs[name] || {}
+  return window.Utils.getCategoryIcon(def.icon || 'other', def.color || '#8b949e')
+}
 </script>
 
 <template>
@@ -120,10 +131,10 @@ onBeforeUnmount(() => {
             v-for="t in ENTRY_TYPES"
             :key="t.id"
             class="nav-item"
-            :class="{ active: vaultState.currentFilter === 'type:' + t.id }"
+            :class="[{ active: vaultState.currentFilter === 'type:' + t.id }, 'type-' + t.id]"
             @click="selectFilter('type:' + t.id)"
           >
-            <span class="type-icon" :class="'type-' + t.id"></span>
+            <span class="type-icon" v-html="typeIconSvg(t.id)"></span>
             {{ typeLabels[t.id] }}
             <span class="nav-badge">{{ stats.byType[t.id] || 0 }}</span>
           </div>
@@ -149,6 +160,7 @@ onBeforeUnmount(() => {
               class="tag-dot"
               :style="{ background: vaultState.tagDefs[tag.name]?.color || '#8b949e' }"
             ></span>
+            <span class="tag-nav-icon" v-html="tagIconSvg(tag.name)"></span>
             {{ tag.name }}
             <span class="nav-badge">{{ tag.count }}</span>
           </div>

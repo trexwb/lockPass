@@ -1,5 +1,7 @@
 /* ── Layout ────────────────────────────────────────────────── */
 #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; }
+/* Vue 挂载根节点：占满 #app，使 #app-shell 的 flex:1 生效（flex column 下子项不自动拉伸） */
+#app-root { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 /* Header */
 #header {
   height: calc(var(--header-h) + env(safe-area-inset-top));
@@ -166,6 +168,11 @@
 }
 #content-inner.empty-active {
   margin: 0 auto;
+}
+/* 空状态：列表容器撑满剩余高度，配合 .empty-state 的 margin:auto 实现水平+垂直居中 */
+#content-inner.empty-active #entries-list {
+  flex: 1;
+  justify-content: center;
 }
 
 /* Lock Screen */

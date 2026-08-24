@@ -198,15 +198,42 @@
     return lock && !lock.classList.contains('hidden');
   }
 
-  const lockInst = createParticles(document.getElementById('lock-bg'));
-  const wsInst = createParticles(document.getElementById('workspace-bg'), {
+  /* ── 延迟实例化（Vue 场景适配） ─────────────────────
+     本模块在 Vue 应用挂载前执行，此时 #lock-bg / #workspace-bg 尚不存在；
+     且 AuthView/AppShell 通过 v-if 切换，canvas 元素会被销毁重建。
+     因此不能在模块顶层直接 createParticles（会拿到 null），
+     改为每次启停前动态解析当前 DOM 中的 canvas，元素重建时自动重建实例。 */
+  const WS_OPTS = {
     baseCount: 56,          // 工作区比锁屏略少，避免抢内容视觉焦点
     linkOpaqueMax: 0.13,
     mouseOpaqueMax: 0.26
-  });
+  };
+  let lockCanvas = null;
+  let wsCanvas = null;
+  let lockInst = null;
+  let wsInst = null;
+
+  function resolveInstance(id, opts) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isLock = id === 'lock-bg';
+    const inst = isLock ? lockInst : wsInst;
+    const curCanvas = isLock ? lockCanvas : wsCanvas;
+    if (inst && curCanvas === el) return; // 已绑定同一 canvas，复用
+    if (inst) inst.stop();                // canvas 已重建，停掉旧实例
+    const next = createParticles(el, opts);
+    if (isLock) { lockCanvas = el; lockInst = next; }
+    else { wsCanvas = el; wsInst = next; }
+  }
+
+  function ensureInstances() {
+    resolveInstance('lock-bg', null);
+    resolveInstance('workspace-bg', WS_OPTS);
+  }
 
   // 按锁屏可见性同步两个实例的启停
   function syncAll() {
+    ensureInstances();
     if (!lockInst && !wsInst) return;
     const lockVisible = isLockVisible();
     if (lockInst) lockVisible ? lockInst.start() : lockInst.stop();
@@ -224,10 +251,12 @@
   // start = 锁屏粒子启动（工作区停止）；stop = 锁屏停止（工作区启动）
   window.LockParticles = {
     start: function () {
+      ensureInstances();
       if (lockInst) lockInst.start();
       if (wsInst) wsInst.stop();
     },
     stop: function () {
+      ensureInstances();
       if (lockInst) lockInst.stop();
       if (wsInst) { wsInst.resize(); wsInst.start(); }
     }

@@ -407,6 +407,8 @@ export function useVault() {
       vaultState.lockError = ''
       const payload = JSON.parse(await file.text())
       await window.FileSync.restorePayload(payload)
+      // R5 修复：恢复成功即置为已初始化，界面从「创建模式」切换为「输入主密码解锁」
+      vaultState.initialized = true
       // R4 修复：恢复成功后不再调用 afterUnlock（仍处于锁屏态），引导用户输入主密码解锁
       window.Utils.showToast('已恢复备份数据，请输入主密码解锁', 'info')
     } catch (e) {
@@ -428,6 +430,8 @@ export function useVault() {
         vaultState.lockError = '目录中未找到 LockPass-vault.json，未执行恢复'
         return
       }
+      // R5 修复：恢复成功即置为已初始化，界面从「创建模式」切换为「输入主密码解锁」
+      vaultState.initialized = true
       // R4 修复：恢复成功后不再调用 afterUnlock（仍处于锁屏态），引导用户输入主密码解锁
       window.Utils.showToast('已恢复备份数据，请输入主密码解锁', 'info')
     } catch (e) {

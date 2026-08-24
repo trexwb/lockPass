@@ -111,6 +111,12 @@ function clearDraft() {
   try { sessionStorage.removeItem(draftKey()) } catch (e) {}
 }
 
+// 标签 chip 图标：复用旧版 getCategoryIcon
+function tagIconSvg(name) {
+  const def = vaultState.tagDefs[name] || {}
+  return window.Utils.getCategoryIcon(def.icon || 'other', def.color || '#8b949e')
+}
+
 function toggleTag(name) {
   const i = selectedTags.value.indexOf(name)
   if (i >= 0) selectedTags.value.splice(i, 1)

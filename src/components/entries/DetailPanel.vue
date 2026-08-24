@@ -34,6 +34,12 @@ function tagStyle(name) {
     : {}
 }
 
+// 标签 chip 图标：复用旧版 renderTagChip 的 getCategoryIcon
+function tagIconSvg(name) {
+  const def = vaultState.tagDefs[name] || {}
+  return window.Utils.getCategoryIcon(def.icon || 'other', def.color || '#8b949e')
+}
+
 function formatDate(iso) {
   if (!iso) return ''
   try {

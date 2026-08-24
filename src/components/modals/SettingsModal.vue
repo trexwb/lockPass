@@ -90,6 +90,8 @@ async function bindDataDirectory() {
 // 绑定目录时若 IndexedDB 已从目录重建：回到锁屏等待解锁
 function lockVaultAndNotice() {
   lockVault()
+  // R5 修复：绑定目录恢复数据后置为已初始化，锁屏切换为「输入主密码解锁」
+  vaultState.initialized = true
   closeModal()
   window.Utils.showToast('已从本地文件恢复数据，输入主密码解锁', 'success')
 }

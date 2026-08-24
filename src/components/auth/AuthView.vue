@@ -1,6 +1,6 @@
 <script setup>
 /* LockPass — 认证视图（创建 / 解锁 / 锁定屏） */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 
 const { handleUnlock, openRestoreFilePicker, handleRestoreFileSelect, bindRestoreFromDirectory } = useVault()
@@ -50,6 +50,17 @@ async function onSubmit() {
   }
   await handleUnlock(password.value)
 }
+
+// R5 修复：恢复/绑定成功后 initialized 翻转为 true，界面从创建模式切到解锁模式，
+// 清空密码输入框与错误提示，避免旧输入残留
+watch(
+  () => vaultState.initialized,
+  () => {
+    password.value = ''
+    confirmPassword.value = ''
+    vaultState.lockError = ''
+  },
+)
 
 onMounted(() => {
   if (window.LockParticles) window.LockParticles.start()
