@@ -182,7 +182,7 @@ LockPass/
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 ├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
 ├── dist/                  # 构建产物（由 scripts/copy-frontend.mjs 从 src/ 生成，不手动修改）
-├── SPEC.md                # 产品规格文档
+├── docs/                  # 文档中心（spec/tauri/迁移设计，见 docs/README.md）
 └── README.md              # 使用说明（本文件）
 ```
 

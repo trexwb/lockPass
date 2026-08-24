@@ -96,11 +96,15 @@ async function generate() {
 
     qrText.value = text
     await nextTick()
-    await _loadVendor('/assets/vendor/qrcode.min.js', () => typeof QRCode === 'function')
+    await _loadVendor(import.meta.env.BASE_URL + 'assets/vendor/qrcode.min.js', () => typeof QRCode === 'function')
+    // 先结束 loading，使 v-else-if="qrText" 分支渲染出 qrContainer，
+    // 再等待 DOM 就绪后生成图案（否则 qrContainer 为 null，静默退出导致空白）
+    loading.value = false
     await nextTick()
-    if (!qrContainer.value) return
-    qrContainer.value.innerHTML = ''
-    new QRCode(qrContainer.value, {
+    const container = qrContainer.value
+    if (!container) return
+    container.innerHTML = ''
+    new QRCode(container, {
       text,
       width: 320,
       height: 320,
