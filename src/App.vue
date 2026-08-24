@@ -28,5 +28,7 @@ onMounted(() => {
     <AuthView v-if="!vaultState.isUnlocked" />
     <AppShell v-else />
     <ModalHost />
+    <!-- Toast 挂载点（与原生版 template.js 保持一致，showToast 依赖此容器） -->
+    <div id="toast-container"></div>
   </div>
 </template>

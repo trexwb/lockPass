@@ -312,9 +312,11 @@ export function useVault() {
             return
           }
         }
-        await createVault(password)
+        const { key } = await createVault(password)
         // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
+        vaultState.cryptoKey = key
         saveSession(password)
+        vaultState.isUnlocked = true
         await afterUnlock(password)
         return
       }

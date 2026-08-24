@@ -7,7 +7,7 @@
 /**
  * 应用版本号
  */
-const APP_VERSION = 'v1.0.0';
+const APP_VERSION = 'v1.0.1';
 
 /**
  * 旧版 Session Storage 键名（仅用于向后清理，不再写入）
