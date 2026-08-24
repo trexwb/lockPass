@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.lockpass",
   "build": {
-    "frontendDist": "../dist-tauri",
-    "beforeBuildCommand": "vite build --mode tauri",
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "vite build",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev"
   },
@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost;"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost;"
     }
   },
   "bundle": {

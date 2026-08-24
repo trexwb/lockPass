@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
 // ═══════════════════════════════════════════════════════════════════
-// LockPass Vue 构建 — 双模式产物
+// LockPass Vue 构建 — 统一单文件产物
 // ───────────────────────────────────────────────────────────────────
 // 版本号单一来源：package.json（打包源 src-tauri/tauri.conf.json 由
 // scripts/bump-version.mjs 同步）。构建期注入：
@@ -13,12 +13,13 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 //   __LOCKPASS_VERSION__ → 'X.Y.Z'（core/version.js 运行版本）
 // 源码（core/version.js / public/sw.js）不再写死版本号。
 //
-// 默认（npm run vite:build）：viteSingleFile 单文件内联，
-// JS/CSS 全量内联进 dist/index.html，产物双击（file://）即可运行，
-// 同时适配 GitHub Pages 子路径部署。
-// tauri 模式（npm run vite:build:tauri，vite build --mode tauri）：
-// 关闭单文件内联，产出外部 JS/CSS 资源，配合 tauri.conf.json 的
-// 严格 CSP（script-src 'self'，无 unsafe-inline）在桌面 WebView 运行。
+// 所有构建（vite build）统一走 viteSingleFile 单文件内联，
+// JS/CSS 全量内联进 dist/index.html：
+//   - file:// 双击运行（无外部资源，不触发 CORS）
+//   - GitHub Pages 子路径部署
+//   - Tauri 桌面打包（frontendDist 指向 ../dist；CSP 需放行
+//     script-src 'unsafe-inline'，见 tauri.conf.json）
+// 不再区分 dist / dist-tauri。
 // ═══════════════════════════════════════════════════════════════════
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
@@ -42,30 +43,23 @@ function injectSwVersion(outDir) {
   }
 }
 
-export default defineConfig(({ mode }) => {
-  const singleFile = mode !== 'tauri'
-  // 双产物目录分离：
-  //   dist/        — 单文件内联（file:// 双击可用、GitHub Pages 部署）
-  //   dist-tauri/  — 外部资源（Tauri 桌面打包，配合 CSP script-src 'self'）
-  const outDir = singleFile ? '../dist' : '../dist-tauri'
-  return {
-    root: 'src',
-    base: './',
-    plugins: [vue(), injectSwVersion(outDir.replace('../', '')), ...(singleFile ? [viteSingleFile()] : [])],
-    build: {
-      outDir,
-      emptyOutDir: true,
-      assetsInlineLimit: singleFile ? 100000000 : 4096,
-      chunkSizeWarningLimit: 1500,
-    },
-    server: {
-      port: 1420,
-      strictPort: true,
-    },
-    define: {
-      // 版本号单一来源注入：升级只改 package.json / tauri.conf.json
-      __APP_VERSION__: JSON.stringify(APP_VERSION),
-      __LOCKPASS_VERSION__: JSON.stringify(pkg.version),
-    },
-  }
+export default defineConfig({
+  root: 'src',
+  base: './',
+  plugins: [vue(), injectSwVersion('dist'), viteSingleFile()],
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+    assetsInlineLimit: 100000000,
+    chunkSizeWarningLimit: 1500,
+  },
+  server: {
+    port: 1420,
+    strictPort: true,
+  },
+  define: {
+    // 版本号单一来源注入：升级只改 package.json / tauri.conf.json
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __LOCKPASS_VERSION__: JSON.stringify(pkg.version),
+  },
 })

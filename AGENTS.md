@@ -151,7 +151,7 @@ LockPass/
 │           └── favicon.svg  # 网站图标
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 ├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
-├── dist/                  # 构建产物（由 copy-frontend.mjs 从 src/ 生成，不手动修改）
+├── dist/                  # 构建产物：单文件内联版（vite build，file:// 双击 + Pages 部署 + Tauri 打包共用，不手动修改）
 ├── memory/              # 工作记录（按日期）
 │   └── YYYY-MM-DD.md
 ├── SPEC.md              # 产品规格文档
