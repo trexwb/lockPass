@@ -281,7 +281,7 @@ LockPass/
 │   └── assets/    # favicon、vendor 库
 ├── scripts/       # 构建辅助（copy-frontend、make-dmg、gen-icons）
 ├── src-tauri/     # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
-├── SPEC.md        # 产品规格文档（本文件）
+├── docs/          # 文档中心（本文件 spec.md + tauri.md + 迁移设计）
 └── README.md      # 使用说明
 ```
 
