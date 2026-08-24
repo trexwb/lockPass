@@ -1,10 +1,6 @@
 <!--
- * @Author: trexwb trexwb@qq.com
- * @Date: 2026-08-23 14:22:08
- * @LastEditors: trexwb trexwb@qq.com
- * @LastEditTime: 2026-08-23 14:25:12
- * @FilePath: /WeChatOfficialAccount/Users/wbtrex/AI助手/node/trexwb/lockPass/src/App.vue
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ * LockPass 根组件（Vue 3）
+ * 认证视图 / 主界面切换
 -->
 <script setup>
 /* LockPass — 根组件：认证视图 / 主界面切换 */

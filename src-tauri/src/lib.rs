@@ -88,6 +88,37 @@ fn file_store_delete(app: tauri::AppHandle, relative_path: String) -> Result<(),
     Ok(())
 }
 
+/// 拒绝写入系统敏感目录（S3 修复：导出功能的纵深防御）
+/// 导出路径由系统「保存」对话框产生，正常不会落在系统目录；
+/// 此处额外拦截，防止前端被 XSS 后利用 export_text_file 覆盖系统文件。
+fn is_sensitive_export_path(full: &Path) -> bool {
+    const SENSITIVE: &[&str] = &[
+        // macOS / Linux
+        "/System",
+        "/Library",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/private",
+        "/etc",
+        "/dev",
+        "/proc",
+        "/sys",
+        "/boot",
+        "/lib",
+        "/lib64",
+        "/Applications",
+        // Windows
+        "C:\\Windows",
+        "C:\\Program Files",
+    ];
+    let s = full.to_string_lossy().to_ascii_uppercase();
+    SENSITIVE.iter().any(|p| {
+        let p = p.to_ascii_uppercase();
+        s == p || s.starts_with(&format!("{p}/")) || s.starts_with(&format!("{p}\\"))
+    })
+}
+
 /// 导出文本文件（用户通过系统保存对话框选定路径后写入）
 /// 仅做基本校验：拒绝空路径、限制为文件而非目录；自动创建父目录
 #[tauri::command]
@@ -102,6 +133,10 @@ fn export_text_file(path: String, contents: String) -> Result<(), String> {
     if full.is_dir() {
         return Err("保存路径不能是目录".into());
     }
+    // S3 修复：拒绝写入系统敏感目录
+    if is_sensitive_export_path(&full) {
+        return Err("不允许保存到系统目录".into());
+    }
     if let Some(parent) = full.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
@@ -110,18 +145,10 @@ fn export_text_file(path: String, contents: String) -> Result<(), String> {
     fs::write(&full, contents).map_err(|e| format!("写入文件失败: {e}"))
 }
 
-/// 授予拖放文件的读取权限（R3 修复）
-/// 将拖放路径覆盖写入 DropPaths 白名单（幂等：重复授权直接覆盖）
-#[tauri::command]
-fn file_store_grant_read(state: tauri::State<DropPaths>, paths: Vec<String>) -> Result<(), String> {
-    let granted: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let mut guard = state
-        .0
-        .lock()
-        .map_err(|_| "内部状态锁定失败".to_string())?;
-    *guard = granted;
-    Ok(())
-}
+/// 授予拖放文件的读取权限（S2 修复：已移除）
+/// 原实现允许前端以任意路径调用并覆盖白名单，构成任意文件读取面。
+/// 白名单现仅由 setup 中窗口拖放事件（DragDropEvent::Drop）维护，
+/// 前端只能读取「真实拖放到窗口内」的文件，杜绝任意路径授权。
 
 /// 读取文本文件（拖放导入用）
 /// 限制文件大小 ≤ 10MB，防止超大文件拖垮前端
@@ -266,7 +293,6 @@ pub fn run() {
             file_store_delete,
             file_store_data_dir,
             export_text_file,
-            file_store_grant_read,
             read_text_file_any,
             open_url,
         ])

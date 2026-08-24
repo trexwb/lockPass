@@ -82,10 +82,8 @@
         const payload = event.payload;
         if (!payload || payload.type !== 'drop') return;
         const paths = payload.paths || [];
-        // R3 修复：读取前先将拖放路径写入 Rust 白名单（与 Rust 窗口事件双保险）
-        invoke('file_store_grant_read', { paths: paths }).catch(function (err) {
-          console.warn('[LockPass/Tauri] 拖放路径授权失败:', err);
-        });
+        // S2 修复：不再前端 invoke file_store_grant_read（该命令已移除，
+        // 白名单仅由 Rust 侧窗口拖放事件维护，杜绝任意路径授权面）
         paths.forEach(async function (p) {
           try {
             const text = await invoke('read_text_file_any', { path: p });

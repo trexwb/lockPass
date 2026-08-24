@@ -61,12 +61,25 @@
     function resize() {
       const rect = canvas.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return; // 容器隐藏时不重置
+      const oldW = width;
+      const oldH = height;
       width = rect.width;
       height = rect.height;
       canvas.width = Math.round(width * DPR);
       canvas.height = Math.round(height * DPR);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      seed();
+      // P2 修复：resize 时按比例映射粒子坐标（保留位置与速度），
+      // 不再全量重播种，避免窗口缩放时的视觉闪变；仅首次初始化时播种。
+      if (oldW === 0 || oldH === 0) {
+        seed();
+        return;
+      }
+      const sx = width / oldW;
+      const sy = height / oldH;
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].x *= sx;
+        particles[i].y *= sy;
+      }
     }
 
     function step() {

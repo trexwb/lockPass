@@ -202,6 +202,8 @@ export function useVault() {
     vaultState.initialized = initialized
     vaultState.hasBindingHistory = hasBindingHistory
     vaultState.booted = true
+    // C2 修复：拖放导入桥（window.ImportExport）需要触发加密写盘，挂载到全局
+    window.App.saveVault = saveVault
     setupActivityListeners()
   }
 
@@ -261,10 +263,13 @@ export function useVault() {
 
   /* ── saveVault 防抖合并（R8 修复） ─────────────────
      连续多次 saveVault 调用在 150ms 内合并为一次真实加密写盘，
-     避免写放大；返回的 Promise 在 flush 完成后 resolve，
-     调用方 await saveVault() 的语义保持不变。 */
+     避免写放大。
+     P1 修复：返回的 Promise 与「本次触发的真实写入」绑定——
+     等待对应的 doSave 完成后才 resolve；被后续调用合并掉的
+     旧请求一并延后到合并后的写入完成时 resolve，杜绝提前返回。 */
   let saveTimer = null
   let saveChain = Promise.resolve()
+  let saveResolvers = []
 
   async function doSave() {
     const { iv, data } = await window.CryptoUtils.encrypt(
@@ -280,19 +285,29 @@ export function useVault() {
     await window.FileSync.syncNow()
   }
 
+  function flushSaveResolvers() {
+    const list = saveResolvers
+    saveResolvers = []
+    list.forEach((r) => r())
+  }
+
   function saveVault() {
     if (!vaultState.cryptoKey) return Promise.resolve()
     if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => {
-      saveTimer = null
-      saveChain = saveChain
-        .then(() => doSave())
-        .catch((e) => {
-          console.error('保存失败:', e)
-          window.Utils.showToast('保存失败：' + (e.message || '未知错误'), 'error')
-        })
-    }, 150)
-    return saveChain
+    return new Promise((resolve) => {
+      saveResolvers.push(resolve)
+      saveTimer = setTimeout(() => {
+        saveTimer = null
+        saveChain = saveChain
+          .then(() => doSave())
+          .catch((e) => {
+            console.error('保存失败:', e)
+            window.Utils.showToast('保存失败：' + (e.message || '未知错误'), 'error')
+          })
+        // 本次写入（以及被合并的旧请求）完成后统一 resolve
+        saveChain.then(flushSaveResolvers)
+      }, 150)
+    })
   }
 
   /* ── 解锁处理（创建 / 解锁 / 绑定恢复） ─────── */
@@ -324,7 +339,7 @@ export function useVault() {
           if (proceed) {
             const restored = await window.FileSync.restoreFromBoundDir()
             if (!restored) {
-              vaultState.lockError = '未能在绑定目录中找到同步文件，请确认目录中存在 LockPass-vault.json'
+              vaultState.lockError = '未能从绑定目录恢复：绑定句柄已失效或目录中缺少 LockPass-vault.json，请点击「绑定已有数据目录」重新选择'
               vaultState.lockBusy = false
               return
             }
@@ -456,7 +471,13 @@ export function useVault() {
     vaultState.entries = []
     vaultState.tagDefs = {}
     vaultState.tags = []
+    // S1 修复：与 lockVault 对齐，补清回收站与界面状态，杜绝明文滞留
+    vaultState.deleted = []
     vaultState.selectedEntry = null
+    vaultState.activeModal = null
+    vaultState.editingEntryId = null
+    vaultState.detailPwVisible = false
+    vaultState.lockError = ''
     if (vaultState.lockTimer) {
       clearTimeout(vaultState.lockTimer)
       vaultState.lockTimer = null

@@ -36,10 +36,10 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((resp) => {
           const clone = resp.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return resp;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match(request))
     );
     return;
   }

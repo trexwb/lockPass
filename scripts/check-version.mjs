@@ -24,8 +24,10 @@ const checks = [
   ['package-lock.json packages[""]', lock.packages && lock.packages[''] && lock.packages[''].version, base],
   ['src-tauri/tauri.conf.json', JSON.parse(read('src-tauri/tauri.conf.json')).version, base],
   ['src-tauri/Cargo.toml', /^version = "(\d+\.\d+\.\d+)"$/m.exec(read('src-tauri/Cargo.toml'))?.[1], base],
-  ['src/js/app.js APP_VERSION', /APP_VERSION = 'v(\d+\.\d+\.\d+)'/.exec(read('src/js/app.js'))?.[1], base],
-  ['src/sw.js CACHE_NAME', /lockpass-v(\d+\.\d+\.\d+)/.exec(read('src/sw.js'))?.[1], base],
+  // C3 修复：旧版 src/js/app.js 已删除，改为核心唯一版本源 core/version.js；
+  // src/sw.js 实际位于 src/public/sw.js（Vite public 目录）
+  ['src/core/version.js APP_VERSION', /APP_VERSION = 'v?(\d+\.\d+\.\d+)'/.exec(read('src/core/version.js'))?.[1], base],
+  ['src/public/sw.js CACHE_NAME', /lockpass-v(\d+\.\d+\.\d+)/.exec(read('src/public/sw.js'))?.[1], base],
   ['AGENTS.md 当前版本', /当前版本.*?`v(\d+\.\d+\.\d+)`/.exec(read('AGENTS.md'))?.[1], base],
   ['SPEC.md 头部', /版本：v(\d+\.\d+\.\d+)/.exec(read('SPEC.md'))?.[1], base],
   ['SPEC.md 文档版本', /\*\*文档版本：v(\d+\.\d+\.\d+)\*\*/.exec(read('SPEC.md'))?.[1], base],

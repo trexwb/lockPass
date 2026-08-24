@@ -97,16 +97,28 @@ jobs:
       - name: 安装 npm 依赖
         run: npm ci
 
+      # N3 修复：发布前校验全仓版本号一致性
+      - name: 校验版本号一致性
+        run: npm run version:check
+
       - name: 构建 Tauri 应用（仅 .app）
         run: npm run tauri:build
 
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make-dmg
 
+      # N2 修复：按 runner 实际架构命名 zip，不再硬编码 aarch64
+      - name: 计算构建架构
+        id: arch
+        run: |
+          A="$(uname -m)"
+          [ "$A" = "arm64" ] && A="aarch64"
+          echo "arch=$A" >> "$GITHUB_OUTPUT"
+
       - name: 打包 .app 为 zip（保留权限与符号链接）
         run: |
           cd "src-tauri/target/release/bundle/macos"
-          ditto -c -k --keepParent "LockPass.app" "$RUNNER_TEMP/LockPass-macos-aarch64.zip"
+          ditto -c -k --keepParent "LockPass.app" "$RUNNER_TEMP/LockPass-macos-${{ steps.arch.outputs.arch }}.zip"
 
       - name: 上传产物到 Actions Artifact
         uses: actions/upload-artifact@v4
@@ -114,7 +126,7 @@ jobs:
           name: macos-bundles
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/LockPass-macos-aarch64.zip
+            ${{ runner.temp }}/LockPass-macos-${{ steps.arch.outputs.arch }}.zip
             src-tauri/target/release/bundle/dmg/*.dmg
 
       - name: 上传到 GitHub Release（草稿）
@@ -123,5 +135,5 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            ${{ runner.temp }}/LockPass-macos-aarch64.zip
+            ${{ runner.temp }}/LockPass-macos-${{ steps.arch.outputs.arch }}.zip
             src-tauri/target/release/bundle/dmg/*.dmg

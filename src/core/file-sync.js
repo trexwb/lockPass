@@ -199,6 +199,18 @@ const FileSync = {
     try { return localStorage.getItem(LS_SYNC_BOUND) === '1'; } catch (e) { return false; }
   },
 
+  /**
+   * 从已绑定的数据目录恢复（C1 修复：锁屏「从绑定目录恢复」入口专用）
+   * 若绑定句柄已丢失（如 IndexedDB 被清空、句柄不可序列化），返回 null，
+   * 由调用方引导用户通过「绑定已有数据目录」重新选择。
+   * @returns {Promise<Object|null>} 恢复的负载，或 null（句柄不可用）
+   */
+  async restoreFromBoundDir() {
+    const handle = await this.getDirHandle();
+    if (!handle) return null;
+    return this.restoreFromDirectory(handle);
+  },
+
   /** 删除本地同步文件（销毁保险箱时调用） */
   async deleteLocalFile() {
     try {

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "npm run vite:build && npm run tauri:build && npm run make-dmg",
     "vite:build": "vite build",
+    "vite:build:tauri": "vite build --mode tauri",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

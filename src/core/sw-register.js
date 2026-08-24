@@ -11,7 +11,8 @@
 (function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function () {
+    // A2 修复：相对路径注册，兼容子路径部署（/lockPass/sw.js）
+    navigator.serviceWorker.register('./sw.js').catch(function () {
       // 静默失败：SW 不可用时应用仍可正常离线使用
     });
 

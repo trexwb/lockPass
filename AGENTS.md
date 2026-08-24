@@ -44,7 +44,12 @@
 
 1. **`AGENTS.md`** - 本文件头部的「当前版本」字段
 2. **`SPEC.md`** - 文件头部的版本号
-3. **`src/js/app.js`** - `APP_VERSION` 常量
+3. **`src/core/version.js`** - `APP_VERSION` 常量（Vue 迁移后唯一运行版本源）
+4. **`src/public/sw.js`** - `CACHE_NAME`（SW 缓存版本）
+5. **`vite.config.js`** - `__APP_VERSION__`（构建注入）
+6. **`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`** - 包与产物版本
+
+> 旧版 `src/js/` 已整体移除（A3 清理）；上述位置由 `npm run version:set <x.y.z>` 一键收敛，发布前用 `npm run version:check` 校验一致性。
 
 ### 更新流程
 
