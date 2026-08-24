@@ -4,7 +4,7 @@
    且多处理落后）。设置面板从此处读取，避免再出现版本号不一致。
    ═══════════════════════════════════════════════════════════════════ */
 
-export const APP_VERSION = '1.0.15'
+export const APP_VERSION = '1.0.16'
 
 if (typeof window !== 'undefined') {
   window.LockPassVersion = APP_VERSION
