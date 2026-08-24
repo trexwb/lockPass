@@ -22,6 +22,6 @@ export default defineConfig({
   },
   define: {
     // 版本号收敛单一来源：由 bump-version.mjs 维护此处
-    __APP_VERSION__: JSON.stringify('v1.0.16'),
+    __APP_VERSION__: JSON.stringify('v1.0.0'),
   },
 })

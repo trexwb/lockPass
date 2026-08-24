@@ -20,9 +20,9 @@ const showFields = reactive({})
 
 const TYPE_FIELD_KEYS = {
   website: ['url', 'username', 'password'],
-  server: ['host', 'port', 'username', 'password'],
-  database: ['dbType', 'host', 'port', 'dbName', 'username', 'password'],
-  ai: ['apiKey', 'organization', 'baseUrl'],
+  server: ['url', 'port', 'username', 'password'],
+  database: ['dbType', 'url', 'port', 'dbName', 'username', 'password'],
+  ai: ['password', 'organization', 'url'],
   app: ['appId', 'password', 'privateKey'],
   other: ['username', 'password'],
 }
@@ -31,13 +31,10 @@ const FIELD_LABELS = {
   url: '网址',
   username: '用户名',
   password: '密码',
-  host: '地址',
   port: '端口',
   dbType: '数据库类型',
   dbName: '数据库名',
-  apiKey: 'API Key',
   organization: '组织 / 项目',
-  baseUrl: 'Base URL',
   appId: 'App ID',
   privateKey: '私钥',
 }
@@ -46,13 +43,10 @@ const FIELD_PLACEHOLDERS = {
   url: 'https://example.com',
   username: '用户名 / 邮箱',
   password: '',
-  host: '127.0.0.1',
   port: '3306',
   dbType: 'MySQL / PostgreSQL / ...',
   dbName: '数据库名',
-  apiKey: 'sk-...',
   organization: 'org-...',
-  baseUrl: 'https://api.openai.com',
   appId: '示例：2019031163548107',
   privateKey: '输入私钥（证书级长度）',
 }
@@ -61,9 +55,28 @@ const currentKeys = computed(() => TYPE_FIELD_KEYS[entryType.value] || TYPE_FIEL
 
 const allTagNames = computed(() => Object.keys(vaultState.tagDefs))
 
-const isSecretField = (k) => k === 'password' || k === 'apiKey' || k === 'privateKey'
-// app 类型的 password 字段语义为公钥，标签单独处理
-const fieldLabel = (k) => (k === 'password' && entryType.value === 'app' ? '公钥' : FIELD_LABELS[k] || k)
+const isSecretField = (k) => k === 'password' || k === 'privateKey'
+// 语境化标签：url 在 server/database 显示"连接地址"、ai 显示"API 地址"；
+// password 在 ai 语境语义为 Token / API Key；app 类型的 password 字段语义为公钥
+const fieldLabel = (k) => {
+  if (k === 'url') {
+    if (entryType.value === 'server' || entryType.value === 'database') return '连接地址'
+    if (entryType.value === 'ai') return 'API 地址'
+    return FIELD_LABELS.url || '网址'
+  }
+  if (k === 'password' && entryType.value === 'ai') return 'Token / API Key'
+  if (k === 'password' && entryType.value === 'app') return '公钥'
+  return FIELD_LABELS[k] || k
+}
+const fieldPlaceholder = (k) => {
+  if (k === 'url') {
+    if (entryType.value === 'server' || entryType.value === 'database') return '127.0.0.1 或 host:port'
+    if (entryType.value === 'ai') return 'https://api.openai.com'
+    return FIELD_PLACEHOLDERS.url || 'https://example.com'
+  }
+  if (k === 'password' && entryType.value === 'ai') return 'sk-... / API Key'
+  return FIELD_PLACEHOLDERS[k] || fieldLabel(k)
+}
 const isTextareaField = (k) => k === 'privateKey' || (k === 'password' && entryType.value === 'app')
 
 const DRAFT_NEW_KEY = 'lockpass_draft_new'
@@ -203,13 +216,22 @@ async function onSave() {
   if (ok) clearDraft()
 }
 
+/* ── 旧数据兼容加载 ───────────────────────────────
+   历史条目使用 host / baseUrl / apiKey 等旧字段名（旧版数据模型），
+   编辑器统一为 url / password 模型，读取时回退到旧字段。 */
+function legacyValue(e, k) {
+  if (k === 'url') return e[k] ?? e.host ?? e.baseUrl ?? ''
+  if (k === 'password' && e.entryType === 'ai') return e[k] ?? e.apiKey ?? ''
+  return e[k] ?? ''
+}
+
 onMounted(() => {
   if (isEdit.value) {
     const e = getEntryById(vaultState.editingEntryId)
     if (e) {
       title.value = e.title || ''
       entryType.value = e.entryType || 'website'
-      currentKeys.value.forEach(k => { fields[k] = e[k] ?? '' })
+      currentKeys.value.forEach(k => { fields[k] = legacyValue(e, k) })
       if (e.root) {
         fields.rootUser = e.root.username || ''
         fields.rootPwd = e.root.password || ''
@@ -283,7 +305,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
             v-model="fields[k]"
             class="form-input mono mono-textarea"
             rows="3"
-            :placeholder="FIELD_PLACEHOLDERS[k] || fieldLabel(k)"
+            :placeholder="fieldPlaceholder(k)"
             autocomplete="off"
           ></textarea>
           <input
@@ -292,7 +314,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
             class="form-input"
             :class="{ mono: k === 'appId' }"
             :type="isSecretField(k) ? (showFields[k] ? 'text' : 'password') : 'text'"
-            :placeholder="FIELD_PLACEHOLDERS[k] || fieldLabel(k)"
+            :placeholder="fieldPlaceholder(k)"
             autocomplete="off"
             @input="k === 'password' && updateStrength()"
           />

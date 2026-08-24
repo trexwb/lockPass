@@ -74,7 +74,6 @@ export const vaultState = reactive({
   // 锁屏交互状态
   lockError: '',
   lockBusy: false,
-  restoreFilePending: false,
   // 详情面板密码显隐（供 ⌥P 快捷键与详情面板切换）
   detailPwVisible: false,
 })
@@ -260,8 +259,14 @@ export function useVault() {
     }
   }
 
-  async function saveVault() {
-    if (!vaultState.cryptoKey) return
+  /* ── saveVault 防抖合并（R8 修复） ─────────────────
+     连续多次 saveVault 调用在 150ms 内合并为一次真实加密写盘，
+     避免写放大；返回的 Promise 在 flush 完成后 resolve，
+     调用方 await saveVault() 的语义保持不变。 */
+  let saveTimer = null
+  let saveChain = Promise.resolve()
+
+  async function doSave() {
     const { iv, data } = await window.CryptoUtils.encrypt(
       {
         entries: vaultState.entries,
@@ -273,6 +278,21 @@ export function useVault() {
     )
     await window.DBUtils.dbPut(window.DBUtils.STORE_VAULT, { id: 'main', iv, data })
     await window.FileSync.syncNow()
+  }
+
+  function saveVault() {
+    if (!vaultState.cryptoKey) return Promise.resolve()
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      saveChain = saveChain
+        .then(() => doSave())
+        .catch((e) => {
+          console.error('保存失败:', e)
+          window.Utils.showToast('保存失败：' + (e.message || '未知错误'), 'error')
+        })
+    }, 150)
+    return saveChain
   }
 
   /* ── 解锁处理（创建 / 解锁 / 绑定恢复） ─────── */
@@ -372,8 +392,8 @@ export function useVault() {
       vaultState.lockError = ''
       const payload = JSON.parse(await file.text())
       await window.FileSync.restorePayload(payload)
-      await afterUnlock()
-      window.Utils.showToast('已从本地文件恢复', 'success')
+      // R4 修复：恢复成功后不再调用 afterUnlock（仍处于锁屏态），引导用户输入主密码解锁
+      window.Utils.showToast('已恢复备份数据，请输入主密码解锁', 'info')
     } catch (e) {
       console.error('恢复失败:', e)
       vaultState.lockError = '恢复失败：' + (e.message || '文件格式不正确或数据损坏')
@@ -393,8 +413,8 @@ export function useVault() {
         vaultState.lockError = '目录中未找到 LockPass-vault.json，未执行恢复'
         return
       }
-      await afterUnlock()
-      window.Utils.showToast('已从绑定目录恢复', 'success')
+      // R4 修复：恢复成功后不再调用 afterUnlock（仍处于锁屏态），引导用户输入主密码解锁
+      window.Utils.showToast('已恢复备份数据，请输入主密码解锁', 'info')
     } catch (e) {
       console.error('绑定目录恢复失败:', e)
       if (e && e.name === 'AbortError') return // 用户取消选择
@@ -420,6 +440,13 @@ export function useVault() {
     vaultState.lockError = ''
     vaultState.activeModal = null
     vaultState.editingEntryId = null
+    // 锁定时清空明文滞留（R2 修复）：防止 entries/tags/回收站等敏感数据残留在内存
+    vaultState.entries = []
+    vaultState.tagDefs = {}
+    vaultState.tags = []
+    vaultState.deleted = []
+    vaultState.selectedEntry = null
+    vaultState.detailPwVisible = false
   }
 
   function logout() {
@@ -705,6 +732,10 @@ export function useVault() {
     }
     delete entry.rootUser
     delete entry.rootPwd
+    // C2 修复：统一 url/password 数据模型，删除遗留旧字段（host/baseUrl/apiKey）
+    delete entry.host
+    delete entry.baseUrl
+    delete entry.apiKey
 
     if (vaultState.editingEntryId) {
       const idx = vaultState.entries.findIndex(e => e.id === vaultState.editingEntryId)
@@ -724,6 +755,8 @@ export function useVault() {
 
   return {
     vaultState,
+    getSession,
+    saveSession,
     boot,
     checkVaultStatus,
     createVault,

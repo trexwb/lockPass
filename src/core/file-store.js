@@ -70,8 +70,10 @@
   /* ── 3. 读缓存 + JSON 解析 ────────────────────────────────────── */
   let cache = {};
 
-  async function readJson(file) {
-    if (file in cache) return cache[file];
+  async function readJson(file, force) {
+    // R7 修复：force 为 true 时跳过缓存直接读磁盘并刷新缓存，
+    // 保证外部变更（其他窗口/进程写入）能被读到，避免脏读。
+    if (!force && file in cache) return cache[file];
     let obj = {};
     try {
       if (await FileStore.exists(file)) {
@@ -104,7 +106,8 @@
 
     /** 按 key 读取单条 */
     dbGet: async function (storeName, key) {
-      const obj = await readJson(fileOf(storeName));
+      // R7 修复：强制重读磁盘，保证读到外部变更，避免缓存脏读
+      const obj = await readJson(fileOf(storeName), true);
       return obj[key];
     },
 
@@ -134,7 +137,8 @@
 
     /** 获取全部记录 */
     dbGetAll: async function (storeName) {
-      const obj = await readJson(fileOf(storeName));
+      // R7 修复：强制重读磁盘，保证读到外部变更，避免缓存脏读
+      const obj = await readJson(fileOf(storeName), true);
       return Object.keys(obj).map(function (k) { return obj[k]; });
     },
 

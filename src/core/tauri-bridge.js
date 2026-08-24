@@ -81,7 +81,12 @@
       webview.onDragDropEvent(function (event) {
         const payload = event.payload;
         if (!payload || payload.type !== 'drop') return;
-        (payload.paths || []).forEach(async function (p) {
+        const paths = payload.paths || [];
+        // R3 修复：读取前先将拖放路径写入 Rust 白名单（与 Rust 窗口事件双保险）
+        invoke('file_store_grant_read', { paths: paths }).catch(function (err) {
+          console.warn('[LockPass/Tauri] 拖放路径授权失败:', err);
+        });
+        paths.forEach(async function (p) {
           try {
             const text = await invoke('read_text_file_any', { path: p });
             const name = p.split(/[\\/]/).pop();

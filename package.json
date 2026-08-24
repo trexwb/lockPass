@@ -1,14 +1,13 @@
 {
   "name": "lockpass",
-  "version": "1.0.16",
+  "version": "1.0.0",
   "private": true,
   "description": "LockPass 密码保险箱",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && tauri build",
-    "build:single": "vite build",
-    "build:all": "npm run build",
+    "build": "npm run vite:build && npm run tauri:build && npm run make-dmg",
+    "vite:build": "vite build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
