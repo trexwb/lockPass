@@ -9,7 +9,6 @@ const {
 
 const addDropdownOpen = ref(false)
 const tagSectionOpen = ref((() => { try { return localStorage.getItem('lockpass_tags_collapsed') !== '1' } catch (e) { return true } })())
-const sidebarOpen = ref(false)
 
 const stats = computed(() => computeSidebarStats())
 const topTags = computed(() => getTopTags(8))
@@ -20,7 +19,7 @@ const typeLabels = {
 
 function selectFilter(f) {
   setFilter(f)
-  sidebarOpen.value = false
+  vaultState.sidebarOpen = false
 }
 
 function onDocClick(e) {

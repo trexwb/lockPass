@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
     <HeaderBar />
 
     <div id="main-layout">
-      <div id="sidebar-overlay" @click="vaultState.sidebarOpen = false"></div>
+      <div id="sidebar-overlay" :class="{ active: vaultState.sidebarOpen }" @click="vaultState.sidebarOpen = false"></div>
 
       <SidebarNav />
 

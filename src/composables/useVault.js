@@ -805,11 +805,13 @@ export function useVault() {
   /* ── 模态框 ────────────────────────────────── */
 
   function openEntryModal(entryId = null) {
+    vaultState.sidebarOpen = false
     vaultState.editingEntryId = entryId
     vaultState.activeModal = 'entry'
   }
 
   function openModal(name) {
+    vaultState.sidebarOpen = false
     vaultState.activeModal = name
   }
 

@@ -232,6 +232,17 @@ textarea.notes-textarea {
   border-top: 1px solid var(--border);
   margin: 16px 0;
 }
+.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-tertiary);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+}
+.markdown-body blockquote code {
+  background: var(--bg-secondary);
+}
 .markdown-body strong { font-weight: 600; }
 .markdown-body em { font-style: italic; }
 

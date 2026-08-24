@@ -21,6 +21,15 @@ const masterPassword = ref('')
 const entry = ref(null)
 const decrypting = ref(false)
 
+// 移动端 / PAD 才显示「扫码识别」：capture 直接调起系统后置相机，拍完照走图片解码流程
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Macintosh|Mac OS X|Mac/.test(navigator.userAgent))
+
+function scanCamera() {
+  const input = document.getElementById('qr-camera-input')
+  if (input) input.click()
+}
+
 function setStatus(msg, type = 'muted') {
   statusMsg.value = msg
   statusType.value = type
@@ -311,6 +320,20 @@ onUnmounted(() => {
           <div class="text-warning text-sm mt-2">确认后按「标题 + 用户名」查重，重复条目会询问替换或跳过</div>
         </div>
       </div>
+
+      <!-- 移动端 / PAD：直接调起摄像头扫码 -->
+      <button
+        v-if="isMobile && step === 'upload'"
+        class="btn btn-primary btn-full mt-3 qr-scan-camera"
+        @click="scanCamera()"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
+        </svg>
+        扫码识别
+      </button>
+      <input id="qr-camera-input" type="file" accept="image/*" capture="environment" style="display:none" @change="onFileChange" />
     </div>
 
     <div class="modal-footer">

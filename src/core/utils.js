@@ -323,6 +323,8 @@ function parseMarkdown(text) {
   let inCodeBlock = false;
   let codeBlockLang = '';
   let codeLines = [];
+  let inQuote = false;
+  let quoteLines = [];
 
   // 表格单元格行内格式（粗体/斜体/行内代码/链接）
   const inlineFormat = (content) => {
@@ -377,6 +379,11 @@ function parseMarkdown(text) {
       if (inList) {
         result.push('</ul>');
         inList = false;
+      }
+      if (inQuote) {
+        result.push('<blockquote>' + quoteLines.map(inlineFormat).join('<br/>') + '</blockquote>');
+        inQuote = false;
+        quoteLines = [];
       }
       continue;
     }
@@ -441,8 +448,26 @@ function parseMarkdown(text) {
     // 分割线
     if (line.match(/^(---|\*\*\*)$/)) {
       if (inList) { result.push('</ul>'); inList = false; }
+      if (inQuote) {
+        result.push('<blockquote>' + quoteLines.map(inlineFormat).join('<br/>') + '</blockquote>');
+        inQuote = false;
+        quoteLines = [];
+      }
       result.push('<hr/>');
       continue;
+    }
+    
+    // 引用块（> 开头，行内支持粗体/斜体/行内代码/链接）
+    const quoteMatch = line.match(/^\s*&gt;\s?(.*)$/);
+    if (quoteMatch) {
+      if (inList) { result.push('</ul>'); inList = false; }
+      inQuote = true;
+      quoteLines.push(quoteMatch[1]);
+      continue;
+    } else if (inQuote) {
+      result.push('<blockquote>' + quoteLines.map(inlineFormat).join('<br/>') + '</blockquote>');
+      inQuote = false;
+      quoteLines = [];
     }
     
     // 无序列表项
@@ -487,6 +512,11 @@ function parseMarkdown(text) {
   // 关闭未闭合的列表
   if (inList) {
     result.push('</ul>');
+  }
+
+  // 关闭未闭合的引用块
+  if (inQuote) {
+    result.push('<blockquote>' + quoteLines.map(inlineFormat).join('<br/>') + '</blockquote>');
   }
 
   // 未闭合的代码块兜底输出（防止内容被吞）
