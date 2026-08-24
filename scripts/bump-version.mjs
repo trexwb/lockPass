@@ -67,11 +67,10 @@ patchJson('package-lock.json', (d) => {
 patchJson('src-tauri/tauri.conf.json', (d) => { d.version = V; }, `version -> ${V}（打包产物版本）`);
 
 /* ── 文本类 ─────────────────────────────────────────────────────── */
-patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}`);
-patchText('src/core/version.js', /export const APP_VERSION = '[\d.]+'/, `export const APP_VERSION = '${V}'`, `APP_VERSION -> ${V}`);
-
-patchText('src/public/sw.js', /const CACHE_NAME = 'lockpass-v?[\d.]+'/, `const CACHE_NAME = 'lockpass-${VV}'`, `CACHE_NAME -> lockpass-${VV}`);
-patchText('vite.config.js', /__APP_VERSION__: JSON\.stringify\('v?[\d.]+'\)/, `__APP_VERSION__: JSON.stringify('${VV}')`, `__APP_VERSION__ -> ${VV}`);
+patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}（同步 tauri.conf.json）`);
+// 注：core/version.js / public/sw.js / vite.config.js 为构建期从
+// package.json 注入（vite define + sw 写盘插件），源码无版本号字面量，
+// 此处刻意不再修改这三处。
 patchText('AGENTS.md', /\*\*当前版本\*\*：`v\d+\.\d+\.\d+`/, `**当前版本**：\`${VV}\``, `当前版本 -> ${VV}`);
 patchText('SPEC.md', /版本：v\d+\.\d+\.\d+/, `版本：${VV}`, `头部 -> ${VV}`);
 patchText('SPEC.md', /\*\*文档版本：v\d+\.\d+\.\d+\*\*/, `**文档版本：${VV}**`, `文档版本 -> ${VV}`);
