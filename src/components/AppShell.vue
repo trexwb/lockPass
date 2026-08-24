@@ -1,14 +1,91 @@
 <script setup>
 /* LockPass — 主界面外壳（Header + Sidebar + Content + Detail） */
-import { onMounted, onBeforeUnmount, computed } from 'vue'
+import { onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useVault, vaultState } from '../composables/useVault'
 import HeaderBar from './layout/HeaderBar.vue'
 import SidebarNav from './layout/SidebarNav.vue'
 import DetailPanel from './entries/DetailPanel.vue'
 
-const { getFilteredEntries, emptyRecycleBin, restoreEntry } = useVault()
+const {
+  getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
+  toggleFavorite, copyPassword, softDelete,
+} = useVault()
 
 const filteredEntries = computed(() => getFilteredEntries())
+const isRecycleView = computed(() => vaultState.currentFilter === 'recycle')
+
+/* ── 空状态（对应原版 ui.js renderEntries 的文案分支） ── */
+
+const emptyTitle = computed(() => {
+  if (vaultState.currentFilter === 'recycle') return '回收站为空'
+  if (vaultState.searchQuery && vaultState.searchQuery.trim()) return '没有找到匹配项'
+  if (vaultState.currentFilter === 'favorites') return '暂无收藏'
+  return '还没有密码'
+})
+
+const emptyDesc = computed(() => {
+  if (vaultState.currentFilter === 'recycle') return '删除的密码会暂时保存在这里，可恢复或彻底删除'
+  const q = (vaultState.searchQuery || '').trim()
+  if (q) return `没有找到包含「${q}」的密码`
+  if (vaultState.currentFilter === 'favorites') return '点击密码卡片的星标收藏常用密码'
+  return '点击上方「添加密码」开始构建您的密码库'
+})
+
+// 原版 ui.js：空列表时给 #content-inner 加 empty-active（margin:0 auto 居中）
+watch(
+  () => filteredEntries.value.length,
+  (len) => {
+    const inner = document.getElementById('content-inner')
+    if (inner) inner.classList.toggle('empty-active', len === 0)
+  },
+  { immediate: true }
+)
+
+/* ── 卡片渲染辅助（对应原版 buildEntryCard / getCardTypeIcon / getCardSubtitle） ── */
+
+function cardTypeIcon(type) {
+  return window.Utils && window.Utils.SvgIcons
+    ? window.Utils.SvgIcons.typeIcon(12, type || 'website')
+    : ''
+}
+
+function cardSubtitle(entry) {
+  const type = entry.entryType || 'website'
+  if (type === 'website') return entry.username || entry.url || ''
+  if (type === 'server') return entry.username ? `${entry.username} @ ${entry.url}` : (entry.url || '')
+  if (type === 'database') return entry.username ? `${entry.username} @ ${entry.url}` : (entry.url || '')
+  if (type === 'ai') return entry.url || ''
+  if (type === 'app') return entry.appId || ''
+  if (type === 'other') return entry.username || ''
+  return entry.username || ''
+}
+
+function favIconHtml(entry) {
+  return entry.favorite
+    ? (window.Utils?.SvgIcons?.starFilled(13, 'var(--warning)') || '')
+    : (window.Utils?.SvgIcons?.starOutline(13) || '')
+}
+
+function tagChipHtml(name) {
+  return window.Utils ? window.Utils.renderTagChip(vaultState.tagDefs || {}, name, false) : ''
+}
+
+function formatCardDate(entry) {
+  if (isRecycleView.value) return '已删除'
+  return window.Utils ? window.Utils.formatDate(entry.updatedAt || entry.createdAt) : ''
+}
+
+function esc(value) {
+  return window.Utils ? window.Utils.escHtml(value) : String(value ?? '')
+}
+
+function onCardClick(entry, e) {
+  selectEntry(entry.id, e)
+}
+
+function onActionsClick(e) {
+  e.stopPropagation()
+}
 
 function contentTitle() {
   if (vaultState.currentFilter === 'all') return '全部密码'
@@ -25,13 +102,6 @@ function contentTitle() {
 function filterDesc() {
   if (vaultState.currentFilter === 'recycle') return '已删除的密码将在这里保留 30 天'
   return '点击左侧筛选或搜索查找密码'
-}
-
-// 卡片类型图标：复用旧版 SvgIcons.typeIcon（恢复旧版「类型图标 + 颜色」展示）
-function cardTypeIcon(type) {
-  return window.Utils && window.Utils.SvgIcons
-    ? window.Utils.SvgIcons.typeIcon(16, type || 'website')
-    : ''
 }
 
 onMounted(() => {
@@ -85,50 +155,65 @@ onBeforeUnmount(() => {
               v-for="entry in filteredEntries"
               :key="entry.id"
               class="entry-card"
-              :class="{ active: vaultState.selectedEntry === entry.id }"
-              @click="vaultState.selectedEntry = entry.id"
+              :class="[
+                !isRecycleView && entry.favorite ? 'fav' : '',
+                isRecycleView ? 'recycled' : '',
+                vaultState.selectedEntry === entry.id ? 'selected' : '',
+              ]"
+              @click="onCardClick(entry, $event)"
             >
-              <div class="entry-card-icon type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" v-html="cardTypeIcon(entry.entryType)"></div>
-              <div class="entry-card-info">
-                <div class="entry-card-title">{{ entry.title }}</div>
-                <div class="entry-card-sub">{{ entry.username || entry.url || '' }}</div>
+              <div class="entry-icon">
+                <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(entry.entryType || 'website')" v-html="cardTypeIcon(entry.entryType)"></span>
               </div>
-              <div class="entry-card-meta">
-                <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" class="entry-card-tag">{{ tag }}</span>
-                <button
-                  v-if="vaultState.currentFilter === 'recycle'"
-                  class="btn btn-ghost btn-xs card-restore-btn"
-                  title="恢复此密码"
-                  @click.stop="restoreEntry(entry.id)"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-                    <polyline points="3 3 3 8 8 8" />
-                  </svg>
-                  恢复
-                </button>
+              <div class="entry-info">
+                <div class="entry-title">{{ entry.title }}</div>
+                <div class="entry-meta">
+                  <span v-if="cardSubtitle(entry)" class="entry-subtitle">{{ cardSubtitle(entry) }}</span>
+                  <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" v-html="tagChipHtml(tag)"></span>
+                  <span v-if="(entry.tags || []).length > 3" class="entry-tag-more">+{{ entry.tags.length - 3 }}</span>
+                  <span class="entry-date">{{ formatCardDate(entry) }}</span>
+                </div>
+              </div>
+              <div class="entry-actions" @click="onActionsClick">
+                <template v-if="isRecycleView">
+                  <button class="restore-btn" title="恢复" @click="restoreEntry(entry.id)">
+                    <span v-html="window.Utils?.SvgIcons?.restore(13)"></span>
+                  </button>
+                  <button class="copy-btn" title="复制密码" @click="copyPassword(entry.id)">
+                    <span v-html="window.Utils?.SvgIcons?.copy(13)"></span>
+                  </button>
+                </template>
+                <template v-else>
+                  <button class="star-btn" :class="{ active: entry.favorite }" title="收藏" @click="toggleFavorite(entry.id)">
+                    <span v-html="favIconHtml(entry)"></span>
+                  </button>
+                  <button class="copy-btn" title="复制" @click="copyPassword(entry.id)">
+                    <span v-html="window.Utils?.SvgIcons?.copy(13)"></span>
+                  </button>
+                  <button class="delete-btn" title="删除" @click="softDelete(entry.id)">
+                    <span v-html="window.Utils?.SvgIcons?.trash(13)"></span>
+                  </button>
+                </template>
               </div>
             </div>
+          </div>
 
-            <div v-if="!filteredEntries.length" class="empty-state">
-              <div class="empty-illustration">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="11" width="18" height="11" rx="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-              </div>
-              <h3 id="empty-title">{{ vaultState.currentFilter === 'recycle' ? '回收站是空的' : '还没有密码' }}</h3>
-              <p id="empty-desc">
-                {{ vaultState.currentFilter === 'recycle' ? '删除的密码会出现在这里' : '点击上方「添加密码」开始构建您的密码库' }}
-              </p>
-              <button v-if="vaultState.currentFilter !== 'recycle'" class="btn btn-primary btn-empty" @click="vaultState.activeModal = 'entry'">
-                添加第一个密码
-              </button>
-              <div v-if="vaultState.currentFilter !== 'recycle'" class="empty-features">
-                <span>离线加密存储</span>
-                <span>二维码同步</span>
-                <span>本地文件备份</span>
-              </div>
+          <div v-if="!filteredEntries.length" id="empty-state" class="empty-state">
+            <div class="empty-illustration">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+            <h3 id="empty-title">{{ emptyTitle }}</h3>
+            <p id="empty-desc">{{ emptyDesc }}</p>
+            <button v-if="vaultState.currentFilter !== 'recycle'" class="btn btn-primary btn-empty" @click="vaultState.activeModal = 'entry'">
+              添加第一个密码
+            </button>
+            <div class="empty-features">
+              <span>离线加密存储</span>
+              <span>二维码同步</span>
+              <span>本地文件备份</span>
             </div>
           </div>
         </div>

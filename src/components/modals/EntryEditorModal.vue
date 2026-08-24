@@ -27,57 +27,18 @@ const TYPE_FIELD_KEYS = {
   other: ['username', 'password'],
 }
 
-const FIELD_LABELS = {
-  url: '网址',
-  username: '用户名',
-  password: '密码',
-  port: '端口',
-  dbType: '数据库类型',
-  dbName: '数据库名',
-  organization: '组织 / 项目',
-  appId: 'App ID',
-  privateKey: '私钥',
-}
-
-const FIELD_PLACEHOLDERS = {
-  url: 'https://example.com',
-  username: '用户名 / 邮箱',
-  password: '',
-  port: '3306',
-  dbType: 'MySQL / PostgreSQL / ...',
-  dbName: '数据库名',
-  organization: 'org-...',
-  appId: '示例：2019031163548107',
-  privateKey: '输入私钥（证书级长度）',
-}
-
 const currentKeys = computed(() => TYPE_FIELD_KEYS[entryType.value] || TYPE_FIELD_KEYS.other)
 
 const allTagNames = computed(() => Object.keys(vaultState.tagDefs))
 
+// 推荐标签 = 注册表中尚未选中的标签（原版 tag-suggestions 逻辑）
+const availableTags = computed(() => allTagNames.value.filter(t => !selectedTags.value.includes(t)))
+
+// 眼睛图标路径（与原版 SvgIcons.eyeOpenPaths / eyeClosedPaths 一致）
+const windowEyeOpen = window.Utils?.SvgIcons?.eyeOpenPaths || ''
+const windowEyeClosed = window.Utils?.SvgIcons?.eyeClosedPaths || ''
+
 const isSecretField = (k) => k === 'password' || k === 'privateKey'
-// 语境化标签：url 在 server/database 显示"连接地址"、ai 显示"API 地址"；
-// password 在 ai 语境语义为 Token / API Key；app 类型的 password 字段语义为公钥
-const fieldLabel = (k) => {
-  if (k === 'url') {
-    if (entryType.value === 'server' || entryType.value === 'database') return '连接地址'
-    if (entryType.value === 'ai') return 'API 地址'
-    return FIELD_LABELS.url || '网址'
-  }
-  if (k === 'password' && entryType.value === 'ai') return 'Token / API Key'
-  if (k === 'password' && entryType.value === 'app') return '公钥'
-  return FIELD_LABELS[k] || k
-}
-const fieldPlaceholder = (k) => {
-  if (k === 'url') {
-    if (entryType.value === 'server' || entryType.value === 'database') return '127.0.0.1 或 host:port'
-    if (entryType.value === 'ai') return 'https://api.openai.com'
-    return FIELD_PLACEHOLDERS.url || 'https://example.com'
-  }
-  if (k === 'password' && entryType.value === 'ai') return 'sk-... / API Key'
-  return FIELD_PLACEHOLDERS[k] || fieldLabel(k)
-}
-const isTextareaField = (k) => k === 'privateKey' || (k === 'password' && entryType.value === 'app')
 
 const DRAFT_NEW_KEY = 'lockpass_draft_new'
 
@@ -117,10 +78,19 @@ function tagIconSvg(name) {
   return window.Utils.getCategoryIcon(def.icon || 'other', def.color || '#8b949e')
 }
 
+// 类型 tab 图标：复用旧版 SvgIcons.typeIcon
+function typeIconSvg(id) {
+  return window.Utils.SvgIcons.typeIcon(14, id)
+}
+
 function toggleTag(name) {
   const i = selectedTags.value.indexOf(name)
   if (i >= 0) selectedTags.value.splice(i, 1)
   else selectedTags.value.push(name)
+}
+
+function addNewTagByName(name) {
+  if (!selectedTags.value.includes(name)) selectedTags.value.push(name)
 }
 
 function addNewTag() {
@@ -136,6 +106,21 @@ function addNewTag() {
 
 function toggleSecret(k) {
   showFields[k] = !showFields[k]
+}
+
+// 复制文本到剪贴板（原版 copyFieldById 等价）
+async function copyText(text) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (e) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+  }
 }
 
 /* ── 密码生成面板 ─────────────────────────────── */
@@ -188,6 +173,15 @@ function generatePw() {
   fields.password = pw
   showFields.password = true
   updateStrength()
+}
+
+// 局部生成：直接填入指定字段（原版 generatePasswordFor 等价，root 密码用）
+function generateFor(k) {
+  const pw = window.PasswordGenerator.generatePassword({
+    length: 16, uppercase: true, lowercase: true, numbers: true, symbols: true, noAmbiguous: false,
+  })
+  fields[k] = pw
+  showFields[k] = true
 }
 
 /* ── 密码强度条 ───────────────────────────────── */
@@ -282,179 +276,438 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
     </div>
 
     <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">类型</label>
-        <div class="type-selector">
-          <button
-            v-for="t in ENTRY_TYPES"
-            :key="t.id"
-            class="type-chip"
-            :class="{ active: entryType === t.id }"
-            type="button"
-            @click="entryType = t.id"
-          >
-            {{ t.label }}
-          </button>
-        </div>
+      <!-- 类型切换（与原版 type-tabs 一致） -->
+      <div class="type-tabs">
+        <button
+          v-for="t in ENTRY_TYPES"
+          :key="t.id"
+          class="type-tab"
+          :class="{ active: entryType === t.id }"
+          type="button"
+          @click="entryType = t.id"
+        >
+          <span class="type-tab-icon" v-html="typeIconSvg(t.id)"></span>
+          <span>{{ t.label }}</span>
+        </button>
       </div>
 
+      <!-- 标题 -->
       <div class="form-group">
         <label class="form-label">标题 <span class="text-danger">*</span></label>
-        <input v-model="title" class="form-input" type="text" placeholder="例如：GitHub 账号" autocomplete="off" />
+        <input v-model="title" class="form-input" type="text" placeholder="例如：Gmail / 阿里云 ECS" maxlength="100" autocomplete="off" />
       </div>
 
-      <div class="form-group">
-        <label class="form-label">字段</label>
-        <div v-for="k in currentKeys" :key="k" class="form-field-row">
-          <textarea
-            v-if="isTextareaField(k)"
-            v-model="fields[k]"
-            class="form-input mono mono-textarea"
-            rows="3"
-            :placeholder="fieldPlaceholder(k)"
-            autocomplete="off"
-          ></textarea>
-          <input
-            v-else
-            v-model="fields[k]"
-            class="form-input"
-            :class="{ mono: k === 'appId' }"
-            :type="isSecretField(k) ? (showFields[k] ? 'text' : 'password') : 'text'"
-            :placeholder="fieldPlaceholder(k)"
-            autocomplete="off"
-            @input="k === 'password' && updateStrength()"
-          />
-          <button
-            v-if="isSecretField(k)"
-            class="btn btn-ghost btn-sm"
-            type="button"
-            title="显示/隐藏"
-            @click="toggleSecret(k)"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path v-if="!showFields[k]" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle v-if="!showFields[k]" cx="12" cy="12" r="3" />
-              <path v-if="showFields[k]" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-              <path v-if="showFields[k]" d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-              <line v-if="showFields[k]" x1="1" y1="1" x2="23" y2="23" />
-            </svg>
-          </button>
-          <span class="form-field-label">{{ fieldLabel(k) }}</span>
-          <button
-            v-if="k === 'password'"
-            class="btn btn-ghost btn-sm"
-            type="button"
-            title="生成随机密码"
-            @click="toggleGenPanel()"
-          >
-            生成
-          </button>
+      <!-- ══ website ══ -->
+      <template v-if="entryType === 'website'">
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <input v-model="fields.username" class="form-input" type="text" placeholder="username@example.com" autocomplete="off" />
         </div>
-
-        <!-- 密码强度条 -->
-        <div v-if="fields.password && !isTextareaField('password')" class="pw-strength mt-1">
-          <div class="pw-strength-bar-bg">
-            <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
+        <div class="form-group">
+          <label class="form-label">密码 <span class="text-danger">*</span></label>
+          <div class="input-affix">
+            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入或生成密码" autocomplete="off" @input="updateStrength()" />
+            <div class="input-affix-btns">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
+              </button>
+              <button class="pw-gen-btn" type="button" title="生成密码" @click="toggleGenPanel()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <div class="pw-strength-text text-muted">{{ strength.label }}</div>
-        </div>
-
-        <!-- 生成面板 -->
-        <div v-if="genPanelOpen" class="pw-gen-panel">
-          <div class="pw-gen-preview">
-            <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
-            <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
-            </button>
+          <div v-if="fields.password" class="pw-strength">
+            <div class="pw-strength-bar-bg">
+              <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
+            </div>
+            <div class="pw-strength-text">{{ strength.label }}</div>
           </div>
-          <div class="pw-gen-controls">
-            <div class="pw-gen-row">
-              <label>长度</label>
-              <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
-              <span>{{ genOptions.length }}</span>
+          <div v-if="genPanelOpen" class="pw-gen-panel">
+            <div class="pw-gen-preview">
+              <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
+              <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+              </button>
             </div>
-            <div class="pw-gen-charsets">
-              <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
-              <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
-              <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
-              <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
-            </div>
-            <div class="pw-gen-row gap-8 mt-1">
-              <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
-            </div>
-            <div>
-              <div class="pw-strength-bar-bg">
-                <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
+            <div class="pw-gen-controls">
+              <div class="pw-gen-row">
+                <label>长度</label>
+                <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
+                <span>{{ genOptions.length }}</span>
               </div>
-              <div class="pw-strength-text text-muted">{{ genStrength.label }}</div>
+              <div class="pw-gen-charsets">
+                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
+                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
+                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
+                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+              </div>
+              <div class="pw-gen-row gap-8 mt-1">
+                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+              </div>
+              <div>
+                <div class="pw-strength-bar-bg">
+                  <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
+                </div>
+                <div class="pw-strength-text">{{ genStrength.label }}</div>
+              </div>
+              <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+                使用此密码
+              </button>
             </div>
-            <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-              使用此密码
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">网址</label>
+          <input v-model="fields.url" class="form-input" type="url" placeholder="https://example.com" autocomplete="off" />
+        </div>
+      </template>
+
+      <!-- ══ server ══ -->
+      <template v-else-if="entryType === 'server'">
+        <div class="form-group">
+          <label class="form-label">连接地址</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input v-model="fields.url" class="form-input mono" type="text" placeholder="示例：ssh -p 22 user@1.2.3.4" autocomplete="off" />
+            </div>
+            <input v-model="fields.port" class="form-input mono input-port" type="number" placeholder="端口" min="1" max="65535" autocomplete="off" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">登录账号</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input v-model="fields.username" class="form-input" type="text" placeholder="账号" autocomplete="off" />
+            </div>
+            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.username)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
         </div>
-
-        <template v-if="entryType === 'server'">
-          <div class="form-field-row">
-            <input v-model="fields.rootUser" class="form-input" type="text" placeholder="root 用户名（可选）" autocomplete="off" />
-            <span class="form-field-label">Root 用户</span>
-          </div>
-          <div class="form-field-row">
-            <input v-model="fields.rootPwd" class="form-input" :type="showFields.rootPwd ? 'text' : 'password'" placeholder="root 密码（可选）" autocomplete="off" />
-            <button class="btn btn-ghost btn-sm" type="button" title="显示/隐藏" @click="toggleSecret('rootPwd')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path v-if="!showFields.rootPwd" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle v-if="!showFields.rootPwd" cx="12" cy="12" r="3" />
-                <path v-if="showFields.rootPwd" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                <path v-if="showFields.rootPwd" d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                <line v-if="showFields.rootPwd" x1="1" y1="1" x2="23" y2="23" />
-              </svg>
+        <div class="form-group">
+          <label class="form-label">登录密码</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <div class="input-affix">
+                <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入或生成密码" autocomplete="off" @input="updateStrength()" />
+                <div class="input-affix-btns">
+                  <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
+                  </button>
+                  <button class="pw-gen-btn" type="button" title="生成密码" @click="toggleGenPanel()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
-            <span class="form-field-label">Root 密码</span>
           </div>
-        </template>
-      </div>
+          <div v-if="fields.password" class="pw-strength">
+            <div class="pw-strength-bar-bg">
+              <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
+            </div>
+            <div class="pw-strength-text">{{ strength.label }}</div>
+          </div>
+          <div v-if="genPanelOpen" class="pw-gen-panel">
+            <div class="pw-gen-preview">
+              <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
+              <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+              </button>
+            </div>
+            <div class="pw-gen-controls">
+              <div class="pw-gen-row">
+                <label>长度</label>
+                <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
+                <span>{{ genOptions.length }}</span>
+              </div>
+              <div class="pw-gen-charsets">
+                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
+                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
+                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
+                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+              </div>
+              <div class="pw-gen-row gap-8 mt-1">
+                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+              </div>
+              <div>
+                <div class="pw-strength-bar-bg">
+                  <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
+                </div>
+                <div class="pw-strength-text">{{ genStrength.label }}</div>
+              </div>
+              <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+                使用此密码
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">root 账号</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input v-model="fields.rootUser" class="form-input" type="text" placeholder="root" autocomplete="off" />
+            </div>
+            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.rootUser)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">root 密码</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <div class="input-affix">
+                <input v-model="fields.rootPwd" class="form-input mono" :type="showFields.rootPwd ? 'text' : 'password'" placeholder="root 密码" autocomplete="off" />
+                <div class="input-affix-btns">
+                  <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('rootPwd')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.rootPwd ? windowEyeClosed : windowEyeOpen"></svg>
+                  </button>
+                  <button class="pw-gen-btn" type="button" title="生成密码" @click="generateFor('rootPwd')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.rootPwd)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            </button>
+          </div>
+        </div>
+      </template>
 
+      <!-- ══ database ══ -->
+      <template v-else-if="entryType === 'database'">
+        <div class="form-group">
+          <label class="form-label">数据库地址</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input v-model="fields.url" class="form-input mono" type="text" placeholder="示例：localhost 或 10.0.0.100" autocomplete="off" />
+            </div>
+            <input v-model="fields.port" class="form-input mono input-port" type="number" placeholder="端口" min="1" max="65535" autocomplete="off" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input v-model="fields.username" class="form-input" type="text" placeholder="数据库用户名" autocomplete="off" />
+            </div>
+            <button class="pw-gen-btn" type="button" title="复制用户名" @click="copyText(fields.username)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <div class="input-affix">
+                <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="数据库密码" autocomplete="off" @input="updateStrength()" />
+                <div class="input-affix-btns">
+                  <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
+                  </button>
+                  <button class="pw-gen-btn" type="button" title="生成密码" @click="toggleGenPanel()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            </button>
+          </div>
+          <div v-if="fields.password" class="pw-strength">
+            <div class="pw-strength-bar-bg">
+              <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
+            </div>
+            <div class="pw-strength-text">{{ strength.label }}</div>
+          </div>
+          <div v-if="genPanelOpen" class="pw-gen-panel">
+            <div class="pw-gen-preview">
+              <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
+              <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+              </button>
+            </div>
+            <div class="pw-gen-controls">
+              <div class="pw-gen-row">
+                <label>长度</label>
+                <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
+                <span>{{ genOptions.length }}</span>
+              </div>
+              <div class="pw-gen-charsets">
+                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
+                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
+                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
+                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+              </div>
+              <div class="pw-gen-row gap-8 mt-1">
+                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+              </div>
+              <div>
+                <div class="pw-strength-bar-bg">
+                  <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
+                </div>
+                <div class="pw-strength-text">{{ genStrength.label }}</div>
+              </div>
+              <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+                使用此密码
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- ══ ai ══ -->
+      <template v-else-if="entryType === 'ai'">
+        <div class="form-group">
+          <label class="form-label">服务名称</label>
+          <input v-model="fields.username" class="form-input" type="text" placeholder="示例：DeepSeek / OpenAI / 通义千问 / Kimi" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">API 地址</label>
+          <input v-model="fields.url" class="form-input" type="url" placeholder="https://api.deepseek.com / https://api.openai.com" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token <span class="text-danger">*</span></label>
+          <div class="input-affix">
+            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入 Token" autocomplete="off" />
+            <div class="input-affix-btns">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- ══ app ══ -->
+      <template v-else-if="entryType === 'app'">
+        <div class="form-group">
+          <label class="form-label">App ID</label>
+          <input v-model="fields.appId" class="form-input mono" type="text" placeholder="示例：2019031163548107" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">公钥</label>
+          <div class="input-affix mono-textarea-wrap">
+            <textarea v-model="fields.password" class="form-input mono mono-textarea" rows="3" placeholder="输入公钥" autocomplete="off"></textarea>
+            <div class="input-affix-btns">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
+              </button>
+              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.password)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">私钥</label>
+          <div class="input-affix mono-textarea-wrap">
+            <textarea v-model="fields.privateKey" class="form-input mono mono-textarea" rows="3" placeholder="输入私钥（证书级长度）" autocomplete="off"></textarea>
+            <div class="input-affix-btns">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('privateKey')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.privateKey ? windowEyeClosed : windowEyeOpen"></svg>
+              </button>
+              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.privateKey)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- ══ other ══ -->
+      <template v-else>
+        <div class="form-group">
+          <label class="form-label">凭证名称</label>
+          <input v-model="fields.username" class="form-input" type="text" placeholder="示例：API 密钥 / 许可证 / 证书 / 授权码" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">凭证值 <span class="text-danger">*</span></label>
+          <div class="input-affix">
+            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入凭证值" autocomplete="off" />
+            <div class="input-affix-btns">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 标签 -->
       <div class="form-group">
         <label class="form-label">标签</label>
-        <div class="tag-picker">
+        <div class="tag-selector" id="tag-selector">
           <span
-            v-for="name in allTagNames"
-            :key="name"
+            v-for="name in selectedTags"
+            :key="'s-' + name"
             class="tag-chip"
-            :class="{ active: selectedTags.includes(name) }"
             @click="toggleTag(name)"
           >
+            <span v-html="tagIconSvg(name)"></span>
             {{ name }}
+            <span class="tag-chip-x">×</span>
           </span>
-          <span class="tag-picker-add">
+          <div class="tag-input-wrapper">
             <input
               v-model="newTag"
-              class="form-input form-input-sm"
               type="text"
-              placeholder="新标签"
+              id="e-tag-input"
+              placeholder="输入标签后按 Enter"
               @keydown.enter.prevent="addNewTag()"
-              @blur="addNewTag()"
             />
-          </span>
+          </div>
+          <div v-if="availableTags.length" class="tag-suggestions">
+            <button
+              v-for="name in availableTags"
+              :key="'a-' + name"
+              type="button"
+              class="tag-option"
+              @click="addNewTagByName(name)"
+            >
+              <span v-html="tagIconSvg(name)"></span>
+              <span>{{ name }}</span>
+            </button>
+          </div>
         </div>
+        <div class="tag-hint">点击推荐标签或输入后按 Enter 添加；可在「设置 → 标签管理」中增删改颜色与图标</div>
       </div>
 
+      <!-- 备注 -->
       <div class="form-group">
-        <label class="form-label">备注</label>
+        <label class="form-label">备注 <span class="text-muted text-sm">(支持 Markdown)</span></label>
         <textarea
           v-model="notes"
-          class="form-input form-textarea"
+          class="form-input notes-textarea"
           rows="3"
-          placeholder="支持 Markdown 语法"
+          placeholder="支持 Markdown 格式..."
         ></textarea>
       </div>
     </div>
 
     <div class="modal-footer">
       <button class="btn btn-secondary" @click="closeModal()">取消</button>
-      <button id="entry-editor-save" class="btn btn-primary" @click="onSave()">保存</button>
+      <button id="entry-editor-save" class="btn btn-primary" @click="onSave()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+        保存
+      </button>
     </div>
   </ModalBase>
 </template>

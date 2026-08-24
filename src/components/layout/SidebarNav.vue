@@ -119,7 +119,7 @@ function tagIconSvg(name) {
               <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
             </svg>
             回收站
-            <span v-if="stats.recycle" class="nav-badge badge-danger">{{ stats.recycle }}</span>
+            <span v-if="stats.recycle" class="count">{{ stats.recycle }}</span>
           </div>
         </nav>
       </div>
@@ -156,13 +156,9 @@ function tagIconSvg(name) {
             :class="{ active: vaultState.currentFilter === tag.name }"
             @click="selectFilter(tag.name)"
           >
-            <span
-              class="tag-dot"
-              :style="{ background: vaultState.tagDefs[tag.name]?.color || '#8b949e' }"
-            ></span>
-            <span class="tag-nav-icon" v-html="tagIconSvg(tag.name)"></span>
+            <span v-html="tagIconSvg(tag.name)"></span>
             {{ tag.name }}
-            <span class="nav-badge">{{ tag.count }}</span>
+            <span class="count">{{ tag.count }}</span>
           </div>
         </nav>
       </div>
