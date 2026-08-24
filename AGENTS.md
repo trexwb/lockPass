@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.0.13`
+**当前版本**：`v1.0.0`
 
 ---
 
@@ -36,23 +36,37 @@
 
 | 修改类型 | 版本号变化 | 示例 |
 |----------|-----------|------|
-| Bug 修复、样式调整、小改进 | PATCH +1 | `v1.0.0` → `v1.0.0` |
-| 新增功能、功能增强 | MINOR +1, PATCH 归零 | `v1.0.0` → `v1.0.0` |
+| Bug 修复、样式调整、小改进 | PATCH +1 | `v1.0.0` → `v1.0.1` |
+| 新增功能、功能增强 | MINOR +1, PATCH 归零 | `v1.0.2` → `v1.1.0` |
 | 重大变更、架构重构 | MAJOR +1, 其他归零 | `v1.5.3` → `v2.0.0` |
 
-### 版本号存储位置
+### 版本号存储位置（单一来源）
 
-1. **`AGENTS.md`** - 本文件头部的「当前版本」字段
-2. **`SPEC.md`** - 文件头部的版本号
-3. **`src/js/app.js`** - `APP_VERSION` 常量
+**真源（仅此两处保存版本号，其余全部派生）**：
+1. **`package.json`** - `version`（npm 标准源，构建期注入运行版本）
+2. **`src-tauri/tauri.conf.json`** - `version`（Tauri 打包产物版本）
+
+**构建期自动派生（源码不含版本号字面量）**：
+- `src/core/version.js` - `APP_VERSION` ← vite define 注入 `__LOCKPASS_VERSION__`
+- `vite.config.js` - `__APP_VERSION__` / `__LOCKPASS_VERSION__` ← 读取 package.json
+- `src/public/sw.js` - `CACHE_NAME` ← 构建时由 vite 插件注入 `lockpass-vX.Y.Z`
+
+**脚本/生态同步（不手改）**：
+- `package-lock.json` - npm 生态同步 package.json
+- `src-tauri/Cargo.toml` - `npm run version:set` 同步 tauri.conf.json
+- `AGENTS.md` / `SPEC.md` - 文档记录，`npm run version:set` 同步
+
+> 升级版本号只需 `npm run version:set <x.y.z>`（改两个真源 + 同步派生物），
+> 发布前用 `npm run version:check` 校验一致性（含注入模式防硬编码漂移）。
 
 ### 更新流程
 
 每次代码修改完成后，Agent 必须：
 
-1. 确定版本号增量类型
-2. 更新上述 3 个位置的版本号
-3. 在 `memory/YYYY-MM-DD.md` 中记录变更内容和版本号
+1. 确定版本号增量类型（遵守上方 MAJOR/MINOR 用户硬性约束，仅 PATCH 自增）
+2. 运行 `npm run version:set x.y.z` 统一更新版本号（运行时代码由构建自动注入，无需手改）
+3. 运行 `npm run version:check` 确认全部一致
+4. 在 `memory/YYYY-MM-DD.md` 中记录变更内容和版本号
 
 ---
 
@@ -137,7 +151,7 @@ LockPass/
 │           └── favicon.svg  # 网站图标
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 ├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
-├── dist/                  # 构建产物（由 copy-frontend.mjs 从 src/ 生成，不手动修改）
+├── dist/                  # 构建产物：单文件内联版（vite build，file:// 双击 + Pages 部署 + Tauri 打包共用，不手动修改）
 ├── memory/              # 工作记录（按日期）
 │   └── YYYY-MM-DD.md
 ├── SPEC.md              # 产品规格文档

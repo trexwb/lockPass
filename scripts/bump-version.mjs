@@ -7,8 +7,8 @@
      node scripts/bump-version.mjs 1.0.8 --dry-run  # 只预览不写入
    覆盖位置（9 处 / 8 文件）：
      package.json / package-lock.json(顶层+packages[""]) / tauri.conf.json /
-     Cargo.toml / js/app.js(APP_VERSION) / sw.js(CACHE_NAME) /
-     AGENTS.md(当前版本) / SPEC.md(头部+文档版本)
+     Cargo.toml / core/version.js(APP_VERSION) / vite.config.js(__APP_VERSION__) /
+     public/sw.js(CACHE_NAME) / AGENTS.md(当前版本) / SPEC.md(头部+文档版本)
    README.md 更新日志为历史记录，不在本脚本范围（内容需人工编写）。
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -67,9 +67,10 @@ patchJson('package-lock.json', (d) => {
 patchJson('src-tauri/tauri.conf.json', (d) => { d.version = V; }, `version -> ${V}（打包产物版本）`);
 
 /* ── 文本类 ─────────────────────────────────────────────────────── */
-patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}`);
-patchText('src/js/app.js', /const APP_VERSION = 'v\d+\.\d+\.\d+'/, `const APP_VERSION = '${VV}'`, `APP_VERSION -> ${VV}`);
-patchText('src/sw.js', /const CACHE_NAME = 'lockpass-v\d+\.\d+\.\d+'/, `const CACHE_NAME = 'lockpass-${VV}'`, `CACHE_NAME -> lockpass-${VV}`);
+patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}（同步 tauri.conf.json）`);
+// 注：core/version.js / public/sw.js / vite.config.js 为构建期从
+// package.json 注入（vite define + sw 写盘插件），源码无版本号字面量，
+// 此处刻意不再修改这三处。
 patchText('AGENTS.md', /\*\*当前版本\*\*：`v\d+\.\d+\.\d+`/, `**当前版本**：\`${VV}\``, `当前版本 -> ${VV}`);
 patchText('SPEC.md', /版本：v\d+\.\d+\.\d+/, `版本：${VV}`, `头部 -> ${VV}`);
 patchText('SPEC.md', /\*\*文档版本：v\d+\.\d+\.\d+\*\*/, `**文档版本：${VV}**`, `文档版本 -> ${VV}`);

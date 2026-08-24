@@ -19,7 +19,13 @@ CONF="$ROOT/src-tauri/tauri.conf.json"
 # 从 tauri.conf.json 用 grep 提取（不依赖 node，避免子 shell 中 node 缺失）
 PRODUCT=$(grep -m1 '"productName"' "$CONF" | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
 VERSION=$(grep -m1 '"version"'     "$CONF" | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
-ARCH="aarch64"   # 本机 arm64；若构建 universal 请改此值
+# N2 修复：根据当前构建机架构动态生成产物名，不再硬编码 aarch64
+RAW_ARCH="$(uname -m)"
+case "$RAW_ARCH" in
+  arm64) ARCH="aarch64" ;;
+  x86_64) ARCH="x86_64" ;;
+  *)     ARCH="$RAW_ARCH" ;;
+esac
 
 APP="$MACOSDIR/${PRODUCT}.app"
 if [ ! -d "$APP" ]; then

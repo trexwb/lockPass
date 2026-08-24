@@ -3,9 +3,9 @@
 # ───────────────────────────────────────────────────────────────────
 # 触发：main 分支推送 或 手动 workflow_dispatch（可选任意分支）
 # 做了什么：
-#   1. node scripts/copy-frontend.mjs 生成 dist/（纯 Node 拷贝，
-#      零依赖安装，秒级完成）
-#   2. 将 dist/ 部署到 GitHub Pages
+#   1. npm ci 安装依赖
+#   2. node scripts/copy-frontend.mjs 执行 vite build 生成 dist/（单文件）
+#   3. 将 dist/ 部署到 GitHub Pages
 # 部署后访问：https://trexwb.github.io/lockPass/
 #   （具体地址以仓库 Settings → Pages 显示为准）
 #
@@ -45,8 +45,12 @@ jobs:
         with:
           node-version: 22
 
-      # copy-frontend.mjs 仅用 Node 内置模块（fs/path），无需 npm install
-      - name: 生成 dist 目录
+      # Vue/Vite 构建需要依赖，先安装（使用 lockfile 保证可复现）
+      - name: 安装依赖
+        run: npm ci
+
+      # copy-frontend.mjs 内部执行 npm run vite:build（vite build 单文件内联，仅前端产物）
+      - name: 构建生成 dist
         run: node scripts/copy-frontend.mjs
 
       - name: 验证 dist 产物

@@ -1,0 +1,299 @@
+/* ── 类型 Tab ──────────────────────────────────────────── */
+.type-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.type-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.type-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.type-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+  font-weight: 500;
+}
+.type-tab-icon { display: flex; align-items: center; }
+
+/* ── 多密码行布局 ──────────────────────────────────────── */
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.input-row .input-row-main { flex: 1; }
+.input-row .form-input { width: 100%; }
+
+/* ── 类型表单区块 ──────────────────────────────────────── */
+.entry-type-form .form-group:first-child { margin-top: 0; }
+
+/* ── 详情面板类型分隔 ─────────────────────────────────── */
+.detail-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.detail-section-divider::before,
+.detail-section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── 多行 textarea（公钥/私钥） ───────────────────────── */
+.mono-textarea-wrap {
+  position: relative;
+}
+.mono-textarea {
+  width: 100%;
+  min-height: 76px;
+  max-height: 200px;
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding-right: 36px;
+}
+.mono-textarea::-webkit-scrollbar {
+  height: 4px;
+}
+.mono-textarea::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* Forms */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.form-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  color: var(--text-primary);
+  font-size: 1.0rem;
+  transition: var(--transition);
+}
+.form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.form-input::placeholder { color: var(--text-faint); }
+.form-input.mono { font-family: var(--font-mono); }
+.input-row { display: flex; gap: 8px; }
+.input-row .form-input { flex: 1; }
+/* 端口输入框：固定窄宽且不被 flex 拉伸/收缩 */
+.input-row .form-input.input-port {
+  width: 90px;
+  flex: none;
+  flex-shrink: 0;
+}
+.input-affix { position: relative; }
+.input-affix .form-input { padding-right: 80px; }
+.input-affix-btns {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+}
+.pw-gen-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: var(--transition);
+  display: flex;
+}
+.pw-gen-btn:hover { color: var(--accent); background: var(--accent-dim); }
+textarea.form-input { resize: vertical; min-height: 80px; }
+textarea.notes-textarea {
+  min-height: 150px;
+  max-height: 400px;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+/* Markdown 渲染样式 */
+.markdown-body {
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  white-space: normal;
+  word-wrap: break-word;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.markdown-body h1 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.markdown-body h2 { font-size: 1.2em; }
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h4, .markdown-body h5, .markdown-body h6 { font-size: 1em; }
+.markdown-body p { margin: 8px 0; }
+.markdown-body ul { margin: 8px 0; padding-left: 24px; }
+.markdown-body li { margin: 4px 0; }
+.markdown-body code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 1em;
+}
+.markdown-body pre {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  white-space: pre;
+  display: block;
+}
+/* 备注表格（GFM 管道语法渲染） */
+.table-wrap {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+  font-size: 0.92em;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-body th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+}
+.markdown-body tr:nth-child(even) td {
+  background: var(--bg-tertiary);
+}
+.markdown-body table code {
+  background: var(--bg-secondary);
+}
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-tertiary);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-muted);
+}
+.markdown-body blockquote code {
+  background: var(--bg-secondary);
+}
+.markdown-body strong { font-weight: 600; }
+.markdown-body em { font-style: italic; }
+
+select.form-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+
+/* Password strength bar */
+.pw-strength { margin-top: 8px; }
+.pw-strength-bar-bg {
+  height: 4px;
+  background: var(--bg-primary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.pw-strength-bar { height: 100%; border-radius: 2px; transition: width 0.3s ease, background 0.3s ease; }
+.pw-strength-text { font-size: 0.86rem; margin-top: 4px; color: var(--text-muted); }
+
+/* Password generator panel */
+.pw-gen-panel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-top: 10px;
+}
+.pw-gen-preview {
+  font-family: var(--font-mono);
+  font-size: 1.0rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  word-break: break-all;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pw-gen-preview-text { flex: 1; word-break: break-all; }
+.pw-gen-controls { display: flex; flex-direction: column; gap: 10px; }
+.pw-gen-row { display: flex; align-items: center; gap: 12px; }
+.pw-gen-row label { font-size: 0.86rem; color: var(--text-muted); min-width: 120px; }
+.pw-gen-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.pw-gen-row span { font-family: var(--font-mono); font-size: 0.86rem; min-width: 28px; text-align: right; color: var(--accent); }
+.pw-gen-charsets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.charset-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.charset-label input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; }
