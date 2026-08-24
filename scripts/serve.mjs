@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..'); // LockPass 根目录
+const SRC = path.join(ROOT, 'src');         // 前端源码目录（开发服务器直接提供 src/ 真源）
 const PORT = Number(process.env.PORT) || 1420;
 
 const MIME = {
@@ -34,9 +35,9 @@ const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
 
-  const filePath = path.normalize(path.join(ROOT, urlPath));
+  const filePath = path.normalize(path.join(SRC, urlPath));
   // 防目录穿越
-  if (!filePath.startsWith(ROOT)) {
+  if (!filePath.startsWith(SRC)) {
     res.writeHead(403);
     res.end('Forbidden');
     return;
