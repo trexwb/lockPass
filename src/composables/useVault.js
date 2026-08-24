@@ -313,8 +313,14 @@ export function useVault() {
           }
         }
         const { key } = await createVault(password)
-        // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
+        // 首次创建：注入初始状态（与原生 app.js 对齐）
         vaultState.cryptoKey = key
+        vaultState.initialized = true
+        vaultState.entries = []
+        vaultState.tagDefs = seedDefaultTagDefs()
+        vaultState.tags = []
+        vaultState.deleted = []
+        // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
         saveSession(password)
         vaultState.isUnlocked = true
         await afterUnlock(password)

@@ -4,7 +4,7 @@
    注意：仅标准构建产物（HTTP 部署/Tauri WebView）生效；file:// 双击模式浏览器禁用 SW
    ═══════════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'lockpass-v1.0.14';
+const CACHE_NAME = 'lockpass-v1.0.15';
 const PRECACHE_URLS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {

@@ -4,27 +4,39 @@ import { computed } from 'vue'
 import { useVault, vaultState } from '../composables/useVault'
 import ModalBase from './common/ModalBase.vue'
 import EntryEditorModal from './modals/EntryEditorModal.vue'
+import SettingsModal from './modals/SettingsModal.vue'
+import ChangePwModal from './modals/ChangePwModal.vue'
+import TagsModal from './modals/TagsModal.vue'
 
 const { closeModal } = useVault()
 
-const PENDING_MODAL_NAMES = {
+// 已实现的模态框
+const IMPLEMENTED = {
   settings: '设置',
-  import: '批量导入',
-  export: '导出',
-  'qr-import': '二维码添加',
-  'qr-share': '二维码分享',
   'change-pw': '修改主密码',
   tags: '标签管理',
 }
 
+// 尚未迁移的功能（占位提示）
+const PENDING_MODAL_NAMES = {
+  import: '批量导入',
+  export: '导出',
+  'qr-import': '二维码添加',
+  'qr-share': '二维码分享',
+}
+
 const activeName = computed(() => {
   if (vaultState.activeModal === 'entry') return 'entry'
+  if (IMPLEMENTED[vaultState.activeModal]) return vaultState.activeModal
   return PENDING_MODAL_NAMES[vaultState.activeModal] || ''
 })
 </script>
 
 <template>
   <EntryEditorModal v-if="activeName === 'entry'" />
+  <SettingsModal v-else-if="activeName === 'settings'" />
+  <ChangePwModal v-else-if="activeName === 'change-pw'" />
+  <TagsModal v-else-if="activeName === 'tags'" />
 
   <ModalBase v-else-if="activeName" :max-width="'420px'" @close="closeModal()">
     <div class="modal-header">
