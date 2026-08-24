@@ -28,8 +28,8 @@ const checks = [
   ['package-lock.json packages[""]', lock.packages && lock.packages[''] && lock.packages[''].version, base],
   ['src-tauri/Cargo.toml', /^version = "(\d+\.\d+\.\d+)"$/m.exec(read('src-tauri/Cargo.toml'))?.[1], base],
   ['AGENTS.md 当前版本', /当前版本.*?`v(\d+\.\d+\.\d+)`/.exec(read('AGENTS.md'))?.[1], base],
-  ['SPEC.md 头部', /版本：v(\d+\.\d+\.\d+)/.exec(read('SPEC.md'))?.[1], base],
-  ['SPEC.md 文档版本', /\*\*文档版本：v(\d+\.\d+\.\d+)\*\*/.exec(read('SPEC.md'))?.[1], base],
+  ['docs/spec.md 头部', /版本：v(\d+\.\d+\.\d+)/.exec(read('docs/spec.md'))?.[1], base],
+  ['docs/spec.md 文档版本', /\*\*文档版本：v(\d+\.\d+\.\d+)\*\*/.exec(read('docs/spec.md'))?.[1], base],
   // ── 注入模式（版本号仅允许存在于 package.json / tauri.conf.json 两个真源）──
   ['src/core/version.js 注入模式', /export const APP_VERSION = __LOCKPASS_VERSION__/.test(read('src/core/version.js')) ? '__LOCKPASS_VERSION__' : '⚠️ 硬编码', '__LOCKPASS_VERSION__'],
   ['src/public/sw.js 注入模式', /lockpass-__APP_VERSION__/.test(read('src/public/sw.js')) ? '占位符' : '⚠️ 硬编码', '占位符'],

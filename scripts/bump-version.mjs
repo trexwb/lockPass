@@ -8,7 +8,7 @@
    覆盖位置（9 处 / 8 文件）：
      package.json / package-lock.json(顶层+packages[""]) / tauri.conf.json /
      Cargo.toml / core/version.js(APP_VERSION) / vite.config.js(__APP_VERSION__) /
-     public/sw.js(CACHE_NAME) / AGENTS.md(当前版本) / SPEC.md(头部+文档版本)
+     public/sw.js(CACHE_NAME) / AGENTS.md(当前版本) / docs/spec.md(头部+文档版本)
    README.md 更新日志为历史记录，不在本脚本范围（内容需人工编写）。
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -72,8 +72,8 @@ patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${
 // package.json 注入（vite define + sw 写盘插件），源码无版本号字面量，
 // 此处刻意不再修改这三处。
 patchText('AGENTS.md', /\*\*当前版本\*\*：`v\d+\.\d+\.\d+`/, `**当前版本**：\`${VV}\``, `当前版本 -> ${VV}`);
-patchText('SPEC.md', /版本：v\d+\.\d+\.\d+/, `版本：${VV}`, `头部 -> ${VV}`);
-patchText('SPEC.md', /\*\*文档版本：v\d+\.\d+\.\d+\*\*/, `**文档版本：${VV}**`, `文档版本 -> ${VV}`);
+patchText('docs/spec.md', /版本：v\d+\.\d+\.\d+/, `版本：${VV}`, `头部 -> ${VV}`);
+patchText('docs/spec.md', /\*\*文档版本：v\d+\.\d+\.\d+\*\*/, `**文档版本：${VV}**`, `文档版本 -> ${VV}`);
 
 console.log(results.join('\n'));
 console.log(dryRun

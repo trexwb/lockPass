@@ -4,7 +4,7 @@
    - 上传 / 粘贴 / 拖拽二维码图片 → 懒加载 /assets/vendor/jsQR.js 解码
    - 摄像头实时取景扫码（BarcodeDetector 优先，降级 jsQR 逐帧解码）
    - 识别后自动取会话主密码解密（无需再次输入）→ 自动同步导入（按标题+用户名查重） */
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 
@@ -90,7 +90,7 @@ async function processImage(file) {
 }
 
 async function decodeImageFile(file) {
-  await _loadVendor('/assets/vendor/jsQR.js', () => typeof jsQR === 'function')
+  await _loadVendor(import.meta.env.BASE_URL + 'assets/vendor/jsQR.js', () => typeof jsQR === 'function')
   return new Promise((resolve, reject) => {
     if (typeof jsQR !== 'function') {
       reject(new Error('二维码解码库加载失败'))
@@ -270,6 +270,8 @@ async function initCameraScan() {
     step.value = 'upload'
     return
   }
+  // 手机端 getUserMedia 可能在 Vue 渲染 video 前 resolve，先等 DOM 就绪再取元素
+  await nextTick()
   const video = document.getElementById('qr-scan-video')
   if (!video) { // 等待授权期间模态框已被关闭
     stream.getTracks().forEach(t => t.stop())
@@ -277,7 +279,17 @@ async function initCameraScan() {
   }
   _scanStream = stream
   video.srcObject = stream
-  try { await video.play() } catch (e) { /* 自动播放策略差异，忽略 */ }
+  try {
+    await video.play()
+  } catch (e) {
+    // iOS 自动播放策略差异：静音重试，仍失败则提示用户点击画面开始
+    try {
+      video.muted = true
+      await video.play()
+    } catch (e2) {
+      setStatus('请点击画面开始扫码', 'muted')
+    }
+  }
 
   // 优先原生 BarcodeDetector（Chrome / Android / iOS 16.4+）
   _barcodeDetector = null
@@ -291,7 +303,7 @@ async function initCameraScan() {
   // 降级引擎：确保 jsQR 就绪
   if (!_barcodeDetector) {
     try {
-      await _loadVendor('/assets/vendor/jsQR.js', () => typeof jsQR === 'function')
+      await _loadVendor(import.meta.env.BASE_URL + 'assets/vendor/jsQR.js', () => typeof jsQR === 'function')
     } catch (e) {
       setStatus('二维码解码库加载失败，请检查网络后重试', 'danger')
       stopCamera()
@@ -306,7 +318,7 @@ async function initCameraScan() {
 /** 识别循环：检测到二维码文本即停止并进入导入流程 */
 async function scanLoop() {
   const video = document.getElementById('qr-scan-video')
-  while (scanActive.value && video && !video.paused) {
+  while (scanActive.value && video) {
     try {
       let text = null
       if (_barcodeDetector) {

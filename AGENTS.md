@@ -54,7 +54,7 @@
 **脚本/生态同步（不手改）**：
 - `package-lock.json` - npm 生态同步 package.json
 - `src-tauri/Cargo.toml` - `npm run version:set` 同步 tauri.conf.json
-- `AGENTS.md` / `SPEC.md` - 文档记录，`npm run version:set` 同步
+- `AGENTS.md` / `docs/spec.md` - 文档记录，`npm run version:set` 同步
 
 > 升级版本号只需 `npm run version:set <x.y.z>`（改两个真源 + 同步派生物），
 > 发布前用 `npm run version:check` 校验一致性（含注入模式防硬编码漂移）。
@@ -154,9 +154,12 @@ LockPass/
 ├── dist/                  # 构建产物：单文件内联版（vite build，file:// 双击 + Pages 部署 + Tauri 打包共用，不手动修改）
 ├── memory/              # 工作记录（按日期）
 │   └── YYYY-MM-DD.md
-├── SPEC.md              # 产品规格文档
-├── README.md            # 使用说明
-└── AGENTS.md            # 本文件
+├── docs/                # 文档中心（产品规格/桌面封装/迁移设计，见 docs/README.md 索引）
+│   ├── README.md        # 文档索引
+│   ├── spec.md          # 产品规格文档
+│   └── tauri.md         # Tauri 桌面封装文档
+├── README.md            # 使用说明（仓库首页）
+└── AGENTS.md            # 本文件（Agent 开发规范，约定置于根目录）
 ```
 
 ### 新增模块流程
@@ -279,12 +282,12 @@ Closes #12
 
 ### Q: 如何添加新功能？
 
-1. 阅读 `SPEC.md` 了解产品规格
+1. 阅读 `docs/spec.md` 了解产品规格
 2. 在 `src/js/` 创建新模块或修改现有模块
 3. 更新 `src/index.html` 添加必要的 UI 元素
 4. 更新 `src/css/main.css` 添加样式（如需要）
 5. 测试所有功能
-6. 更新 `README.md` 和 `SPEC.md`
+6. 更新 `README.md` 和 `docs/spec.md`
 
 ### Q: 如何调试？
 
@@ -392,6 +395,4 @@ Closes #12
 
 **所有 AI Agent 在本项目中开发时，必须先阅读并遵循本文件规范。**
 
-如有疑问，请参考 `SPEC.md` 和 `README.md`。
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*
+如有疑问，请参考 `docs/spec.md` 和 `README.md`。
