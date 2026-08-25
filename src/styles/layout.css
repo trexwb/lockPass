@@ -220,6 +220,12 @@
   font-size: 1.0rem;
   transition: var(--transition);
 }
+.lock-hint { 
+  font-size: 1.0rem;
+  color: var(--text-muted);
+  margin-top: 32px;
+  line-height: 1.5;
+}
 .input-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 .input-group input::placeholder { color: var(--text-faint); }
 .input-group input.error { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-dim); }
