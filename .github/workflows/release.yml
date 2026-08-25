@@ -29,19 +29,19 @@ jobs:
     name: Windows (nsis + msi)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: 安装 Node.js 22
-        uses: actions/setup-node@v4
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2.2.0
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
@@ -53,7 +53,7 @@ jobs:
         run: npm run tauri:build
 
       - name: 上传产物到 Actions Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-bundles
           if-no-files-found: error
@@ -62,7 +62,7 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
 
       - name: 上传到 GitHub Release（草稿）
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           generate_release_notes: true
@@ -78,10 +78,10 @@ jobs:
     name: macOS (app + dmg)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 安装 Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -90,7 +90,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: 启用 cargo 缓存
-        uses: swatinem/rust-cache@v2.2.0
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
@@ -121,7 +121,7 @@ jobs:
           ditto -c -k --keepParent "LockPass.app" "$RUNNER_TEMP/LockPass-macos-${{ steps.arch.outputs.arch }}.zip"
 
       - name: 上传产物到 Actions Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-bundles
           if-no-files-found: error
@@ -130,7 +130,7 @@ jobs:
             src-tauri/target/release/bundle/dmg/*.dmg
 
       - name: 上传到 GitHub Release（草稿）
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           generate_release_notes: true
