@@ -384,6 +384,8 @@ export function useVault() {
         // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
         saveSession(password)
         vaultState.isUnlocked = true
+        // 浏览器扩展桥：广播就绪（携带会话令牌）
+        try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
         await afterUnlock(password)
         // D2 修复：首次创建成功后引导绑定数据目录（对齐原版）
         await showBindBannerIfNeeded()
@@ -403,6 +405,8 @@ export function useVault() {
 
       saveSession(password)
       vaultState.isUnlocked = true
+      // 浏览器扩展桥：广播就绪（携带会话令牌）
+      try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
       await afterUnlock()
       // D2 修复：解锁成功后若未绑定数据目录则引导绑定（对齐原版）
       await showBindBannerIfNeeded()
@@ -575,6 +579,8 @@ export function useVault() {
   function lockVault() {
     vaultState.isUnlocked = false
     vaultState.cryptoKey = null
+    // 浏览器扩展桥：令牌清除 + 广播锁定
+    try { window.ExtBridge && window.ExtBridge.lock() } catch (e) {}
     clearSession()
     clearTimeout(vaultState.lockTimer)
     closeDetail()
@@ -590,6 +596,8 @@ export function useVault() {
   }
 
   function logout() {
+    // 浏览器扩展桥：令牌清除 + 广播锁定
+    try { window.ExtBridge && window.ExtBridge.lock() } catch (e) {}
     clearSession()
     vaultState.cryptoKey = null
     vaultState.isUnlocked = false
@@ -992,6 +1000,9 @@ export function useVault() {
     window.Utils.showToast('已回滚到历史版本', 'success')
     return true
   }
+
+  // 浏览器扩展桥：注册条目数据源（扩展仅能拿到脱敏列表，解密请求经页面内存处理）
+  try { window.ExtBridge && window.ExtBridge.setEntriesProvider(() => vaultState.entries) } catch (e) {}
 
   async function saveEntry(payload) {
     const { title, type, fields, tags, notes } = payload

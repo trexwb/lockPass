@@ -13,6 +13,7 @@ import './core/version.js'
 import './core/tauri-bridge.js'
 import './core/import-bridge.js'
 import './core/related.js'
+import './core/ext-bridge.js'
 import './core/backup.js'
 import './core/sw-register.js'
 // 粒子动效（锁屏/工作区背景，暴露 window.LockParticles）
