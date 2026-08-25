@@ -153,3 +153,28 @@
   pointer-events: none;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
 }
+
+
+/* ── 移动端扫码体验（2026-08-25） ────────────────────────── */
+@media (max-width: 480px), (max-height: 500px) {
+  /* 上传区：更大触控面与更清晰的引导 */
+  .file-drop {
+    min-height: 190px;
+    padding: 28px 16px;
+    border-radius: var(--radius-md);
+  }
+  .file-drop svg {
+    width: 46px;
+    height: 46px;
+  }
+  /* 取景框：限制高度防溢出，横屏矮屏下可用 */
+  .qr-scan-frame {
+    max-width: 100%;
+    max-height: 52vh;
+    aspect-ratio: 4 / 3;
+  }
+  .qr-scan-camera {
+    min-height: 46px;
+    font-size: 0.95rem;
+  }
+}

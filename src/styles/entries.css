@@ -462,3 +462,39 @@
   flex-shrink: 0;
   background: var(--bg-secondary);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   移动端体验打磨（2026-08-25）
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  /* 关键修复：移动端无 hover，操作按钮必须常显（原 opacity:0 仅 hover 显示） */
+  .entry-actions {
+    opacity: 1;
+  }
+  /* 触控目标：卡片操作按钮 ≥36px */
+  .entry-actions button {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 卡片信息密度：加大行高与间距，副标题完整截断 */
+  .entry-card {
+    padding: 14px 12px;
+    gap: 10px;
+  }
+  .entry-subtitle {
+    max-width: 100%;
+  }
+  .entry-meta {
+    row-gap: 6px;
+  }
+  .entry-date {
+    flex-shrink: 0;
+  }
+  /* 空状态按钮触控 */
+  .btn-empty {
+    min-height: 44px;
+  }
+}

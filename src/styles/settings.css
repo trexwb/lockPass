@@ -365,3 +365,55 @@
 /* Danger ghost button */
 .btn-danger-ghost { color: var(--text-muted); }
 .btn-danger-ghost:hover { color: var(--danger); background: var(--danger-dim); border-color: var(--danger-border); }
+
+/* ── 外观设置：主题模式 + 强调色 ─────────────────────────── */
+.theme-mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.theme-mode-btn {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.theme-mode-btn:last-child { border-right: none; }
+.theme-mode-btn:hover { color: var(--text-primary); }
+.theme-mode-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+}
+.accent-palette {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.accent-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition), border-color var(--transition);
+}
+.accent-dot:hover { transform: scale(1.12); }
+.accent-dot.active { border-color: var(--text-primary); }
+.accent-dot svg { pointer-events: none; }
+/* 色板（与 base.css :root[data-accent=*] 预设同色） */
+.accent-blue   { background: hsl(212 92% 62%); }
+.accent-green  { background: hsl(137 68% 58%); }
+.accent-purple { background: hsl(268 78% 68%); }
+.accent-orange { background: hsl(32 90% 56%); }
+.accent-red    { background: hsl(4 88% 60%); }
+.accent-cyan   { background: hsl(187 80% 52%); }

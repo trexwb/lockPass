@@ -5,6 +5,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import { buildShortcutDefs } from '../../composables/useShortcuts'
+import { useTheme } from '../../composables/useTheme'
 import ModalBase from '../common/ModalBase.vue'
 
 const { closeModal, openModal, saveVault, resetLockTimer, lockVault } = useVault()
@@ -31,6 +32,19 @@ function updateClipboardClear() {
   vaultState.clipboardClearMs = value
   try { localStorage.setItem('lockpass_clipboard_clear', String(value)) } catch (e) {}
   window.Utils.showToast('设置已保存', 'success')
+}
+
+/* ── 外观（主题模式 + 强调色，useTheme 管理持久化与 data-* 属性） ── */
+
+const { themeMode, accentName, ACCENTS, setMode, setAccent } = useTheme()
+const themeModes = [
+  { value: 'dark', label: '深色' },
+  { value: 'light', label: '浅色' },
+  { value: 'system', label: '跟随系统' },
+]
+const ACCENT_LABELS = { blue: '蓝色', green: '绿色', purple: '紫色', orange: '橙色', red: '红色', cyan: '青色' }
+function accentLabel(a) {
+  return ACCENT_LABELS[a] || a
 }
 
 /* ── 本地文件同步 ── */
@@ -245,6 +259,45 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
             <option :value="30000">30 秒</option>
             <option :value="60000">60 秒</option>
           </select>
+        </div>
+      </div>
+
+      <!-- 外观 -->
+      <div class="settings-group">
+        <div class="settings-group-title">外观</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">主题</div>
+            <div class="settings-desc">跟随系统时实时响应系统深浅切换</div>
+          </div>
+          <div class="theme-mode-switch" role="radiogroup" aria-label="主题模式">
+            <button
+              v-for="m in themeModes"
+              :key="m.value"
+              class="theme-mode-btn"
+              :class="{ active: themeMode === m.value }"
+              @click="setMode(m.value)"
+            >{{ m.label }}</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">强调色</div>
+            <div class="settings-desc">应用于按钮、选中态与焦点边框</div>
+          </div>
+          <div class="accent-palette" role="radiogroup" aria-label="强调色">
+            <button
+              v-for="a in ACCENTS"
+              :key="a"
+              class="accent-dot"
+              :class="['accent-' + a, { active: accentName === a }]"
+              :title="accentLabel(a)"
+              :aria-label="accentLabel(a)"
+              @click="setAccent(a)"
+            >
+              <svg v-if="accentName === a" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3"><polyline points="20 6 9 17 4 12" /></svg>
+            </button>
+          </div>
         </div>
       </div>
 

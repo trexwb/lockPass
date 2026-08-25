@@ -23,5 +23,10 @@ import './styles/main.css'
 // Vue 应用
 import { createApp } from 'vue'
 import App from './App.vue'
+// 主题初始化必须在 mount 前同步执行：读 localStorage → 设置 data-theme/data-accent，
+// 避免首帧以默认深色渲染后跳变（Tauri CSP 不允许内联脚本，故不放 index.html）
+import { useTheme } from './composables/useTheme'
+
+useTheme().init()
 
 createApp(App).mount('#app')

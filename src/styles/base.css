@@ -6,13 +6,17 @@
   --bg-tertiary:  #21262d;
   --bg-hover:     #2d333b;
   --border:       #30363d;
-  --border-focus: #58a6ff;
+  --border-focus: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
   --text-primary: #e6edf3;
   --text-muted:   #8b949e;
   --text-faint:   #484f58;
-  --accent:       #58a6ff;
-  --accent-dim:   rgba(88,166,255,0.12);
-  --accent-glow:  rgba(88,166,255,0.25);
+  /* 强调色（色相变量驱动，配合 data-accent 预设与 data-theme 深浅） */
+  --accent-h: 212;
+  --accent-s: 92%;
+  --accent-l: 62%;
+  --accent:       hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+  --accent-dim:   hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.12);
+  --accent-glow:  hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.25);
   --success:      #3fb950;
   --success-dim:  rgba(63,185,80,0.15);
   --danger:        #f85149;
@@ -40,7 +44,7 @@
   --lock-bg-2:    #0a0e16;
   --lock-bg-3:    #060910;
   /* 按钮交互色 */
-  --accent-hover: #4d9aef;
+  --accent-hover: hsl(var(--accent-h) var(--accent-s) calc(var(--accent-l) - 8%));
   --text-on-accent: #ffffff;
   --radius-sm:  6px;
   --radius-md:  10px;
@@ -68,6 +72,10 @@
   --z-confirm: 400;          /* 确认弹窗（盖过 modal / detail） */
   --z-banner: 900;           /* 顶部提醒横幅 */
 
+  /* 粒子背景 RGB 三元组（canvas 用，随主题切换） */
+  --particle-link: 88,166,255;
+  --particle-fill: 170,205,255;
+
   /* 常用半透明色（重复使用的 rgba 提取） */
   --overlay-bg: rgba(0,0,0,0.7);        /* 模态框/确认框背景遮罩 */
   --overlay-bg-soft: rgba(0,0,0,0.5);   /* 侧边栏遮罩 */
@@ -77,6 +85,44 @@
   /* 响应式断点变量（仅作文档参考，@media 不支持 var()） */
   --breakpoint-tablet: 1024px;
   --breakpoint-mobile: 480px;
+}
+
+/* ── 强调色预设（设置 → 外观 → 强调色；data-accent 由 useTheme 管理） ── */
+:root[data-accent="green"]  { --accent-h: 137; --accent-s: 68%; --accent-l: 58%; }
+:root[data-accent="purple"] { --accent-h: 268; --accent-s: 78%; --accent-l: 68%; }
+:root[data-accent="orange"] { --accent-h: 32;  --accent-s: 90%; --accent-l: 56%; }
+:root[data-accent="red"]    { --accent-h: 4;   --accent-s: 88%; --accent-l: 60%; }
+:root[data-accent="cyan"]   { --accent-h: 187; --accent-s: 80%; --accent-l: 52%; }
+
+/* ── 浅色主题（设置 → 外观 → 主题；data-theme 由 useTheme 管理） ── */
+:root[data-theme="light"] {
+  --bg-primary:    #ffffff;
+  --bg-secondary:  #f6f8fa;
+  --bg-tertiary:   #eef1f4;
+  --bg-hover:      #e3e8ed;
+  --border:        #d0d7de;
+  --text-primary:  #1f2328;
+  --text-muted:    #59636e;
+  --text-faint:    #8c959f;
+  /* 强调色在浅色下略加深，保证对比度（色相/饱和度不变，仅降低明度） */
+  --accent-hover:  hsl(var(--accent-h) var(--accent-s) calc(var(--accent-l) - 10%));
+  --accent-dim:    hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.14);
+  --accent-glow:   hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.28);
+  --text-on-accent: #ffffff;
+  --shadow-sm:  0 1px 3px rgba(31,35,40,0.08);
+  --shadow-md:  0 4px 12px rgba(31,35,40,0.12);
+  --shadow-lg:  0 8px 32px rgba(31,35,40,0.16);
+  --overlay-bg: rgba(0,0,0,0.4);
+  --overlay-bg-soft: rgba(0,0,0,0.22);
+  --border-dim: rgba(208,215,222,0.6);
+  --danger-border: rgba(248,81,73,0.3);
+  /* 锁屏渐变（浅色系） */
+  --lock-bg-1:    #eef3fa;
+  --lock-bg-2:    #e8edf5;
+  --lock-bg-3:    #dfe6f0;
+  /* 粒子在浅色背景下改用深蓝系，保证可见度 */
+  --particle-link: 64,120,180;
+  --particle-fill: 96,150,205;
 }
 
 html { font-size: 14px; overflow-x: hidden; }
