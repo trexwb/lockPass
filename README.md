@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台
 
-一款纯前端离线密码管理器，无需后端服务器，双击 `src/index.html` 即可在浏览器中使用。
+一款纯前端离线密码管理器，Vue 3 + Vite 构建，无后端服务器。浏览器双击 `dist/index.html` 即用，也可作为 Tauri 桌面应用（Windows / macOS）或 PWA 在线版使用。
 
 ---
 
@@ -9,42 +9,59 @@
 | 功能 | 状态 | 说明 |
 |------|:----:|------|
 | 主密码验证 | [x] | 首次设置主密码，后续解锁需输入 |
-| AES-256-GCM 加密 | [x] | Web Crypto API + PBKDF2（100000次迭代） |
-| 密码增删改查 | [x] | 完整 CRUD 操作 |
-| 分类管理 | [x] | 预设7个分类 + 自定义分类 |
-| 标签系统 | [x] | 用逗号分隔的标签 |
+| AES-256-GCM 加密 | [x] | Web Crypto API + PBKDF2（100000 次迭代） |
+| 6 种条目类型 | [x] | 网站 / 服务器 / 数据库 / AI / 应用 / 其他凭证 |
+| 密码增删改查 | [x] | 完整 CRUD 操作，按类型语义化字段 |
+| 标签体系 | [x] | 带颜色和图标的标签，默认 7+12 个，可自定义 |
 | 收藏功能 | [x] | 一键收藏常用密码 |
+| 回收站 | [x] | 软删除 + 恢复 / 彻底删除 / 清空 |
 | 全文搜索 | [x] | 按标题/用户名/URL/标签搜索 |
-| 密码生成器 | [x] | 8-64位，可选字符集，实时强度计算 |
+| 密码生成器 | [x] | 8-64 位，可选字符集，实时强度计算 |
 | 密码显示/隐藏 | [x] | 点击切换，默认掩码 |
 | 一键复制 | [x] | 复制后自动清除剪贴板 |
+| 关联密码 | [x] | 同 IP / 域名 / 账号自动关联，点击跳转 |
+| 二维码同步 | [x] | 分享为加密二维码；扫码 / 上传 / 拖拽 / 拍照导入 |
 | 导入/导出 | [x] | 加密 .vault 格式 + CSV 明文格式 |
-| 自动锁定 | [x] | 无操作超时自动锁定 |
-| 键盘快捷键 | [x] | ⌘ + K / ⌥ + N / ⌥ + L / ⌘ + , |
+| 文件同步 | [x] | 本地文件系统访问 API（Chrome/Edge） |
+| 自动锁定 | [x] | 无操作超时自动锁定（1/5/15/30 分钟/从不） |
+| 键盘快捷键 | [x] | ⌘/Ctrl + K / N / L / , |
 | IndexedDB 存储 | [x] | 浏览器本地持久化 |
+| 桌面应用 | [x] | Tauri v2 封装（macOS / Windows） |
+| PWA 离线 | [x] | Service Worker 离线缓存 + 在线版 |
 
 ---
 
 ## 快速开始
 
-### 1. 打开应用
+### 开发模式（Vite Dev Server）
 
 ```bash
-# 方式1：双击文件
-双击 index.html
+npm install
+npm run dev          # 启动开发服务器 http://localhost:1420
+```
 
-# 方式2：命令行打开
-open index.html
+### 构建与使用
 
-# 方式3：拖拽到浏览器
-将 index.html 拖拽到浏览器窗口
+```bash
+npm run vite:build   # 构建到 dist/（浏览器版 / Pages / Tauri 共用产物）
+```
+
+- **浏览器版**：构建后双击 `dist/index.html`，或拖拽到浏览器（产物为 iife 脚本，file:// 直接可用）
+- **在线版**：推送到 `main` 分支自动部署到 GitHub Pages：<https://trexwb.github.io/lockPass/>
+
+### 桌面版（Tauri）
+
+```bash
+npm run tauri:dev    # 桌面开发模式（自动启动 Vite dev server）
+npm run tauri:build  # 构建桌面安装包
+npm run make-dmg     # (macOS) 生成 .dmg
 ```
 
 ### 2. 创建密码库
 
 首次打开会显示「创建密码保险箱」界面：
 
-1. 输入主密码（8位以上，建议包含大小写字母、数字、符号）
+1. 输入主密码（8 位以上，建议包含大小写字母、数字、符号）
 2. 再次确认密码
 3. 点击「确认创建」
 
@@ -53,16 +70,17 @@ open index.html
 ### 3. 添加密码
 
 - 点击左下角「添加密码」按钮
-- 填写标题（必填）、用户名、密码（必填）、网址、分类、标签、备注
+- 选择条目类型（网站 / 服务器 / 数据库 / AI / 应用 / 其他），不同类型展示对应字段
+- 填写标题（必填）、用户名、密码（必填）、网址、标签、备注
 - 可使用密码生成器生成强密码
 - 点击「保存」
 
 ### 4. 使用密码
 
-- **查看详情**：点击密码条目
+- **查看详情**：点击密码条目，详情面板展示关联密码、操作入口
 - **复制密码**：点击复制按钮，或打开详情面板后点击复制
 - **显示/隐藏**：点击眼睛图标切换显示
-- **编辑/删除**：在详情面板操作
+- **编辑/删除**：在详情面板操作（删除进入回收站，可恢复）
 
 ---
 
@@ -71,27 +89,28 @@ open index.html
 ### 加密算法
 
 ```
-主密码 → PBKDF2(SHA-256, 100000次迭代) → AES-256-GCM 密钥
-数据   → AES-256-GCM 加密               → 密文存储到 IndexedDB
+主密码 → PBKDF2(SHA-256, 100000次迭代, 32字节盐值) → AES-256-GCM 密钥
+数据   → AES-256-GCM 加密（随机12字节IV）          → 密文存储
 ```
 
 ### 数据存储
 
 | 数据 | 存储位置 | 加密状态 |
 |------|----------|:--------:|
-| 密码条目 | IndexedDB | 已加密 |
+| 密码条目 / 回收站 / 标签注册表 | IndexedDB | 已加密 |
 | 主密码 | 不存储 | — |
-| 盐值 (Salt) | IndexedDB | 明文 |
-| 分类列表 | IndexedDB | 加密（随密码一起） |
+| 盐值 / 迭代次数 (Salt / iterations) | IndexedDB | 明文 |
+| 会话密钥 | sessionStorage | 解锁期间存在，锁定即清除 |
 
 ### 安全特性
 
 | 特性 | 说明 |
 |------|------|
-| 零网络请求 | 所有数据在本地处理，无任何网络通信 |
-| 自动锁定 | 无操作超时（可配置 1/5/15/30 分钟）后自动锁定 |
+| 零网络请求 | 默认所有数据在本地处理，无任何网络通信（可选联网功能默认关闭） |
+| 自动锁定 | 无操作超时（可配置 1/5/15/30 分钟/从不）后自动锁定 |
 | 剪贴板清除 | 复制密码后自动清除剪贴板（可配置 10/30/60 秒） |
-| 内存清理 | 锁定时清除内存中的明文数据 |
+| 内存清理 | 锁定时清除内存与 sessionStorage 中的明文数据 |
+| CSP 限制 | Tauri 桌面版启用严格 CSP（无远程脚本/样式） |
 
 ---
 
@@ -103,8 +122,8 @@ open index.html
 
 | 格式 | 说明 | 安全性 |
 |------|------|:------:|
-| `.vault` | 加密备份文件 | 安全 |
-| `.csv` | 明文表格文件 | 需妥善保管 |
+| `.vault` | 加密 JSON 文件（盐值+IV+密文，含迭代次数） | ✅ 安全 |
+| `.csv` | 明文表格文件 | ⚠️ 需妥善保管 |
 
 **推荐使用 `.vault` 格式作为定期备份。**
 
@@ -112,9 +131,14 @@ open index.html
 
 点击右上角「导入」按钮：
 
-- 支持 `.vault` 加密文件（需要原主密码解密）
-- 支持 `.csv` 明文文件
-- 导入时会自动去重（按标题+用户名匹配）
+- 支持 `.vault` 加密文件（需要原主密码解密，使用文件内自带迭代次数）
+- 支持 `.csv` 明文文件（含全部类型字段）
+- 导入时自动去重（按标题+用户名匹配）
+
+### 跨设备迁移
+
+- **二维码**：详情面板「分享为二维码」→ 另一台设备「二维码导入」扫码，自动解密导入
+- **.vault 文件**：导出 → 复制 → 导入
 
 ---
 
@@ -134,11 +158,20 @@ open index.html
 
 ### 技术栈
 
-- **前端框架**：纯 Vanilla JavaScript（无框架依赖）
-- **存储**：IndexedDB（浏览器原生）
+- **前端框架**：Vue 3（Composition API，`<script setup>`）+ Vite 5
+- **状态管理**：composables（`useVault` 等，不引 Pinia）
+- **核心逻辑**：`src/core/` ES module（保持 `window.*` 挂载，算法零改动迁移）
+- **存储**：IndexedDB（浏览器原生）；桌面版走 Tauri 文件存储（`file-store.js` 同接口）
 - **加密**：Web Crypto API（浏览器原生）
-- **UI**：CSS Variables + Flexbox/Grid
+- **UI**：CSS Variables + Flexbox/Grid，自绘组件，零 UI 库依赖
 - **字体**：system-ui 系统字体栈（零外部依赖，纯离线）
+- **桌面封装**：Tauri v2（Rust）
+
+### 构建产物
+
+| 产物 | 用途 | 说明 |
+|------|------|------|
+| `dist/` | 浏览器版 / GitHub Pages / Tauri frontendDist | `vite build` 外置资源产物，iife 单 chunk（file:// 可双击打开） |
 
 ### 为什么选择 IndexedDB 而非 sql.js？
 
@@ -158,38 +191,42 @@ open index.html
 ```
 LockPass/
 ├── src/                   # 前端源码（唯一真源）
-│   ├── index.html         # 主 HTML 文件（轻量化，仅结构）
-│   ├── sw.js              # Service Worker（PWA 离线缓存）
-│   ├── manifest.json      # PWA 清单
-│   ├── css/
-│   │   └── main.css       # 主样式文件（734 行）
-│   ├── js/
-│   │   ├── crypto.js      # 加密工具模块（AES-256-GCM）
-│   │   ├── database.js    # IndexedDB 存储模块
-│   │   ├── generator.js   # 密码生成器模块
-│   │   ├── utils.js       # 工具函数模块
-│   │   ├── app.js         # 主应用逻辑模块
-│   │   ├── ui.js          # UI 渲染模块
-│   │   ├── entries.js     # 条目管理模块
-│   │   ├── editor.js      # 条目编辑模块
-│   │   ├── import-export.js # 导入导出模块
-│   │   ├── settings.js    # 设置模块
-│   │   ├── shortcuts.js   # 快捷键模块
-│   │   └── main.js        # 主初始化模块
-│   └── assets/
-│       └── icons/
-│           └── favicon.svg # 网站图标
+│   ├── index.html         # Vite 入口 HTML（仅结构）
+│   ├── main.js            # Vue 入口：顺序导入 core 模块 + 挂载 App
+│   ├── App.vue            # 根组件：认证（创建/解锁）→ 主界面
+│   ├── core/              # 核心逻辑层（ES module，window.* 挂载，零框架依赖）
+│   │   ├── crypto.js      # AES-256-GCM 加密（PBKDF2 派生）
+│   │   ├── database.js    # IndexedDB 存储
+│   │   ├── file-store.js  # Tauri 文件存储（与 IndexedDB 同接口）
+│   │   ├── file-sync.js   # 数据目录绑定 + 文件同步
+│   │   ├── generator.js   # 密码生成器
+│   │   ├── utils.js       # 工具函数 + SvgIcons
+│   │   ├── related.js     # 关联密码（同 IP/域名/账号）
+│   │   ├── import-bridge.js # CSV/.vault 导入解析
+│   │   ├── tauri-bridge.js  # Tauri 桥接（检测 __TAURI__ 时覆盖下载/剪贴板）
+│   │   ├── sw-register.js   # Service Worker 注册 + 更新自动刷新
+│   │   ├── version.js       # 版本号（构建期注入）
+│   │   └── particles.js     # 粒子背景动效
+│   ├── composables/       # 响应式状态（useVault / useShortcuts）
+│   ├── components/        # Vue SFC 组件
+│   │   ├── layout/        # AppShell / SidebarNav / HeaderBar
+│   │   ├── auth/          # AuthView（创建/解锁/修改主密码）
+│   │   ├── entries/       # DetailPanel 详情面板
+│   │   ├── modals/        # EntryEditor / Settings / Import / Export / Tags / QrShare / QrImport / ChangePw
+│   │   └── common/        # ModalBase 等公共组件
+│   ├── styles/            # 设计令牌 + 按域拆分样式（base/layout/entries/editor/modal/settings/utilities）
+│   └── public/            # 静态资源（sw.js / manifest.json / assets/vendor/*.js）
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
-├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
-├── dist/                  # 构建产物（由 scripts/copy-frontend.mjs 从 src/ 生成，不手动修改）
-├── docs/                  # 文档中心（spec/tauri/迁移设计，见 docs/README.md）
+├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）
+├── dist/                  # 构建产物（vite build 生成，不手动修改）
+├── docs/                  # 文档中心（spec / tauri / 迁移设计，见 docs/README.md）
 └── README.md              # 使用说明（本文件）
 ```
 
 **模块化优势**：
-- 每个功能模块独立文件，便于维护和升级
-- 所有脚本本地化，完全离线可用
-- 清晰的依赖关系，便于调试和扩展
+- `core/` 纯逻辑层零框架依赖，加密与存储算法稳定可审计
+- 组件层（composables + SFC）负责状态与交互，便于扩展新功能（TOTP、审计等）
+- 所有资源本地化，完全离线可用
 
 ---
 
@@ -267,7 +304,7 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ### 最佳实践
 
-1. 使用强主密码（12位以上，含大小写字母、数字、符号）
+1. 使用强主密码（12 位以上，含大小写字母、数字、符号）
 2. 定期导出 `.vault` 加密备份，存储在安全位置
 3. 设置合理的自动锁定时间（建议 5 分钟）
 4. 不要在公共场所的电脑上使用
@@ -288,7 +325,12 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 3. 选择 CSV 文件
 4. 确认导入
 
-**支持的 CSV 列名**：`title`, `username`, `password`, `url`, `category`, `notes`
+**支持的 CSV 列名**：`title`, `username`, `password`, `url`, `category`, `notes`（另支持 6 种条目类型的扩展字段，见 `src/core/import-bridge.js` 的列名映射）
+
+### 旧版本数据
+
+- 旧版「分类」数据在首次解锁时自动迁移为「标签」（幂等，迁移后回写）
+- 旧版索引数据（categories 字段）导入导出保持兼容
 
 ---
 
@@ -305,6 +347,10 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.x (2026-08-25)
+
+- 文档对齐：README / docs/spec.md / docs/tauri.md / AGENTS.md 更新至 Vue 3 + Vite 实际架构（此前仍描述 Vanilla JS 结构与已退役构建脚本）
+
 ### v1.0.0 (2026-08-22)
 
 PWA 更新机制修复 — 解决「添加到主屏幕」后线上代码更新无法触达用户的问题：
@@ -312,46 +358,14 @@ PWA 更新机制修复 — 解决「添加到主屏幕」后线上代码更新�
 - **sw.js fetch 策略重构**：
   - 导航请求（index.html）从「缓存优先」改为「网络优先」— 用户每次打开 PWA 先尝试拿最新 HTML，网络失败时回退缓存保底离线可用
   - 静态资源（JS/CSS）从「缓存优先」改为「Stale-While-Revalidate」— 先返回缓存秒开，同时后台拉取新版写入缓存，下次打开生效
-  - 旧策略的问题：缓存优先导致即使 SW 激活了新版本，所有资源仍命中旧缓存，用户永远拿不到新代码
-- **sw-register.js 新增 controllerchange 自动刷新**：
-  - 新 SW 激活并接管页面时，自动 `window.location.reload()` 一次，确保用户立即使用最新资源
-  - `refreshed` 标志位防止重复刷新
-- 版本号统一 v1.0.0（AGENTS.md / SPEC.md 头尾 / js/app.js / package.json / tauri.conf.json / Cargo.toml / sw.js 共 9 处同步）
-- **Bug 1：CSV 导入切行不一致** — 备注/密码等字段内含换行（RFC 4180 引号字段内换行）时，`previewCSV` 用 `Utils.splitCSVLines` 正确切行，但 `importCSV` 实际导入使用 `text.trim().split('\n')` 将一条记录拆成多条，导致导入错位/失败。修复：`importCSV` 统一切行方式为 `Utils.splitCSVLines`。
-- **Bug 2：FileSync.syncNow() 同步失败无反馈** — 本地文件同步写入失败时只 `console.error`，既没有设置 `FileSync.lastSyncError`（设置面板状态标签始终显示「已同步」），也没有 Toast 提示用户。修复：成功清空 `lastSyncError`；失败写入 `this.lastSyncError = e` 并 `Utils.showToast` 提示。
-- **Bug 3：exportVault 导出 iterations 硬编码为 100000** — `.vault` 加密备份导出时 `iterations` 直接写死 `100000`，未从 `DBUtils.meta.iterations` 读取实际存储值；若未来开放「修改迭代次数」功能，该导出文件会和实际加密参数不一致。修复：`iterRecord = await DBUtils.dbGet('iterations')`，与 `file-sync.js:_readPayload` 保持一致逻辑。
-- **Bug 4：importEncryptedVault 解密未使用导入文件自带 iterations** — 与 Bug 3 成对存在：导入 `.vault` 解密时 `CryptoUtils.deriveKey(password, salt)` 未传第 3 参数，默认用 `100000` 次，完全忽略了导入文件 `data.iterations` 字段。修复：`iterations = Number(data.iterations) || 100000` 后传入 `deriveKey`，与导出逻辑对称。
-- 版本号统一 v1.0.0（AGENTS.md / SPEC.md 头尾 / js/app.js / package.json / tauri.conf.json / Cargo.toml / sw.js 共 9 处同步）
-- **6 种条目类型**：支持网站、服务器、数据库、AI、应用、其他凭证
-  - 服务器：连接地址 + 端口 + 登录账号/密码 + root 账号/密码
-  - 数据库：数据库地址 + 端口 + 用户名 + 密码（无 root 层级）
-  - AI：服务名称 + API 地址 + Token
-  - 应用：应用名称 + App ID + 公钥 + 私钥（多行 textarea）
-  - 其他：凭证名称 + 凭证值
-- **5 种条目类型**：支持网站、服务器、AI、应用、其他凭证
-  - 服务器：连接地址 + 登录账号/密码 + root 账号/密码
-  - AI：服务名称 + API 地址 + Token
-  - 应用：应用名称 + App ID + 公钥 + 私钥（多行 textarea）
-  - 其他：凭证名称 + 凭证值
-- 公钥/私钥字段支持多行内容（含 PEM 证书格式）
-- 详情面板按类型语义化渲染
-- 卡片显示类型图标与语义化副标题
-- CSV 导入/导出支持全部类型字段
-- 二维码同步支持全部类型字段x
-- 首次发布
-- 完整的密码管理功能
-- AES-256-GCM 加密
-- IndexedDB 存储
-- 导入导出功能
-- 密码生成器
-- 自动锁定
-- 键盘快捷键
-
----
-
-## License
-
-MIT License - 自由使用、修改、分发。
+- **sw-register.js 新增 controllerchange 自动刷新**
+- **6 种条目类型**：网站、服务器、数据库、AI、应用、其他凭证（服务器含 root 账号层级；应用含公钥/私钥多行 PEM；AI 含 Token）
+- **二维码同步**：分享为加密二维码（LockPass-QR v1 载荷）+ 移动端扫码 / 上传 / 拖拽 / 拍照导入
+- **回收站**：软删除 + 恢复 / 彻底删除 / 清空，删除数据不随导入导出迁移
+- **标签体系**：合并「分类 + 标签」为统一标签注册表（颜色 + 图标），旧数据自动迁移
+- **关联密码**：同 IP / 根域名 / 内网主机名 / 同账号自动关联
+- **Vue 3 迁移**：全量迁移至 Vue 3 + Vite（iife 产物，file:// 双击可用），详见 `docs/superpowers/specs/2026-08-23-vue3-migration-design.md`
+- **Bug 修复**：CSV 导入切行不一致（RFC 4180 引号字段内换行）；FileSync 同步失败无反馈；exportVault 迭代次数硬编码；importEncryptedVault 忽略文件自带迭代次数
 
 ---
 
@@ -363,15 +377,15 @@ MIT License - 自由使用、修改、分发。
 
 ### Q: 数据存储在哪里？
 
-**A: 浏览器的 IndexedDB 数据库中。** 数据文件位于浏览器用户数据目录（Chrome: `~/Library/Application Support/Google/Chrome/Default/IndexedDB/`）。
+**A: 浏览器的 IndexedDB 数据库中。** 数据文件位于浏览器用户数据目录（Chrome: `~/Library/Application Support/Google/Chrome/Default/IndexedDB/`）。桌面版存储于系统应用数据目录（见 `docs/tauri.md`）。
 
 ### Q: 可以同步到其他设备吗？
 
-**A: 手动同步。** 导出 `.vault` 文件，复制到其他设备，在浏览器中打开 `index.html` 后导入即可。
+**A: 手动同步。** 导出 `.vault` 文件，或使用「分享为二维码」扫码导入。多设备自动同步不在当前规划内（与零网络原则冲突）。
 
 ### Q: 可以在手机上使用吗？
 
-**A: 理论上可以。** 在手机浏览器中打开 `index.html` 即可，但未针对移动端优化 UI。
+**A: 可以。** 支持移动端响应式布局（抽屉模式、底部滑出弹窗、二维码扫码导入），也可安装为 PWA（添加到主屏幕）。
 
 ### Q: 导出的 `.vault` 文件安全吗？
 

@@ -6,7 +6,7 @@
 
 ## 项目概述
 
-**LockPass** 是一款纯前端离线密码管理器，无需后端服务器，双击 `src/index.html` 即可在浏览器中使用。
+**LockPass** 是一款纯前端离线密码管理器，Vue 3 + Vite 构建，无后端服务器。浏览器版双击 `dist/index.html` 即用，另有 Tauri v2 桌面版（Windows / macOS）与 GitHub Pages 在线版。
 
 **核心原则**：安全 → 简洁 → 离线优先
 
@@ -16,10 +16,9 @@
 
 ## 版本管理规范
 
-
 > ⚠️ **用户硬性约束（最高优先级，覆盖下方默认规则）**
 > - `v1.x` 的 **MAJOR / MINOR 由用户决定**，AI 不得擅自提升（如私自从 v1.0.0 升到 v1.1.0 属违规）。
-> - AI 只允许在 **`v1.0.x` 的最后一位（PATCH）自增**：`v1.0.0` → `v1.0.0` → `v1.0.2` …
+> - AI 只允许在 **`v1.0.x` 的最后一位（PATCH）自增**：`v1.0.0` → `v1.0.1` → `v1.0.2` …
 > - **禁止任何 agent 执行 Git 提交类操作（`git add` / `git commit` / `git push` / `git tag` 等）**：所有改动留在工作树，由用户本人决定是否提交。
 
 ### 版本号格式
@@ -37,8 +36,9 @@
 | 修改类型 | 版本号变化 | 示例 |
 |----------|-----------|------|
 | Bug 修复、样式调整、小改进 | PATCH +1 | `v1.0.0` → `v1.0.1` |
-| 新增功能、功能增强 | MINOR +1, PATCH 归零 | `v1.0.2` → `v1.1.0` |
-| 重大变更、架构重构 | MAJOR +1, 其他归零 | `v1.5.3` → `v2.0.0` |
+| 新增功能、功能增强 | MINOR +1, PATCH 归零（需用户决定） | `v1.0.2` → `v1.1.0` |
+| 重大变更、架构重构 | MAJOR +1, 其他归零（需用户决定） | `v1.5.3` → `v2.0.0` |
+| 纯文档修改（README/spec/docs） | 不升版本号 | — |
 
 ### 版本号存储位置（单一来源）
 
@@ -72,51 +72,70 @@
 
 ## 开发规范
 
-### 1. 模块化开发
+### 1. 架构分层（Vue 3）
 
-- ✅ **每个功能模块独立文件**，存放在 `js/` 目录
-- ✅ **新增功能必须创建新模块**，不污染现有代码
-- ✅ **模块命名采用小写+连字符**，如 `import-export.js`
-- ✅ **模块必须通过 `window` 对象导出**，如 `window.CryptoUtils = { ... }`
-- ✅ **模块间依赖通过全局对象调用**，不使用 ES6 import/export（兼容纯文件打开）
+```
+┌─────────────────────────────────────────────────┐
+│  components/  Vue SFC（layout/auth/entries/     │
+│               modals/common）— 只负责 UI 与交互   │
+├─────────────────────────────────────────────────┤
+│  composables/ 响应式状态（useVault/useShortcuts）│
+│               — 状态管理与业务编排                │
+├─────────────────────────────────────────────────┤
+│  core/       纯逻辑层（ES module，window.* 挂载）│
+│               — 加密/存储/生成器/工具，零框架依赖  │
+└─────────────────────────────────────────────────┘
+```
+
+- ✅ **核心逻辑**放 `src/core/`，保持 `window.*` 挂载（`window.CryptoUtils`、`window.DBUtils` 等），
+  ES module 导入仅产生挂载副作用（见 `src/main.js` 顶部 import 列表）
+- ✅ **状态与业务编排**放 `src/composables/`（ES module export，`ref`/`reactive` 响应式）
+- ✅ **UI 组件**放 `src/components/`，Vue 3 `<script setup>` 语法
+- ✅ **样式**放 `src/styles/`（按域拆分：base/layout/entries/editor/modal/settings/utilities/particles），
+  组件内不写 `<style>` 块（保持样式集中管理）
+- ✅ **静态资源**放 `src/public/`（sw.js / manifest.json / assets/vendor/*.js，原样拷贝到 dist 根）
+- ✅ **新增功能模块**：纯逻辑 → `core/` 新文件 + main.js 注册；新状态 → composable；新界面 → 组件
 
 ### 2. 代码风格
 
-- ✅ **使用 ES5/ES6 语法**，不使用 ES2020+ 特性
-- ✅ **函数必须有 JSDoc 注释**，说明参数和返回值
-- ✅ **变量命名语义化**，禁止 `a`, `b`, `temp` 等无意义命名
-- ✅ **常量使用全大写下划线**，如 `DB_NAME`, `DEFAULT_CATEGORIES`
-- ✅ **代码缩进 2 空格**，不使用 tab
+- ✅ Vue 组件使用 Composition API（`<script setup>`），组合式函数命名 `use*`
+- ✅ 函数必须有 JSDoc 注释，说明参数和返回值
+- ✅ 变量命名语义化，禁止 `a`, `b`, `temp` 等无意义命名
+- ✅ 常量使用全大写下划线，如 `DB_NAME`, `DEFAULT_CATEGORIES`
+- ✅ 代码缩进 2 空格，不使用 tab
 
 ### 3. 安全规范
 
-- ✅ **所有用户输入必须转义**，使用 `Utils.escHtml()` 防止 XSS
-- ✅ **密码相关操作必须使用 Web Crypto API**，不使用第三方库
-- ✅ **敏感数据不在控制台打印**，调试时必须移除 `console.log`
-- ✅ **剪贴板操作必须设置自动清除**，默认 30 秒
-- ✅ **导出文件必须加密**，CSV 导出必须警告用户
+- ✅ 所有用户输入必须转义，使用 `Utils.escHtml()` 防止 XSS（Vue 模板默认转义，v-html 必须显式 sanitize）
+- ✅ 密码相关操作必须使用 Web Crypto API，不使用第三方库
+- ✅ 敏感数据不在控制台打印，调试时必须移除 `console.log`
+- ✅ 剪贴板操作必须设置自动清除，默认 30 秒
+- ✅ 导出文件必须加密，CSV 导出必须警告用户
+- ✅ 不引入外部 CDN / 远程字体 / 外部 API（离线优先）
 
 ### 4. UI/UX 规范
 
-- ✅ **使用 CSS Variables 定义颜色和间距**，不硬编码值
-- ✅ **暗色主题优先**，配色参考 `css/main.css` 中的 `:root` 变量
-- ✅ **交互必须有视觉反馈**，如 hover、active、loading 状态
-- ✅ **错误提示使用 Toast**，不使用 `alert()`
-- ✅ **确认操作使用 `confirm()`**，危险操作需二次确认
+- ✅ 使用 CSS Variables 定义颜色和间距，不硬编码值（见 `src/styles/base.css` 的 `:root` 设计令牌）
+- ✅ 暗色主题优先
+- ✅ 交互必须有视觉反馈，如 hover、active、loading 状态
+- ✅ 错误提示使用 Toast（`Utils.showToast`），不使用 `alert()`
+- ✅ 确认操作使用 `Utils.confirm` 自定义确认弹窗，危险操作需二次确认
+- ✅ 模态框统一走 `ModalBase` 组件（遮罩 + 焦点陷阱 + Esc 关闭）
 
 ### 5. 存储规范
 
-- ✅ **使用 IndexedDB 存储所有数据**，不使用 localStorage
-- ✅ **加密数据存储在 `vault` ObjectStore**
-- ✅ **元数据（盐值、迭代次数）存储在 `meta` ObjectStore**
-- ✅ **每次数据变更必须调用 `App.saveVault()` 持久化**
+- ✅ 使用 IndexedDB 存储所有数据（`src/core/database.js`），不使用 localStorage
+- ✅ 加密数据存储在 `vault` ObjectStore（应用状态整体加密：entries/deleted/tagDefs）
+- ✅ 元数据（盐值、迭代次数）存储在 `meta` ObjectStore
+- ✅ 桌面版走 `src/core/file-store.js`（同接口透明替换 IndexedDB，DBUtils 调用方无感知）
+- ✅ 每次数据变更必须调用 `App.saveVault()` / 对应持久化方法
 
 ### 6. 离线优先
 
-- ✅ **禁止使用 CDN 链接**，所有资源必须本地化
-- ✅ **禁止使用 Google Fonts 等外部字体**，使用系统字体栈
-- ✅ **禁止使用外部 API**，所有操作在本地完成
-- ✅ **测试时必须断网验证**，确保完全离线可用
+- ✅ 禁止使用 CDN 链接，所有资源必须本地化（`src/public/assets/vendor/`）
+- ✅ 禁止使用 Google Fonts 等外部字体，使用系统字体栈
+- ✅ 禁止使用外部 API（可选联网功能必须默认关闭 + 设置开关）
+- ✅ 测试时必须断网验证，确保完全离线可用
 
 ---
 
@@ -126,48 +145,53 @@
 
 ```
 LockPass/
-├── src/                   # 前端源码（唯一真源，构建产物由它生成）
-│   ├── index.html         # 主 HTML 文件（仅结构，不包含逻辑）
-│   ├── sw.js              # Service Worker（PWA 离线缓存）
-│   ├── manifest.json      # PWA 清单
-│   ├── css/
-│   │   └── main.css       # 主样式文件
-│   ├── js/
-│   │   ├── crypto.js      # 加密工具模块
-│   │   ├── database.js    # IndexedDB 存储模块
-│   │   ├── generator.js   # 密码生成器模块
-│   │   ├── utils.js       # 工具函数模块
-│   │   ├── related.js     # 关联密码模块（同 IP/域名/账号）
-│   │   ├── app.js         # 主应用逻辑模块
-│   │   ├── ui.js          # UI 渲染模块
-│   │   ├── entries.js     # 条目管理模块
-│   │   ├── editor.js      # 条目编辑模块
-│   │   ├── import-export.js # 导入导出模块
-│   │   ├── settings.js    # 设置模块
-│   │   ├── shortcuts.js   # 快捷键模块
-│   │   └── main.js        # 主初始化模块
-│   └── assets/
-│       └── icons/
-│           └── favicon.svg  # 网站图标
+├── src/                   # 前端源码（唯一真源）
+│   ├── index.html         # Vite 入口 HTML（仅结构）
+│   ├── main.js            # Vue 入口：顺序导入 core 模块（window.* 挂载）+ 挂载 App
+│   ├── App.vue            # 根组件：认证（创建/解锁/修改主密码）→ 主界面
+│   ├── core/              # 核心逻辑层（ES module，window.* 挂载，零框架依赖）
+│   │   ├── crypto.js      # AES-256-GCM 加密 / PBKDF2 派生（window.CryptoUtils）
+│   │   ├── database.js    # IndexedDB 存储（window.DBUtils）
+│   │   ├── file-store.js  # Tauri 文件存储（同接口替换 IndexedDB）
+│   │   ├── file-sync.js   # 数据目录绑定 + 文件同步（window.FileSync）
+│   │   ├── generator.js   # 密码生成器（window.PasswordGenerator）
+│   │   ├── utils.js       # 工具函数 + SvgIcons（window.Utils / window.SvgIcons）
+│   │   ├── related.js     # 关联密码（window.RelatedEntries）
+│   │   ├── import-bridge.js # CSV/.vault 导入解析（window.ImportExport）
+│   │   ├── tauri-bridge.js  # Tauri 桥接（检测 __TAURI__，覆盖下载/剪贴板）
+│   │   ├── sw-register.js   # Service Worker 注册 + controllerchange 自动刷新
+│   │   ├── version.js       # 版本号（构建期注入）
+│   │   └── particles.js     # 粒子背景动效（window.LockParticles）
+│   ├── composables/       # 响应式状态
+│   │   ├── useVault.js    # 主状态：vaultState / 认证 / 条目 CRUD / 标签 / 回收站
+│   │   └── useShortcuts.js # 键盘快捷键
+│   ├── components/        # Vue SFC 组件
+│   │   ├── AppShell.vue / ModalHost.vue
+│   │   ├── layout/        # SidebarNav / HeaderBar
+│   │   ├── auth/          # AuthView（创建/解锁/修改主密码）
+│   │   ├── entries/       # DetailPanel（详情面板）
+│   │   ├── modals/        # EntryEditor / Settings / Import / Export / Tags /
+│   │   │                  # QrShare / QrImport / ChangePw
+│   │   └── common/        # ModalBase
+│   ├── styles/            # 设计令牌 + 按域拆分（base/layout/entries/editor/modal/settings/utilities/particles）
+│   └── public/            # 静态资源（sw.js / manifest.json / assets/vendor/jsQR.js、qrcode.min.js）
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
-├── scripts/               # 构建辅助脚本（copy-frontend/serve/make-dmg/bump-version）
-├── dist/                  # 构建产物：单文件内联版（vite build，file:// 双击 + Pages 部署 + Tauri 打包共用，不手动修改）
-├── memory/              # 工作记录（按日期）
-│   └── YYYY-MM-DD.md
-├── docs/                # 文档中心（产品规格/桌面封装/迁移设计，见 docs/README.md 索引）
-│   ├── README.md        # 文档索引
-│   ├── spec.md          # 产品规格文档
-│   └── tauri.md         # Tauri 桌面封装文档
-├── README.md            # 使用说明（仓库首页）
-└── AGENTS.md            # 本文件（Agent 开发规范，约定置于根目录）
+├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）
+│                          # 注：copy-frontend.mjs 为 CI 兼容壳（内部 vite build）；serve.mjs 遗留未引用
+├── dist/                  # 构建产物（vite build 生成，不手动修改）
+├── docs/                  # 文档中心（spec / tauri / 迁移设计，见 docs/README.md）
+├── memory/                # 工作记录（按日期 YYYY-MM-DD.md）
+├── README.md              # 使用说明（仓库首页）
+└── AGENTS.md              # 本文件（Agent 开发规范，约定置于根目录）
 ```
 
 ### 新增模块流程
 
-1. 在 `js/` 目录创建新模块文件
-2. 在文件末尾导出模块：`window.ModuleName = { ... }`
-3. 在 `index.html` 底部按依赖顺序添加 `<script>` 标签
-4. 在 `js/main.js` 中绑定全局函数（如果需要在 HTML 中调用）
+1. **纯逻辑**：在 `src/core/` 创建新文件（ES module，末尾挂载 `window.ModuleName = { ... }`），
+   在 `src/main.js` 顶部 import 顺序列表中加入
+2. **状态**：在 `src/composables/` 创建 `useXxx.js`（ES module export）
+3. **界面**：在 `src/components/` 对应子目录创建 SFC，由父组件引入
+4. **样式**：在 `src/styles/` 对应文件添加（或新建按域文件）
 5. 更新本文件的目录结构
 
 ---
@@ -202,6 +226,11 @@ LockPass/
 
 ## Git 提交规范
 
+> ⚠️ 用户硬性约束：**禁止任何 agent 执行 Git 提交类操作**（add/commit/push/tag 等），
+> 改动只保留在工作树，是否提交由用户本人决定。
+
+（以下格式仅供用户本人提交时参考）
+
 ### 提交消息格式
 
 ```
@@ -222,18 +251,6 @@ LockPass/
 - `test` - 测试相关
 - `chore` - 构建/工具相关
 
-### 示例
-
-```
-feat(editor): 添加密码强度实时显示
-
-- 新增 calcStrength() 函数计算熵值
-- 新增强度条 UI 组件
-- 更新 EntryEditor 模块
-
-Closes #12
-```
-
 ---
 
 ## 测试检查清单
@@ -241,17 +258,16 @@ Closes #12
 ### 功能测试
 
 - [ ] 首次创建保险箱
-- [ ] 解锁/锁定保险箱
-- [ ] 添加/编辑/删除密码条目
-- [ ] 分类筛选和搜索
+- [ ] 解锁/锁定保险箱（含自动锁定、刷新恢复会话）
+- [ ] 添加/编辑/删除密码条目（6 种类型字段）
+- [ ] 标签筛选 / 搜索 / 收藏 / 回收站（恢复/彻底删除/清空）
 - [ ] 密码生成器
 - [ ] 复制密码（自动清除）
-- [ ] 导出 .vault 文件
-- [ ] 导入 .vault 文件（加密）
-- [ ] 导入 CSV 文件
-- [ ] 修改主密码
-- [ ] 销毁保险箱
-- [ ] 自动锁定
+- [ ] 关联密码展示与跳转
+- [ ] 二维码分享 / 扫码 / 上传 / 拍照导入
+- [ ] 导出 .vault / 导入 .vault（加密）/ 导入 CSV
+- [ ] 修改主密码 / 销毁保险箱
+- [ ] 文件同步（成功 / 失败反馈）
 
 ### 离线测试
 
@@ -269,6 +285,12 @@ Closes #12
 - [ ] 自动锁定触发
 - [ ] XSS 注入测试（标题、备注等字段）
 
+### 构建验证
+
+- [ ] `npm run vite:build` 通过，`dist/index.html` 双击可打开（file://）
+- [ ] `npm run version:check` 版本一致
+- [ ] 桌面版 `npm run tauri:build` 通过（如环境允许）
+
 ### 浏览器兼容性
 
 - [ ] Chrome 60+
@@ -282,19 +304,20 @@ Closes #12
 
 ### Q: 如何添加新功能？
 
-1. 阅读 `docs/spec.md` 了解产品规格
-2. 在 `src/js/` 创建新模块或修改现有模块
-3. 更新 `src/index.html` 添加必要的 UI 元素
-4. 更新 `src/css/main.css` 添加样式（如需要）
-5. 测试所有功能
+1. 阅读 `docs/spec.md` 了解产品规格与未来规划
+2. 按「新增模块流程」在 `src/core/` 或 `src/composables/` / `src/components/` 落地
+3. 更新 `src/styles/` 对应样式（如需要）
+4. 测试所有功能（见测试检查清单）
+5. 按版本规范运行 `npm run version:set`（新功能需用户确认 MINOR）
 6. 更新 `README.md` 和 `docs/spec.md`
 
 ### Q: 如何调试？
 
-1. 打开浏览器开发者工具（F12）
-2. 查看 Console 中的错误信息
-3. 使用 Sources 面板设置断点
-4. 查看 Application > IndexedDB 查看数据
+1. 运行 `npm run dev` 打开 Vite dev server（http://localhost:1420）
+2. 打开浏览器开发者工具（F12）
+3. 查看 Console 中的错误信息
+4. 使用 Sources 面板设置断点
+5. 查看 Application > IndexedDB 查看数据
 
 ### Q: 如何重置数据？
 
@@ -302,9 +325,11 @@ Closes #12
 2. 点击「销毁保险箱」
 3. 刷新页面重新创建
 
-### Q: 为什么不用框架？
+### Q: 为什么用 Vue 3 而不是纯 Vanilla JS？
 
-**离线优先**：框架需要构建工具或 CDN，无法直接双击打开。纯 Vanilla JS + 本地文件可确保完全离线可用。
+**离线优先仍是底线**：Vue 3 + Vite 构建产物为 iife 单 chunk（外置资源），file:// 双击可用，
+不依赖 CDN 或构建期后的网络。Vue 3 迁移在保留「双击即用」的同时，为 TOTP、密码审计等
+复杂功能迭代提供了组件化基础（详见 `docs/superpowers/specs/2026-08-23-vue3-migration-design.md`）。
 
 ---
 
@@ -317,79 +342,31 @@ Closes #12
 - ❌ 禁止引入外部 CDN 链接
 - ❌ 禁止在控制台打印敏感信息
 - ❌ 禁止跳过用户确认直接执行危险操作
+- ❌ 禁止擅自提升 v1.x 的 MAJOR / MINOR 版本号
+- ❌ 禁止执行任何 Git 提交类操作（add/commit/push/tag）
+
 ---
 
 ## 更新日志
 
+### 2026-08-25 文档对齐
+
+- README / docs/spec.md / docs/tauri.md / 本文件更新至 Vue 3 + Vite 实际架构
+- 修正过时描述：Vanilla JS 技术栈、js/ 目录结构、零打包器、copy-frontend 拷贝逻辑、CSP null
+- 修正 `.github/workflows/pages.yml` 注释（单文件内联 → 外置资源产物）
+- 纯文档修改，不升版本号
+
 ### v1.0.0 (2026-08-19)
 
 - 重构：合并「分类」与「标签」为统一的「带颜色和图标的标签」
-- 数据模型：移除 `categories` 与条目 `category` 字段；新增顶层 `tagDefs` 注册表 `{ [name]: { color, icon, isDefault? } }`，条目 `tags` 数组存放标签名字符串
-- 默认 7 个分类（社交/邮箱/金融/工作/开发/生活/其他）升级为默认标签，保留原颜色与图标；新增 12 个常用标签，随机分配颜色与图标
-- 旧 vault 首次解锁时自动迁移：`categories` → `tagDefs`、条目 `category` → 该条目一个 `tags` 项（幂等，迁移后回写）
-- 侧边栏：全部/收藏/回收站 + 按使用频率取前 8 个标签作为筛选入口；卡片与详情面板展示带色标+图标的标签 chip，超过 3 个折叠为 +N
-- 编辑器标签选择器升级：移除分类下拉框，标签 chip 展示颜色与图标，输入新标签回车创建并随机分配颜色/图标并持久化
-- 修复 Bug：标签被选中一次删除后无法二次选中的问题（`removeTag`/`addTag` 后统一重建推荐区，`isTagSelected`/`removeTag` 限定匹配 `.selected-tag` 而非推荐按钮）
-- 导入导出保持只读写 `entries`（回收站/标签注册表不随明文与 .vault 迁移，前向兼容旧 categories）
-- 新增「回收站」功能：删除密码改为软删除，移入回收站，避免误删不可恢复
-- 删除流程：从 `entries` 移入 `deleted` 数组并打 `deletedAt` 时间戳，保留原分类、标签等全部元数据
-- 回收站天然不参与导入/导出：导入导出仅读写 `App.state.entries`，符合「回收站不随数据迁移」的需求
-- 侧边栏新增「回收站」入口（带数量徽标），回收站视图按删除时间倒序排列
-- 回收站卡片提供「恢复」快捷按钮；详情面板在回收站内显示「恢复 / 彻底删除」，普通条目显示「编辑 / 复制 / 二维码 / 删除」
-- 工具栏在回收站视图下提供「清空回收站」；保留策略为永久保留 + 手动清空（不做自动清理）
-- 数据模型新增 `deleted` 数组，与 `entries/categories/tags` 并列加密存储（PBKDF2 + AES-256-GCM）
-- 新增模块函数 `getEntryById / restoreEntry / permanentDeleteEntry / emptyRecycleBin`
-- 新增「关联密码」功能：查看密码详情时自动展示关联的其他密码，点击直接跳转
-- 网址关联：同 IP（含 IPv4 直连，兼容 `IP:端口` 裸写法）、同根域名（泛域名归一，内置离线多级 TLD 列表如 com.cn/co.uk）、同内网主机名
-- 账号关联：同用户名（大小写不敏感）的密码互相关联
-- 关联关系为动态计算，不改变存储结构，条目增删改后实时更新
-- 新增模块 `js/related.js`（RelatedEntries）
-- 全部系统原生 confirm 替换为 Element 风格自定义确认弹窗（Utils.confirm）
-- 覆盖删除密码、CSV 导出、二维码导入重复替换、销毁保险箱双重确认等场景
-- 修复手机端系统弹窗不可用问题，确认框支持点遮罩/Esc 取消、Enter 确认
-- 添加自动锁屏调试日志
-- 在设置锁屏时间和重置定时器时输出 console.log
-- 帮助排查自动锁屏不生效问题
-- 锁屏后刷新需要重新输入密码
-- 锁屏时清除 sessionStorage 和 cryptoKey
-- 非锁屏状态刷新保持自动恢复
-- 统一列表卡片收藏按钮样式
-- 收藏按钮与复制按钮尺寸一致（28x28px）
-- 添加背景色、圆角、悬停效果
-- 详情面板头部新增「收藏」按钮
-- 打开任意已添加的密码即可直接收藏/取消收藏
-- 收藏状态与列表星标、侧边栏收藏列表实时同步
-- 被收藏的密码出现在侧边栏「收藏」分类中
-
-**初始化版本**，包含以下功能：
-
-**核心功能**：
-- 纯前端离线密码保险箱，双击 index.html 即可运行
-- AES-256-GCM + PBKDF2 加密
-- IndexedDB 本地持久化存储
-- 密码条目管理（增删改查、分类、标签、收藏）
-- 密码生成器（可配置长度、字符类型、熵值计算）
-- 全局搜索、快捷键支持
-
-**数据管理**：
-- 导入/导出 .vault 和 .csv 格式
-- 本地文件同步（Chrome/Edge 文件系统访问 API）
-- 修改主密码、销毁保险箱
-
-**安全机制**：
-- 5 分钟无操作自动锁定（可配置）
-- 复制密码 30 秒自动清除剪贴板
-- 会话持久化（sessionStorage，刷新不退出）
-- 退出登录清除会话
-
-**UI/UX**：
-- 响应式布局（PC/Pad/Phone）
-- 暗色主题
-- Tab 键顺序优化
-- SVG 图标替换表情符号
-- 标签可点击选择组件
-- 版本号显示在设置页面
-- 移动端模态框底部滑出
+- 数据模型：移除 `categories` 与条目 `category` 字段；新增顶层 `tagDefs` 注册表
+- 新增「回收站」功能：软删除 + 恢复 / 彻底删除 / 清空
+- 新增「关联密码」功能：同 IP / 根域名 / 账号自动关联
+- 新增 6 种条目类型（网站/服务器/数据库/AI/应用/其他）与类型化字段
+- 二维码同步（分享 + 移动端扫码/上传/拍照导入）
+- 系统 confirm 全部替换为自定义确认弹窗
+- Vue 3 全量迁移（详见迁移设计文档）
+- 自动锁屏调试、会话持久化、收藏/复制按钮统一、锁屏清理 sessionStorage
 
 ---
 
