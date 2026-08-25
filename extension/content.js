@@ -64,6 +64,42 @@ function highlightSubmit(form) {
   }, 2400)
 }
 
+/* ── 登录表单自动检测（自动填充入口） ──────────────
+   页面出现密码输入框时上报后台（携带域名），后台在
+   「网页版页面桥 / 桌面版 HTTP 服务」任一就绪后自动取数填充。
+   节流：同一域名 5 秒内只上报一次，避免 MutationObserver 高频触发。 */
+let lastPageReadyAt = 0
+const PAGE_READY_THROTTLE_MS = 5000
+
+function notifyPageReady() {
+  const now = Date.now()
+  if (now - lastPageReadyAt < PAGE_READY_THROTTLE_MS) return
+  if (!document.querySelector('input[type="password"]')) return
+  lastPageReadyAt = now
+  try {
+    chrome.runtime.sendMessage({ type: 'LP_PAGE_READY', domain: location.hostname })
+  } catch (e) { /* 忽略 */ }
+}
+
+function observeLoginForms() {
+  notifyPageReady()
+  const mo = new MutationObserver(() => notifyPageReady())
+  try {
+    mo.observe(document.documentElement, { childList: true, subtree: true })
+  } catch (e) { /* 忽略 */ }
+  // SPA 路由变化后重置节流重新检测
+  const patch = (type) => {
+    const orig = history[type]
+    history[type] = function (...args) {
+      const r = orig.apply(this, args)
+      setTimeout(() => { lastPageReadyAt = 0; notifyPageReady() }, 200)
+      return r
+    }
+  }
+  try { patch('pushState'); patch('replaceState') } catch (e) {}
+  window.addEventListener('popstate', () => { lastPageReadyAt = 0; notifyPageReady() })
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== 'LP_FILL') return
   const { entry, password } = msg
@@ -84,3 +120,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   highlightSubmit(target.form)
   sendResponse({ ok: true })
 })
+
+// 启动登录表单自动检测（自动填充）
+observeLoginForms()

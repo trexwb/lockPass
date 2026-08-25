@@ -15,13 +15,21 @@
     </header>
 
     <div id="state-locked" class="state-box hidden">
-      <p>LockPass 未解锁</p>
-      <p class="hint">请先打开并解锁 LockPass 主应用（浏览器版 / 在线版），解锁后本扩展自动就绪。</p>
+      <p id="locked-title">LockPass 未解锁</p>
+      <p id="locked-hint" class="hint">请先打开并解锁 LockPass 主应用（浏览器版 / 在线版），解锁后本扩展自动就绪。</p>
+      <button id="btn-pair" class="btn hidden">连接桌面版 LockPass</button>
+    </div>
+
+    <div id="state-pairing" class="state-box hidden">
+      <p>正在等待桌面端确认…</p>
+      <p class="hint">请在 LockPass 桌面应用中点击「允许配对」，确认数字一致：</p>
+      <div id="pair-nonce" class="nonce">——</div>
+      <p id="pair-hint" class="hint">如已取消或长时间无响应，可关闭本弹窗重新连接。</p>
     </div>
 
     <div id="state-empty" class="state-box hidden">
-      <p>没有匹配的密码条目</p>
-      <p class="hint">当前密码库为空，或当前网站没有可关联的条目。点击下方按钮查看全部条目。</p>
+      <p id="empty-title">没有匹配的密码条目</p>
+      <p id="empty-hint" class="hint">当前密码库为空，或当前网站没有可关联的条目。点击下方按钮查看全部条目。</p>
       <button id="btn-all" class="btn">显示全部</button>
     </div>
 

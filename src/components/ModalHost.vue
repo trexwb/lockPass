@@ -10,6 +10,7 @@ import ImportModal from './modals/ImportModal.vue'
 import ExportModal from './modals/ExportModal.vue'
 import QrShareModal from './modals/QrShareModal.vue'
 import QrImportModal from './modals/QrImportModal.vue'
+import PairRequestModal from './modals/PairRequestModal.vue'
 
 const { closeModal } = useVault()
 
@@ -42,4 +43,6 @@ const activeName = computed(() => {
   <ExportModal v-else-if="activeName === 'export'" />
   <QrShareModal v-else-if="activeName === 'qr-share'" />
   <QrImportModal v-else-if="activeName === 'qr-import'" />
+  <!-- 一键配对弹窗：独立于 activeModal，桌面版配对请求时弹出 -->
+  <PairRequestModal />
 </template>

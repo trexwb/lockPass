@@ -26,6 +26,14 @@ body { width: 320px; background: var(--bg); color: var(--text); font: 13px/1.5 -
   border: none; border-radius: 8px; cursor: pointer; font-size: 13px;
 }
 .btn:hover { opacity: 0.9; }
+.nonce {
+  margin: 14px auto 6px;
+  width: fit-content; padding: 10px 22px;
+  background: var(--bg3); color: var(--accent);
+  border: 1px solid var(--border); border-radius: 10px;
+  font-size: 26px; font-weight: 700; letter-spacing: 6px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
 .search {
   margin: 10px 12px 4px; width: calc(100% - 24px);
   padding: 8px 12px;
