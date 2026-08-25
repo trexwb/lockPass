@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LockPass 浏览器扩展使用指南</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+    --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --accent: #58a6ff; --green: #3fb950; --amber: #d29922; --red: #f85149;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; padding: 40px 20px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { text-align: center; padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+  header h1 { font-size: 26px; font-weight: 700; }
+  header .sub { color: var(--muted); margin-top: 8px; font-size: 13px; }
+  h2 { font-size: 18px; margin: 36px 0 14px; padding-left: 10px; border-left: 3px solid var(--accent); }
+  h3 { font-size: 15px; margin: 20px 0 8px; }
+  p { margin: 8px 0; color: var(--text); }
+  code { background: var(--bg3); padding: 2px 7px; border-radius: 5px; font-size: 12.5px; font-family: "SF Mono", Consolas, monospace; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 12px; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg2); color: var(--muted); font-weight: 500; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 12px 0; }
+  .card-title { font-weight: 600; margin-bottom: 6px; color: var(--accent); }
+  .warn { border-left: 3px solid var(--amber); }
+  .ok { border-left: 3px solid var(--green); }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 10px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--border); color: var(--muted); margin: 0 4px 4px 0; }
+  .badge.green { color: var(--green); border-color: rgba(63,185,80,.4); }
+  .step { display: flex; gap: 14px; margin: 10px 0; }
+  .step-num { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 48px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔐 LockPass 浏览器扩展使用指南</h1>
+    <div class="sub">Manifest V3 · v0.1 实验版 · 解锁后一键填充登录表单 · 主密码不出主应用,扩展零落盘</div>
+  </header>
+
+  <h2>一、安装</h2>
+  <div class="card ok">
+    <div class="card-title">加载扩展(Chrome / Edge)</div>
+    <div class="step"><span class="step-num">1</span><p>打开 <code>chrome://extensions</code>(Edge 为 <code>edge://extensions</code>)</p></div>
+    <div class="step"><span class="step-num">2</span><p>右上角开启「开发者模式」</p></div>
+    <div class="step"><span class="step-num">3</span><p>点击「加载已解压的扩展程序」,选择仓库的 <code>extension/</code> 目录</p></div>
+  </div>
+  <div class="card">
+    <div class="card-title">file:// 本地版权限(可选)</div>
+    <p>使用「双击 <code>dist/index.html</code>」的本地版时,需在扩展详情页开启 <strong>「允许访问文件网址」</strong>,否则 popup 会一直提示未解锁。</p>
+  </div>
+  <div class="card">
+    <div class="card-title">更新扩展</div>
+    <p>代码有改动时:<code>chrome://extensions</code> → 该扩展卡片点「刷新」,再刷新 LockPass 页面。</p>
+  </div>
+
+  <h2>二、使用流程</h2>
+  <div class="step"><span class="step-num">1</span><p><strong>打开并解锁 LockPass</strong>(在线版 <code>trexwb.github.io/lockPass/</code> / 本地开发版 <code>localhost:1420</code> / 本地文件版均可)</p></div>
+  <div class="step"><span class="step-num">2</span><p><strong>打开目标登录页</strong>(如 GitHub、某后台系统)</p></div>
+  <div class="step"><span class="step-num">3</span><p><strong>点击工具栏 LockPass 图标</strong>,弹出条目列表(支持搜索标题 / 账号 / 网址)</p></div>
+  <div class="step"><span class="step-num">4</span><p><strong>点击条目</strong> → 用户名与密码自动填入表单,提交按钮短暂高亮</p></div>
+  <div class="card warn">
+    <div class="card-title">⚠️ 不会自动提交</div>
+    <p>扩展只负责填充,填好后由你确认并手动提交,避免误操作。</p>
+  </div>
+
+  <h3>状态提示速查</h3>
+  <table>
+    <tr><th>popup 提示</th><th>含义</th><th>处理</th></tr>
+    <tr><td>请先打开并解锁 LockPass 主应用</td><td>未收到解锁广播</td><td>打开/刷新 LockPass 并解锁;file:// 版检查「允许访问文件网址」</td></tr>
+    <tr><td>没有匹配的密码条目</td><td>密码库为空</td><td>先在主应用添加条目</td></tr>
+    <tr><td>填充失败:页面未就绪</td><td>目标网页无扩展响应</td><td>刷新目标页面后重试</td></tr>
+    <tr><td>LockPass 页面响应超时</td><td>解密请求 5 秒未返回</td><td>确认 LockPass 保持打开且已解锁</td></tr>
+  </table>
+
+  <h2>三、无痕模式(隐私窗口 / InPrivate)</h2>
+  <div class="card">
+    <div class="card-title">1. 启用无痕支持(默认关闭)</div>
+    <table>
+      <tr><th>浏览器</th><th>路径</th></tr>
+      <tr><td>Chrome</td><td><code>chrome://extensions</code> → LockPass 详情 → 开启「在无痕模式下启用」</td></tr>
+      <tr><td>Edge</td><td><code>edge://extensions</code> → 详细信息 → 开启「在 InPrivate 中允许」</td></tr>
+    </table>
+  </div>
+  <div class="card ok">
+    <div class="card-title">2. 工作机制(重要)</div>
+    <p>扩展后台在普通窗口与无痕窗口之间<strong>共享</strong>。只要普通窗口的 LockPass 已解锁,无痕窗口的扩展即可直接使用——填充由普通窗口的 LockPass 页面完成解密,凭据不会写入无痕窗口的任何存储。</p>
+    <p style="margin-top:8px">但无痕窗口的 <strong>IndexedDB / sessionStorage 与普通窗口完全隔离</strong>:在无痕窗口单独打开 LockPass 在线版,看到的是全新的空保险箱。</p>
+  </div>
+  <h3>3. 推荐用法</h3>
+  <table>
+    <tr><th>场景</th><th>做法</th></tr>
+    <tr><td>在无痕窗口登录网站</td><td>先在普通窗口解锁 LockPass,再打开无痕窗口使用扩展填充</td></tr>
+    <tr><td>必须在无痕窗口用 LockPass 本体</td><td>无痕窗口打开在线版后「导入 .vault」恢复数据,用完即走</td></tr>
+    <tr><td>公共电脑</td><td>无痕模式 + 用完即锁定(Ctrl/Cmd + L)或直接关窗</td></tr>
+  </table>
+  <div class="card warn">
+    <div class="card-title">4. 无痕注意事项</div>
+    <p>· 无痕窗口关闭后,其中所有会话数据(含无痕 LockPass 库)随之清除——不要在其中创建或长期依赖保险箱。<br>
+    · 无痕窗口使用 file:// 本地版,同样需开启「允许访问文件网址」。<br>
+    · 无痕不改变安全模型:主密码仍在主应用内存,扩展仍不落盘。</p>
+  </div>
+
+  <h2>四、安全模型</h2>
+  <table>
+    <tr><th>项</th><th>说明</th></tr>
+    <tr><td>主密码不出主应用</td><td>解密只在 LockPass 页面内存进行,扩展仅转发解密结果</td></tr>
+    <tr><td>扩展不落盘</td><td>仅申请 <code>activeTab</code> 权限,无 storage;明文只在瞬时内存出现,用后即清</td></tr>
+    <tr><td>会话令牌</td><td>解锁时生成一次性令牌(sessionStorage),锁定/登出即失效;请求须携带令牌且来源为同窗口</td></tr>
+    <tr><td>不自动提交</td><td>填充后不触发提交,避免误操作</td></tr>
+  </table>
+
+  <h2>五、当前限制(v0.1)</h2>
+  <p>· 需 LockPass 页面保持打开且处于解锁态(实时代理,不做扩展侧缓存)<br>
+  · 表单识别基于通用规则,复杂/动态表单可能识别失败<br>
+  · 仅支持单条目点击填充,无自动弹出建议<br>
+  · 条目列表无按当前网站自动预筛选</p>
+
+  <h2>六、迭代方向(v0.2+)</h2>
+  <p>· 自动弹出建议:按 URL 域名预筛选推荐条目<br>
+  · 复杂动态表单支持(iframe / Shadow DOM / 多步登录)<br>
+  · 填充后可选「自动提交」开关(默认关闭)</p>
+
+  <footer>LockPass 浏览器扩展使用指南 · 2026-08-25 · 配套文档:extension/README.md</footer>
+</div>
+</body>
+</html>
