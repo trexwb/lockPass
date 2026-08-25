@@ -663,3 +663,108 @@
   color: var(--accent);
   flex-shrink: 0;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   移动端体验打磨（2026-08-25）
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 移动端底部导航（≤480px 显示，替代侧边栏主路径） ── */
+#mobile-tabbar { display: none; }
+@media (max-width: 480px), (max-height: 500px) {
+  #mobile-tabbar {
+    display: flex;
+    align-items: stretch;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(54px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    z-index: var(--z-header);
+  }
+  .tabbar-item {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    line-height: 1.2;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--transition);
+  }
+  .tabbar-item svg { flex-shrink: 0; }
+  .tabbar-item.active { color: var(--accent); }
+  .tabbar-item:active { opacity: 0.7; }
+  .tabbar-badge {
+    display: inline-block;
+    margin-left: 3px;
+    padding: 0 5px;
+    font-size: 0.6rem;
+    line-height: 1.5;
+    border-radius: 9px;
+    background: var(--danger);
+    color: #fff;
+    vertical-align: top;
+  }
+  /* 中心「添加」主按钮：凸起圆形，悬浮于 tabbar 之上 */
+  .tabbar-add {
+    flex: 0 0 auto;
+    width: 50px;
+    margin: -20px 4px 0;
+    border-radius: 50%;
+    border: 3px solid var(--bg-secondary);
+    background: var(--accent);
+    color: var(--text-on-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px var(--accent-glow);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease;
+  }
+  .tabbar-add:active { transform: scale(0.92); }
+
+  /* 内容区底部留白，避免条目被 tabbar 遮挡 */
+  #content { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  #entries-list { padding-bottom: 8px; }
+}
+
+/* ── 触控目标尺寸（≤1024px：平板 / 手机） ── */
+@media (max-width: 1024px) {
+  /* 侧边栏抽屉导航项 ≥44px（Apple 触控规范下限） */
+  .nav-item {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  /* 汉堡按钮 ≥44px */
+  .hamburger-btn {
+    width: 44px;
+    height: 44px;
+  }
+  /* 顶栏图标按钮 ≥40px */
+  #header .btn-icon {
+    width: 40px;
+    height: 40px;
+  }
+  #header .header-actions .btn {
+    min-height: 40px;
+  }
+  /* 主操作按钮加大触控区 */
+  .btn {
+    min-height: 40px;
+  }
+  .btn-sm {
+    min-height: 36px;
+  }
+}

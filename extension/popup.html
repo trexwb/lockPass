@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <header class="popup-header">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2">
+        <rect x="4" y="11" width="16" height="10" rx="2" />
+        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+      </svg>
+      <span>LockPass 自动填充</span>
+    </header>
+
+    <div id="state-locked" class="state-box hidden">
+      <p>LockPass 未解锁</p>
+      <p class="hint">请先打开并解锁 LockPass 主应用（浏览器版 / 在线版），解锁后本扩展自动就绪。</p>
+    </div>
+
+    <div id="state-empty" class="state-box hidden">
+      <p>没有匹配的密码条目</p>
+      <p class="hint">当前密码库为空，或当前网站没有可关联的条目。点击下方按钮查看全部条目。</p>
+      <button id="btn-all" class="btn">显示全部</button>
+    </div>
+
+    <div id="state-ready" class="hidden">
+      <input id="search" class="search" type="text" placeholder="搜索标题 / 账号 / 网址" autocomplete="off">
+      <ul id="entry-list" class="entry-list"></ul>
+      <p id="no-match" class="hint hidden">没有匹配的条目</p>
+    </div>
+
+    <footer class="popup-footer">
+      <span id="status-text" class="status">检测中…</span>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

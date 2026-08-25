@@ -33,8 +33,18 @@
     const LINK_OPAQUE_MAX = opts.linkOpaqueMax != null ? opts.linkOpaqueMax : 0.16;
     const MOUSE_OPAQUE_MAX = opts.mouseOpaqueMax != null ? opts.mouseOpaqueMax : 0.3;
     const BATCH_STEPS = 8;
-    const linkColor = opts.linkColor || '88,166,255';
-    const particleColor = opts.particleColor || '170,205,255';
+    // 颜色默认值跟随主题 CSS 变量（--particle-link / --particle-fill，RGB 三元组），
+    // 主题切换时由 window.LockParticles.refresh() 重建实例重绘
+    function readCssRgb(name, fallback) {
+      try {
+        const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+        return v || fallback
+      } catch (e) {
+        return fallback
+      }
+    }
+    const linkColor = opts.linkColor || readCssRgb('--particle-link', '88,166,255');
+    const particleColor = opts.particleColor || readCssRgb('--particle-fill', '170,205,255');
 
     let particles = [];
     let rafId = null;
@@ -249,7 +259,17 @@
 
   // 兼容 app.js 既有语义：
   // start = 锁屏粒子启动（工作区停止）；stop = 锁屏停止（工作区启动）
+  // 主题切换时调用：丢弃实例缓存，强制重建并重读粒子颜色（canvas 元素不变，原位重绘）
+  function refreshAll() {
+    lockCanvas = null;
+    wsCanvas = null;
+    lockInst = null;
+    wsInst = null;
+    syncAll();
+  }
+
   window.LockParticles = {
+    refresh: refreshAll,
     start: function () {
       ensureInstances();
       if (lockInst) lockInst.start();

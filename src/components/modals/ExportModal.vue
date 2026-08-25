@@ -52,6 +52,8 @@ async function exportEncryptedVault() {
       JSON.stringify(exportData, null, 2),
       'application/json'
     )
+    // 记录备份时间：提醒周期从最近一次 .vault 导出/快照起算
+    if (window.BackupManager) window.BackupManager.markBackupNow()
     window.Utils.showToast('密码库已导出', 'success')
     closeModal()
   } catch (e) {

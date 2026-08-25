@@ -4,7 +4,7 @@
 # 触发：main 分支推送 或 手动 workflow_dispatch（可选任意分支）
 # 做了什么：
 #   1. npm ci 安装依赖
-#   2. node scripts/copy-frontend.mjs 执行 vite build 生成 dist/（单文件）
+#   2. node scripts/copy-frontend.mjs（内部执行 npm run vite:build）生成 dist/（外置资源产物，iife 脚本 file:// 可用）
 #   3. 将 dist/ 部署到 GitHub Pages
 # 部署后访问：https://trexwb.github.io/lockPass/
 #   （具体地址以仓库 Settings → Pages 显示为准）

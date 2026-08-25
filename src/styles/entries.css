@@ -385,6 +385,46 @@
   transform: translateY(-1px);
 }
 .related-item .entry-icon { width: 30px; height: 30px; }
+
+/* ── 密码历史（详情面板，可一键回滚） ─────────────────────── */
+.history-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+.history-item:hover { border-color: var(--border-focus); }
+.history-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.history-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.history-pw {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+.history-item .btn {
+  flex-shrink: 0;
+}
 .related-item .entry-title { font-size: 0.92rem; margin-bottom: 2px; }
 .related-item .entry-meta { font-size: 0.78rem; }
 
@@ -421,4 +461,40 @@
   gap: 8px;
   flex-shrink: 0;
   background: var(--bg-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   移动端体验打磨（2026-08-25）
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  /* 关键修复：移动端无 hover，操作按钮必须常显（原 opacity:0 仅 hover 显示） */
+  .entry-actions {
+    opacity: 1;
+  }
+  /* 触控目标：卡片操作按钮 ≥36px */
+  .entry-actions button {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 卡片信息密度：加大行高与间距，副标题完整截断 */
+  .entry-card {
+    padding: 14px 12px;
+    gap: 10px;
+  }
+  .entry-subtitle {
+    max-width: 100%;
+  }
+  .entry-meta {
+    row-gap: 6px;
+  }
+  .entry-date {
+    flex-shrink: 0;
+  }
+  /* 空状态按钮触控 */
+  .btn-empty {
+    min-height: 44px;
+  }
 }

@@ -13,10 +13,18 @@ const Utils = window.Utils
 const {
   getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
   toggleFavorite, copyPassword, softDelete,
+  setFilter, openEntryModal, computeSidebarStats,
 } = useVault()
+
+// 底部导航筛选入口（与 SidebarNav 一致的本地包装；useVault 导出名为 setFilter）
+function selectFilter(f) {
+  setFilter(f)
+}
 
 const filteredEntries = computed(() => getFilteredEntries())
 const isRecycleView = computed(() => vaultState.currentFilter === 'recycle')
+// 移动端底部导航徽标（回收站数量）
+const sidebarStats = computed(() => computeSidebarStats())
 
 /* ── 空状态（对应原版 ui.js renderEntries 的文案分支） ── */
 
@@ -219,5 +227,40 @@ onBeforeUnmount(() => {
 
       <DetailPanel />
     </div>
+
+    <!-- 移动端底部导航（≤480px 显示；替代侧边栏主路径，标签入口打开抽屉） -->
+    <nav id="mobile-tabbar" aria-label="底部导航">
+      <button
+        class="tabbar-item"
+        :class="{ active: vaultState.currentFilter === 'all' }"
+        @click="selectFilter('all')"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+        <span>全部</span>
+      </button>
+      <button
+        class="tabbar-item"
+        :class="{ active: vaultState.currentFilter === 'favorites' }"
+        @click="selectFilter('favorites')"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+        <span>收藏</span>
+      </button>
+      <button class="tabbar-add" aria-label="添加密码" @click="openEntryModal()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+      </button>
+      <button
+        class="tabbar-item"
+        :class="{ active: vaultState.currentFilter === 'recycle' }"
+        @click="selectFilter('recycle')"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+        <span>回收站<span v-if="sidebarStats.recycle > 0" class="tabbar-badge">{{ sidebarStats.recycle > 99 ? '99+' : sidebarStats.recycle }}</span></span>
+      </button>
+      <button class="tabbar-item" aria-label="标签筛选" @click="vaultState.sidebarOpen = true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
+        <span>标签</span>
+      </button>
+    </nav>
   </div>
 </template>

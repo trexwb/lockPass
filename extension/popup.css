@@ -1,0 +1,72 @@
+:root {
+  --bg: #0d1117;
+  --bg2: #161b22;
+  --bg3: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --danger: #f85149;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 320px; background: var(--bg); color: var(--text); font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.popup { display: flex; flex-direction: column; max-height: 480px; }
+.popup-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.state-box { padding: 28px 20px; text-align: center; }
+.state-box p { font-size: 14px; }
+.hint { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.btn {
+  margin-top: 14px; padding: 7px 18px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; cursor: pointer; font-size: 13px;
+}
+.btn:hover { opacity: 0.9; }
+.search {
+  margin: 10px 12px 4px; width: calc(100% - 24px);
+  padding: 8px 12px;
+  background: var(--bg2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  outline: none;
+}
+.search:focus { border-color: var(--accent); }
+.entry-list { list-style: none; overflow-y: auto; max-height: 340px; }
+.entry-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.entry-item:hover { background: var(--bg2); }
+.entry-item .type-badge {
+  flex-shrink: 0; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--accent);
+  font-size: 14px;
+}
+.entry-item .info { min-width: 0; flex: 1; }
+.entry-item .title {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.entry-item .sub {
+  font-size: 11px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.entry-item .fill-icon { color: var(--muted); flex-shrink: 0; }
+.popup-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+}
+.status { color: var(--muted); }
+.status.ok { color: #3fb950; }
+.status.warn { color: #d29922; }
+.hidden { display: none !important; }
