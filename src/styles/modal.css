@@ -13,6 +13,14 @@
 }
 /* 确认弹窗必须盖过详情抽屉(300)/toast(300)/下拉菜单(300) */
 .confirm-overlay { z-index: var(--z-confirm); }
+/* 移动端全屏详情面板 z-index(--z-detail-fullscreen:300) 高于 modal overlay(--z-modal:200)，
+   弹窗会被详情面板完全遮挡、表现为"点击后不显示"。此覆盖必须放在 modal.css 基础规则之后
+   （构建后位于 layout.css 的移动端规则之后），同特异性下才能胜出；仍低于确认弹窗(--z-confirm:400) */
+@media (max-width: 480px), (max-height: 500px) {
+  #modal-overlay {
+    z-index: calc(var(--z-detail-fullscreen) + 1);
+  }
+}
 #modal,
 .confirm-dialog {
   background: var(--bg-secondary);
