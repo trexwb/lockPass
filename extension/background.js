@@ -4,6 +4,7 @@
 let lockpassReady = false
 let cachedEntries = []
 let passwordCache = {} // id -> password（一次性：转发后立即清除）
+let pendingPassword = null // { id, resolve }：等待 LockPass 页面异步返回密码
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
@@ -30,6 +31,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // LockPass 页面 content script 上报解密结果（来自用户主应用的会话内存）
     case 'LP_PASSWORD':
       passwordCache[msg.id] = msg.password
+      if (pendingPassword && pendingPassword.id === msg.id) {
+        pendingPassword.resolve({ ok: true, password: msg.password })
+        pendingPassword = null
+      }
       sendResponse({ ok: true })
       break
 
@@ -58,11 +63,11 @@ async function fillCurrentTab(entryId) {
   if (!entry) return { ok: false, error: 'entry not found' }
 
   // 1) 向 LockPass 页面请求解密该条目（主密码仍在主应用内存，扩展不接触）
-  let password = passwordCache[entryId]
-  if (password === undefined) {
-    const pwd = await requestPassword(entryId)
-    if (!pwd.ok) return pwd
-    password = pwd.password
+  const pwd = await requestPassword(entryId)
+  if (!pwd.ok) return pwd
+  const password = pwd.password
+  if (password === undefined || password === null) {
+    return { ok: false, error: '未获取到密码（条目可能无密码字段）' }
   }
 
   // 2) 找到当前活动标签页
@@ -100,12 +105,32 @@ async function refreshEntries() {
 }
 
 async function requestPassword(entryId) {
+  // 缓存命中（同一次填充流程内重复请求）
+  if (passwordCache[entryId] !== undefined) {
+    return { ok: true, password: passwordCache[entryId] }
+  }
   const tabs = await chrome.tabs.query({})
   for (const tab of tabs) {
     if (!tab.id) continue
     try {
       const resp = await chrome.tabs.sendMessage(tab.id, { type: 'LP_GET_PASSWORD', id: entryId })
-      if (resp && resp.ok) return { ok: true, password: passwordCache[entryId] }
+      if (resp && resp.ok) {
+        // bridge 只确认「已转发」；密码经页面 postMessage → LP_PASSWORD 异步返回。
+        // 必须等 pendingPassword 被 resolve，否则拿到 undefined 填入表单。
+        return await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            pendingPassword = null
+            resolve({ ok: false, error: 'LockPass 页面响应超时，请确认已解锁' })
+          }, 5000)
+          pendingPassword = {
+            id: entryId,
+            resolve: (r) => {
+              clearTimeout(timer)
+              resolve(r)
+            },
+          }
+        })
+      }
     } catch (e) { /* 非 LockPass 页面无此监听，跳过 */ }
   }
   return { ok: false, error: 'LockPass 未解锁或页面未打开' }

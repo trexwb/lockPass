@@ -1,3 +1,13 @@
+/*
+ * @Author: ${git_name}
+ * @Date: 2026-08-25 12:22:08
+ * @LastEditors: ${git_name}
+ * @LastEditTime: 2026-08-25 13:29:19
+ * @FilePath: /lockPass/extension/popup.js
+ * @Description: 
+ * 一花一世界，一叶一如来
+ * Copyright (c) 2026 by 杭州大美, All Rights Reserved. 
+ */
 /* LockPass 自动填充 — 弹窗
    打开时向后台要状态与条目列表（不含密码）；
    点击条目 → 后台取密码并转发当前标签页填充。 */

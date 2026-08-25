@@ -67,6 +67,11 @@ function highlightSubmit(form) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== 'LP_FILL') return
   const { entry, password } = msg
+  // 防御：密码缺失时拒绝填充，避免表单被写入 "undefined" 之类的脏值
+  if (password === undefined || password === null || password === 'undefined') {
+    sendResponse({ ok: false, error: '密码数据无效，请重试' })
+    return
+  }
   const target = findLoginForm()
   if (!target) {
     sendResponse({ ok: false, error: '当前页面未找到登录表单（缺少密码输入框）' })
