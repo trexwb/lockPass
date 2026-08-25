@@ -45,8 +45,18 @@
 /* 二维码白底（扫码必须白底，故硬编码 #fff） */
 .qr-paper {
   display: inline-block;
+  max-width: 100%;
   padding: 12px;
   background: #fff;
   border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+/* 二维码图片自适应容器，防止小屏撑破弹窗 */
+.qr-paper img,
+.qr-paper canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 .content-pad { padding: 0 20px 20px; }

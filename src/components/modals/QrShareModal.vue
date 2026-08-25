@@ -104,10 +104,21 @@ async function generate() {
     const container = qrContainer.value
     if (!container) return
     container.innerHTML = ''
+    // 按弹窗内容区可用宽度计算二维码尺寸（上限 320，下限 180），避免小屏撑破布局
+    let size = 320
+    const body = container.closest('.modal-body')
+    if (body) {
+      const cs = window.getComputedStyle(body)
+      const avail = body.clientWidth
+        - parseFloat(cs.paddingLeft || 0)
+        - parseFloat(cs.paddingRight || 0)
+        - 24 // qr-paper 左右内边距 12px × 2
+      if (avail > 0) size = Math.max(180, Math.min(320, Math.floor(avail)))
+    }
     new QRCode(container, {
       text,
-      width: 320,
-      height: 320,
+      width: size,
+      height: size,
       correctLevel: QRCode.CorrectLevel.M,
       colorDark: '#000000',
       colorLight: '#ffffff',
