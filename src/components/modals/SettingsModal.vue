@@ -34,6 +34,71 @@ function updateClipboardClear() {
   window.Utils.showToast('设置已保存', 'success')
 }
 
+/* ── 备份（提醒 + 自动快照，BackupManager 管理） ── */
+
+const BM = window.BackupManager
+const backupInterval = ref(BM ? BM.getIntervalDays() : 7)
+const snapshotEnabled = ref(BM ? BM.snapshotEnabled() : false)
+const snapshotInterval = ref(BM ? BM.snapshotIntervalDays() : 7)
+const snapshotKeep = ref(BM ? BM.snapshotKeep() : 5)
+const backupBusy = ref(false)
+
+const canSnapshot = computed(() => !!(BM && BM.canSnapshot()))
+
+const snapLocationText = computed(() => {
+  if (!BM) return ''
+  if (BM.isDesktop()) return '（数据目录 backups/）'
+  return '（绑定目录 backups/）'
+})
+
+const lastBackupText = computed(() => {
+  if (!BM) return ''
+  const at = BM.getLastBackupAt()
+  if (!at) return '从未备份'
+  const d = new Date(at)
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+})
+
+function updateBackupInterval() {
+  if (!BM) return
+  BM.setIntervalDays(backupInterval.value)
+  window.Utils.showToast('设置已保存', 'success')
+}
+function updateSnapshotEnabled() {
+  if (!BM) return
+  BM.setSnapshotEnabled(snapshotEnabled.value)
+  window.Utils.showToast(snapshotEnabled.value ? '自动快照已开启' : '自动快照已关闭', 'success')
+}
+function updateSnapshotInterval() {
+  if (!BM) return
+  BM.setSnapshotIntervalDays(snapshotInterval.value)
+  window.Utils.showToast('设置已保存', 'success')
+}
+function updateSnapshotKeep() {
+  if (!BM) return
+  BM.setSnapshotKeep(snapshotKeep.value)
+  window.Utils.showToast('设置已保存', 'success')
+}
+async function backupNow() {
+  if (!BM) return
+  // 浏览器未绑定目录：引导走 .vault 导出
+  if (!BM.canSnapshot()) {
+    openModal('export')
+    return
+  }
+  backupBusy.value = true
+  try {
+    const r = await BM.createSnapshot()
+    if (r.ok) window.Utils.showToast('备份快照已生成', 'success')
+    else window.Utils.showToast('备份失败：' + (r.reason === 'empty' ? '无数据可备份' : r.reason), 'error')
+  } catch (e) {
+    window.Utils.showToast('备份失败：' + (e.message || e), 'error')
+  } finally {
+    backupBusy.value = false
+  }
+}
+
 /* ── 外观（主题模式 + 强调色，useTheme 管理持久化与 data-* 属性） ── */
 
 const { themeMode, accentName, ACCENTS, setMode, setAccent } = useTheme()
@@ -313,6 +378,69 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
         </div>
         <div class="settings-desc settings-desc-note">
           绑定后在所选目录下直接生成 LockPass-vault.json；浏览器清空 IndexedDB 后可重新选择目录恢复。
+        </div>
+      </div>
+
+      <!-- 备份 -->
+      <div class="settings-group">
+        <div class="settings-group-title">备份</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">备份提醒</div>
+            <div class="settings-desc">距上次 .vault 导出或快照超过间隔时，解锁后提醒</div>
+          </div>
+          <select class="form-input w-120" v-model.number="backupInterval" @change="updateBackupInterval()">
+            <option :value="0">关闭</option>
+            <option :value="1">每天</option>
+            <option :value="3">每 3 天</option>
+            <option :value="7">每 7 天</option>
+            <option :value="30">每 30 天</option>
+          </select>
+        </div>
+        <div class="settings-row" v-if="canSnapshot">
+          <div>
+            <div class="settings-label">自动快照</div>
+            <div class="settings-desc">解锁后自动生成加密快照{{ snapLocationText }}，保留最近 {{ snapshotKeep }} 份</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" v-model="snapshotEnabled" @change="updateSnapshotEnabled()" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <template v-if="canSnapshot && snapshotEnabled">
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">快照间隔</div>
+              <div class="settings-desc">自动生成快照的最小间隔</div>
+            </div>
+            <select class="form-input w-120" v-model.number="snapshotInterval" @change="updateSnapshotInterval()">
+              <option :value="1">每天</option>
+              <option :value="3">每 3 天</option>
+              <option :value="7">每 7 天</option>
+              <option :value="30">每 30 天</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">保留份数</div>
+              <div class="settings-desc">超出后自动删除最旧快照</div>
+            </div>
+            <select class="form-input w-120" v-model.number="snapshotKeep" @change="updateSnapshotKeep()">
+              <option :value="3">3 份</option>
+              <option :value="5">5 份</option>
+              <option :value="10">10 份</option>
+              <option :value="20">20 份</option>
+            </select>
+          </div>
+        </template>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">上次备份</div>
+            <div class="settings-desc">{{ lastBackupText }}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" :disabled="backupBusy" @click="backupNow()">
+            {{ backupBusy ? '备份中…' : (canSnapshot ? '立即备份' : '导出 .vault') }}
+          </button>
         </div>
       </div>
 

@@ -417,6 +417,8 @@ export function useVault() {
 
   async function afterUnlock() {
     closeModal()
+    // 备份提醒 + 自动快照检查（BackupManager 内部容错，失败不阻断解锁）
+    try { window.BackupManager && window.BackupManager.checkAfterUnlock() } catch (e) {}
     const savedFilter = restoreFilterFromHash()
     if (savedFilter && savedFilter !== 'all') {
       vaultState.currentFilter = savedFilter
