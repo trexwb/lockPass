@@ -6,6 +6,8 @@ use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri::{DragDropEvent, WindowEvent};
 
+mod server;
+
 /// 拖放读取白名单（R3 修复）
 /// 记录最近一次拖放到窗口内的文件路径，read_text_file_any 仅允许读取白名单中的文件。
 /// 使用 Arc<Mutex> 以支持 Clone（窗口事件闭包需要 move 副本；Mutex 本身不可 Clone）。
@@ -185,6 +187,53 @@ fn file_store_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     Ok(root.to_string_lossy().to_string())
 }
 
+// ===== 本地 HTTP 服务命令（浏览器扩展自动填充）=====
+
+/// 前端解锁后标记本地服务就绪
+#[tauri::command]
+fn server_ready(state: tauri::State<server::ServerState>) -> Result<(), String> {
+    state.set_ready(true)
+}
+
+/// 前端解锁后同步明文条目到 Rust 内存（仅内存，不落盘）
+#[tauri::command]
+fn server_set_entries(
+    state: tauri::State<server::ServerState>,
+    entries: Vec<server::EntryDto>,
+) -> Result<(), String> {
+    state.set_entries(entries)
+}
+
+/// 锁定/登出时清空内存中的条目与解锁标记
+#[tauri::command]
+fn server_lock(state: tauri::State<server::ServerState>) -> Result<(), String> {
+    state.lock()
+}
+
+/// 查询当前待确认的配对 nonce（供前端弹窗展示）
+#[tauri::command]
+fn server_get_pending_pair(state: tauri::State<server::ServerState>) -> Result<Option<String>, String> {
+    state.get_pending_nonce()
+}
+
+/// 前端点击「允许」后发放 token
+#[tauri::command]
+fn server_pair_confirm(
+    state: tauri::State<server::ServerState>,
+    nonce: String,
+) -> Result<String, String> {
+    state.confirm_pair(&nonce)
+}
+
+/// 前端点击「拒绝」后取消配对
+#[tauri::command]
+fn server_pair_reject(
+    state: tauri::State<server::ServerState>,
+    nonce: String,
+) -> Result<(), String> {
+    state.reject_pair(&nonce)
+}
+
 /// URL 字符白名单校验（C3 修复）
 /// 仅允许 ASCII 字母数字与 URL 合法符号（RFC 3986 保留/非保留字符及 % 编码符号），
 /// 非空且长度 ≤ 2048，其余字符一律拒绝，防止经 URL 注入 shell 元字符。
@@ -270,7 +319,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(DropPaths(Default::default()))
+        .manage(server::ServerState::new())
         .setup(|app| {
+            // 启动内嵌本地 HTTP 服务（浏览器扩展自动填充用，仅绑定 127.0.0.1）
+            {
+                let state = app.state::<server::ServerState>();
+                let srv = state.inner().clone();
+                if let Err(e) = server::spawn_local_server(app.handle().clone(), srv) {
+                    eprintln!("[LockPass] 本地 HTTP 服务启动失败: {e}");
+                }
+            }
             // R3 修复：监听主窗口拖放事件，将拖入文件路径写入白名单
             // （前端 invoke 前也会主动 grant，此处为双保险，确保 Rust 侧先有白名单）
             if let Some(win) = app.get_webview_window("main") {
@@ -295,6 +353,12 @@ pub fn run() {
             export_text_file,
             read_text_file_any,
             open_url,
+            server_ready,
+            server_set_entries,
+            server_lock,
+            server_get_pending_pair,
+            server_pair_confirm,
+            server_pair_reject,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockPass tauri application");

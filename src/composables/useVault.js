@@ -285,6 +285,8 @@ export function useVault() {
     )
     await window.DBUtils.dbPut(window.DBUtils.STORE_VAULT, { id: 'main', iv, data })
     await window.FileSync.syncNow()
+    // 保存完成后同步最新条目到 Tauri 本地服务（桌面版扩展自动填充用）
+    try { window.TauriServer && window.TauriServer.setEntries(vaultState.entries) } catch (e) {}
   }
 
   function flushSaveResolvers() {
@@ -386,6 +388,8 @@ export function useVault() {
         vaultState.isUnlocked = true
         // 浏览器扩展桥：广播就绪（携带会话令牌）
         try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
+        // Tauri 本地服务桥：标记就绪（桌面版扩展自动填充用）
+        try { window.TauriServer && window.TauriServer.ready() } catch (e) {}
         await afterUnlock(password)
         // D2 修复：首次创建成功后引导绑定数据目录（对齐原版）
         await showBindBannerIfNeeded()
@@ -407,6 +411,8 @@ export function useVault() {
       vaultState.isUnlocked = true
       // 浏览器扩展桥：广播就绪（携带会话令牌）
       try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
+      // Tauri 本地服务桥：标记就绪（桌面版扩展自动填充用）
+      try { window.TauriServer && window.TauriServer.ready() } catch (e) {}
       await afterUnlock()
       // D2 修复：解锁成功后若未绑定数据目录则引导绑定（对齐原版）
       await showBindBannerIfNeeded()
@@ -421,6 +427,8 @@ export function useVault() {
 
   async function afterUnlock() {
     closeModal()
+    // 同步明文条目到 Tauri 本地服务（桌面版扩展自动填充用；内存级，不落盘）
+    try { window.TauriServer && window.TauriServer.setEntries(vaultState.entries) } catch (e) {}
     // 备份提醒 + 自动快照检查（BackupManager 内部容错，失败不阻断解锁）
     try { window.BackupManager && window.BackupManager.checkAfterUnlock() } catch (e) {}
     const savedFilter = restoreFilterFromHash()
@@ -581,6 +589,8 @@ export function useVault() {
     vaultState.cryptoKey = null
     // 浏览器扩展桥：令牌清除 + 广播锁定
     try { window.ExtBridge && window.ExtBridge.lock() } catch (e) {}
+    // Tauri 本地服务桥：清空内存中的明文条目与解锁标记
+    try { window.TauriServer && window.TauriServer.lock() } catch (e) {}
     clearSession()
     clearTimeout(vaultState.lockTimer)
     closeDetail()
@@ -598,6 +608,8 @@ export function useVault() {
   function logout() {
     // 浏览器扩展桥：令牌清除 + 广播锁定
     try { window.ExtBridge && window.ExtBridge.lock() } catch (e) {}
+    // Tauri 本地服务桥：清空内存中的明文条目与解锁标记
+    try { window.TauriServer && window.TauriServer.lock() } catch (e) {}
     clearSession()
     vaultState.cryptoKey = null
     vaultState.isUnlocked = false
