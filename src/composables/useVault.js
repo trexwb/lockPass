@@ -51,6 +51,9 @@ function loadSettingInt(key, fallback) {
 
 export const vaultState = reactive({
   entries: [],
+  // 密码历史：{ [entryId]: [{ password, at }] }，每条目最多 HISTORY_LIMIT 条
+  // 与 entries 并列整体加密；导入导出只读写 entries，历史天然不随数据迁移
+  history: {},
   tagDefs: {},
   tags: [],
   deleted: [],
@@ -176,7 +179,7 @@ function migrateVaultData(data) {
   const deleted = (data.deleted || []).map(migrateEntry)
   if (legacyCategories.length && !data.tagDefs) changed = true
 
-  return { entries, tagDefs, tags: data.tags || [], deleted, changed }
+  return { entries, history: data.history || {}, tagDefs, tags: data.tags || [], deleted, changed }
 }
 
 /* ── 主 composable ────────────────────────────────────────── */
@@ -273,6 +276,7 @@ export function useVault() {
     const { iv, data } = await window.CryptoUtils.encrypt(
       {
         entries: vaultState.entries,
+        history: vaultState.history,
         tagDefs: vaultState.tagDefs,
         tags: vaultState.tags,
         deleted: vaultState.deleted,
@@ -373,6 +377,7 @@ export function useVault() {
         vaultState.cryptoKey = key
         vaultState.initialized = true
         vaultState.entries = []
+        vaultState.history = {}
         vaultState.tagDefs = seedDefaultTagDefs()
         vaultState.tags = []
         vaultState.deleted = []
@@ -390,6 +395,7 @@ export function useVault() {
       vaultState.cryptoKey = key
       const migrated = migrateVaultData(data)
       vaultState.entries = migrated.entries
+      vaultState.history = migrated.history
       vaultState.tagDefs = migrated.tagDefs
       vaultState.tags = migrated.tags
       vaultState.deleted = migrated.deleted
@@ -781,6 +787,11 @@ export function useVault() {
     if (!confirmed) return
 
     vaultState.deleted = vaultState.deleted.filter(e => e.id !== id)
+    // 彻底删除后清理该条目的密码历史（无主数据不保留）
+    if (vaultState.history[id]) {
+      delete vaultState.history[id]
+      vaultState.history = { ...vaultState.history }
+    }
     await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
     window.Utils.showToast('已彻底删除', 'success')
@@ -799,7 +810,16 @@ export function useVault() {
     })
     if (!confirmed) return
 
+    const deadIds = vaultState.deleted.map(e => e.id)
     vaultState.deleted = []
+    // 清空回收站时同步清理这些条目的密码历史
+    if (deadIds.length) {
+      const keep = {}
+      Object.keys(vaultState.history).forEach(id => {
+        if (!deadIds.includes(id)) keep[id] = vaultState.history[id]
+      })
+      vaultState.history = keep
+    }
     await saveVault()
     if (vaultState.currentFilter === 'recycle') closeDetail()
     window.Utils.showToast('回收站已清空', 'success')
@@ -937,6 +957,40 @@ export function useVault() {
 
   /* ── 保存条目（编辑器回调） ─────────────────── */
 
+  /* ── 密码历史（P0：历史记录与回滚） ─────────────────────
+     快照内容：旧密码明文 + 变更时间（整体随 vault 加密，不参与导入导出）。
+     保留策略：每条目最多 HISTORY_LIMIT 条，最新在前；与最新一条相同不重复记录。 */
+  const HISTORY_LIMIT = 5
+
+  function pushHistory(id, password, at) {
+    if (!id || password == null) return
+    const list = vaultState.history[id] || []
+    if (list.length && list[0].password === password) return
+    list.unshift({ password, at })
+    vaultState.history[id] = list.slice(0, HISTORY_LIMIT)
+  }
+
+  async function rollbackPassword(id, at) {
+    const entry = vaultState.entries.find(e => e.id === id)
+    const list = vaultState.history[id] || []
+    const snap = list.find(s => s.at === at)
+    if (!entry || !snap) {
+      window.Utils.showToast('历史记录不存在或已过期', 'error')
+      return false
+    }
+    if (entry.password === snap.password) {
+      window.Utils.showToast('当前密码已是该版本', 'info')
+      return false
+    }
+    // 回滚前把当前密码也存入历史，防止误操作后无法恢复
+    pushHistory(id, entry.password, new Date().toISOString())
+    entry.password = snap.password
+    entry.updatedAt = new Date().toISOString()
+    await saveVault()
+    window.Utils.showToast('已回滚到历史版本', 'success')
+    return true
+  }
+
   async function saveEntry(payload) {
     const { title, type, fields, tags, notes } = payload
     if (!title || !title.trim()) {
@@ -990,7 +1044,14 @@ export function useVault() {
 
     if (vaultState.editingEntryId) {
       const idx = vaultState.entries.findIndex(e => e.id === vaultState.editingEntryId)
-      if (idx !== -1) vaultState.entries[idx] = entry
+      if (idx !== -1) {
+        const oldEntry = vaultState.entries[idx]
+        // 密码变更时把旧密码快照存入历史（默认保留最近 5 版）
+        if (oldEntry.password && oldEntry.password !== entry.password) {
+          pushHistory(entry.id, oldEntry.password, now)
+        }
+        vaultState.entries[idx] = entry
+      }
       // 保存成功后清除草稿缓存
       try { sessionStorage.removeItem('lockpass_draft_edit_' + vaultState.editingEntryId) } catch (e) {}
     } else {
@@ -1040,6 +1101,7 @@ export function useVault() {
     openModal,
     closeModal,
     saveEntry,
+    rollbackPassword,
     openRestoreFilePicker,
     handleRestoreFileSelect,
     bindRestoreFromDirectory,

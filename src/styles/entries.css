@@ -385,6 +385,46 @@
   transform: translateY(-1px);
 }
 .related-item .entry-icon { width: 30px; height: 30px; }
+
+/* ── 密码历史（详情面板，可一键回滚） ─────────────────────── */
+.history-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+.history-item:hover { border-color: var(--border-focus); }
+.history-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.history-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.history-pw {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+.history-item .btn {
+  flex-shrink: 0;
+}
 .related-item .entry-title { font-size: 0.92rem; margin-bottom: 2px; }
 .related-item .entry-meta { font-size: 0.78rem; }
 

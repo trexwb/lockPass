@@ -8,6 +8,7 @@ import { useVault, vaultState } from '../../composables/useVault'
 const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
   softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
+  rollbackPassword,
 } = useVault()
 
 const entry = computed(() => (vaultState.selectedEntry ? getEntryById(vaultState.selectedEntry) : null))
@@ -49,6 +50,32 @@ function formatDate(iso) {
   } catch (e) {
     return ''
   }
+}
+
+function formatDateTime(iso) {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    return `${formatDate(iso)} ${hh}:${mm}`
+  } catch (e) {
+    return ''
+  }
+}
+
+/* ── 密码历史（最新在前，回收站视图不展示） ────────────────── */
+
+const historyList = computed(() => {
+  const e = entry.value
+  if (!e) return []
+  return vaultState.history[e.id] || []
+})
+
+async function onRollback(snap) {
+  if (!entry.value) return
+  // 回滚成功后不关闭面板：entry 为响应式对象，密码字段与按钮禁用态自动刷新
+  await rollbackPassword(entry.value.id, snap.at)
 }
 
 // 关联密码条目类型图标（对齐原版 related.js renderRelatedSection）
@@ -341,6 +368,24 @@ function renderNotes() {
         <div v-if="entry.notes" class="detail-field">
           <div class="detail-field-label">备注</div>
           <div class="detail-field-value markdown-body" v-html="renderNotes()"></div>
+        </div>
+
+        <!-- 密码历史（默认保留最近 5 版，可一键回滚；不参与导入导出） -->
+        <div v-if="!isRecycleView && historyList.length" class="detail-field history-section">
+          <div class="detail-field-label">密码历史（{{ historyList.length }}）</div>
+          <div class="history-list">
+            <div v-for="snap in historyList" :key="snap.at" class="history-item">
+              <div class="history-meta">
+                <span class="history-time">{{ formatDateTime(snap.at) }}</span>
+                <span class="history-pw mono">{{ showPw ? snap.password : '••••••••' }}</span>
+              </div>
+              <button
+                class="btn btn-secondary btn-sm"
+                :disabled="entry.password === snap.password"
+                @click="onRollback(snap)"
+              >回滚</button>
+            </div>
+          </div>
         </div>
 
         <!-- 关联密码（同 IP / 同域名 / 同账号） -->
