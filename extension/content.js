@@ -237,11 +237,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (state.hasPassword) {
       setNativeValue(state.passwordInput, password)
       highlightSubmit(state)
+      sendResponse({ ok: true, filledPassword: true })
     } else {
       // 多步登录第一步：只有用户名框，填入后等待密码框
       waitingPassword = true
+      sendResponse({ ok: true, filledPassword: false })
     }
-    sendResponse({ ok: true })
     return
   }
 
@@ -279,7 +280,112 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true })
     return
   }
+
+  // 建议气泡（来自 background：按 URL 域名预筛选的推荐条目）
+  if (msg.type === 'LP_SHOW_SUGGESTIONS') {
+    // 仅在顶层 frame 显示，避免 iframe 内重复渲染
+    if (window !== window.top) { sendResponse({ ok: false }); return }
+    const now = Date.now()
+    if (suggestDismissed || now - lastSuggestAt < SUGGEST_BUBBLE_MIN_GAP_MS) {
+      sendResponse({ ok: false })
+      return
+    }
+    lastSuggestAt = now
+    if (msg.empty) showSuggestionEmpty()
+    else showSuggestionBubble(msg.entries || [])
+    sendResponse({ ok: true })
+    return
+  }
 })
 
 // 启动登录表单自动检测（自动填充）
 observeLoginForms()
+
+/* ── 自动弹出建议气泡（按 URL 域名预筛选推荐条目） ────
+   由 background 在检测到登录表单后发送 LP_SHOW_SUGGESTIONS 触发。
+   命中多条：列表展示可多选；未命中：短暂提示。60s 内同页不重复自动弹出。 */
+const SUGGEST_BUBBLE_MIN_GAP_MS = 60000
+let lastSuggestAt = 0
+let suggestDismissed = false
+
+function ensureSuggestStyle() {
+  if (document.getElementById('lp-suggest-style')) return
+  const style = document.createElement('style')
+  style.id = 'lp-suggest-style'
+  style.textContent =
+    '#lp-suggest-root{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:280px;max-width:calc(100vw - 32px);background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);font:13px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}' +
+    '#lp-suggest-root .lp-sg-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#161b22;border-bottom:1px solid #30363d;font-weight:600}' +
+    '#lp-suggest-root .lp-sg-close{cursor:pointer;color:#8b949e;font-size:16px;line-height:1;background:none;border:none;padding:2px 6px}' +
+    '#lp-suggest-root .lp-sg-close:hover{color:#e6edf3}' +
+    '#lp-suggest-root .lp-sg-list{list-style:none;margin:0;padding:0;max-height:240px;overflow-y:auto}' +
+    '#lp-suggest-root .lp-sg-item{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;cursor:pointer;border-bottom:1px solid #21262d;text-align:left;background:none;color:inherit;font:inherit}' +
+    '#lp-suggest-root .lp-sg-item:hover{background:#161b22}' +
+    '#lp-suggest-root .lp-sg-item .lp-sg-main{min-width:0;flex:1}' +
+    '#lp-suggest-root .lp-sg-title{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '#lp-suggest-root .lp-sg-sub{display:block;font-size:11px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '#lp-suggest-root .lp-sg-arrow{color:#8b949e;flex-shrink:0}' +
+    '#lp-suggest-root .lp-sg-empty{padding:14px 12px;color:#8b949e;text-align:center}'
+  ;(document.head || document.documentElement).appendChild(style)
+}
+
+function removeSuggestBubble() {
+  const el = document.getElementById('lp-suggest-root')
+  if (el) el.remove()
+}
+
+function attachSuggestClose(root) {
+  root.querySelector('.lp-sg-close').addEventListener('click', () => {
+    removeSuggestBubble()
+    suggestDismissed = true
+  })
+}
+
+function showSuggestionBubble(entries) {
+  ensureSuggestStyle()
+  removeSuggestBubble()
+  const root = document.createElement('div')
+  root.id = 'lp-suggest-root'
+  root.innerHTML =
+    '<div class="lp-sg-head"><span>LockPass 建议</span><button class="lp-sg-close" title="关闭">×</button></div>' +
+    '<ul class="lp-sg-list"></ul>'
+  const list = root.querySelector('.lp-sg-list')
+  ;(entries || []).forEach((e) => {
+    const btn = document.createElement('button')
+    btn.className = 'lp-sg-item'
+    btn.innerHTML =
+      '<span class="lp-sg-main"><span class="lp-sg-title"></span><span class="lp-sg-sub"></span></span>' +
+      '<span class="lp-sg-arrow">↪</span>'
+    btn.querySelector('.lp-sg-title').textContent = e.title || '未命名'
+    btn.querySelector('.lp-sg-sub').textContent =
+      [e.username, e.url].filter(Boolean).join(' · ') || '—'
+    btn.addEventListener('click', async () => {
+      removeSuggestBubble()
+      suggestDismissed = true
+      try {
+        await chrome.runtime.sendMessage({ type: 'SUGGESTION_FILL', entryId: e.id })
+      } catch (err) { /* 忽略 */ }
+    })
+    list.appendChild(btn)
+  })
+  attachSuggestClose(root)
+  ;(document.body || document.documentElement).appendChild(root)
+  // 5s 后自动收起（点击条目 / 关闭后不再重复弹）
+  setTimeout(() => {
+    if (document.getElementById('lp-suggest-root') === root) removeSuggestBubble()
+  }, 5000)
+}
+
+function showSuggestionEmpty() {
+  ensureSuggestStyle()
+  removeSuggestBubble()
+  const root = document.createElement('div')
+  root.id = 'lp-suggest-root'
+  root.innerHTML =
+    '<div class="lp-sg-head"><span>LockPass 建议</span><button class="lp-sg-close" title="关闭">×</button></div>' +
+    '<div class="lp-sg-empty">未找到当前网站的登录条目。<br>可点击扩展图标查看全部。</div>'
+  attachSuggestClose(root)
+  ;(document.body || document.documentElement).appendChild(root)
+  setTimeout(() => {
+    if (document.getElementById('lp-suggest-root') === root) removeSuggestBubble()
+  }, 3000)
+}
