@@ -38,12 +38,12 @@ jobs:
     name: 生成 dist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: 安装 Node.js 22
-        uses: actions/setup-node@v4
+      - name: 安装 Node.js 24
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
 
       # Vue/Vite 构建需要依赖，先安装（使用 lockfile 保证可复现）
       - name: 安装依赖
@@ -57,7 +57,7 @@ jobs:
         run: ls -la dist/ && test -f dist/index.html
 
       - name: 上传 Pages 产物
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -71,4 +71,4 @@ jobs:
     steps:
       - name: 部署
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
