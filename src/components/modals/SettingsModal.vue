@@ -90,8 +90,17 @@ async function backupNow() {
   backupBusy.value = true
   try {
     const r = await BM.createSnapshot()
-    if (r.ok) window.Utils.showToast('备份快照已生成', 'success')
-    else window.Utils.showToast('备份失败：' + (r.reason === 'empty' ? '无数据可备份' : r.reason), 'error')
+    if (r.ok) {
+      window.Utils.showToast('备份快照已生成', 'success')
+    } else if (r.reason === 'permission') {
+      window.Utils.showToast('目录授权已失效，请在浏览器地址栏重新授权，或重新绑定数据目录', 'warning')
+    } else if (r.reason === 'empty') {
+      window.Utils.showToast('备份失败：无数据可备份', 'error')
+    } else if (r.reason === 'unbound') {
+      window.Utils.showToast('请先绑定数据目录', 'warning')
+    } else {
+      window.Utils.showToast('备份失败：' + ((r.error && r.error.message) || r.reason), 'error')
+    }
   } catch (e) {
     window.Utils.showToast('备份失败：' + (e.message || e), 'error')
   } finally {

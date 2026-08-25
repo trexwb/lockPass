@@ -99,9 +99,9 @@
       const r = await this.createSnapshot()
       if (r.ok) {
         try { window.Utils.showToast('已自动备份快照', 'success') } catch (e) {}
-      } else if (r.reason === 'unbound') {
-        // 浏览器未绑定目录：静默跳过（设置面板有状态提示）
       }
+      // 自动流程失败一律静默（permission/unbound/error 均不打扰；
+      // 快照可用性由设置面板状态与手动「立即备份」反馈呈现）
     },
 
     /* ── 生成快照（加密负载 + 日期时间名 + 清理旧份） ── */
@@ -123,6 +123,14 @@
         } else if (window.FileSync && window.FileSync.isSupported()) {
           const dir = await window.FileSync.getDirHandle()
           if (!dir) return { ok: false, reason: 'unbound' }
+          // 权限预检：IndexedDB 恢复的句柄权限可能为 'prompt'，
+          // 无用户手势时 getDirectoryHandle(create) 会被浏览器拒绝（报 not allowed）。
+          // 自动流程静默跳过；手动「立即备份」时由调用方提示重新授权。
+          try {
+            if (dir.queryPermission && (await dir.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+              return { ok: false, reason: 'permission' }
+            }
+          } catch (e) { /* 不支持 queryPermission 的环境跳过预检 */ }
           const sub = await dir.getDirectoryHandle(SNAPSHOT_DIR, { create: true })
           const fh = await sub.getFileHandle(name, { create: true })
           const w = await fh.createWritable()
@@ -133,7 +141,6 @@
           return { ok: false, reason: 'unsupported' }
         }
       } catch (e) {
-        try { window.Utils.showToast('自动备份快照失败：' + (e.message || e), 'error') } catch (e2) {}
         return { ok: false, reason: 'error', error: e }
       }
 
