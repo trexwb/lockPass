@@ -388,8 +388,13 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
-### v1.0.1 (2026-08-25)
+### 扩展 v1.0.1 (2026-08-25)
 
+- 新增「Tauri 桌面版内嵌本地 HTTP 服务」：Rust tiny_http 仅绑定 127.0.0.1:33555，提供 `/status`、`/credentials`（Bearer 鉴权、按域名查询）、`/pair` 一键配对（6 位 nonce 桌面弹窗确认）等接口；前端解锁后经 `tauri-server-bridge.js` 同步明文条目到 Rust 内存、锁定即清空；桌面版扩展不再依赖失效的页面 postMessage 桥，改为 fetch 本地服务取数，并支持网页版页面桥与桌面版 HTTP 双就绪来源
+- 扩展升级「复杂动态表单支持」：content_scripts 开启 `all_frames` 穿透 iframe（填充消息显式携带 frameId，杜绝多 frame 广播重复填充）；`walkRoots` 递归遍历 open shadow root，支持 Shadow DOM 内部表单；新增多步登录状态机（第一步 `LP_FILL_USERNAME` 只填用户名 → 密码框出现 `LP_PASSWORD_READY` 自动补填，pendingCredential 缓存含 120s 有效期），MutationObserver 增加 attributes 监听覆盖动态 type 切换
+- 新增「自动弹出建议」：按当前 tab URL 域名预筛选推荐条目，命中时右下角气泡展示可点击条目（气泡仅接收剥离密码字段的条目，密码只在 background 内存）+ toolbar 徽标数字；未命中给空态提示；同页 60s 节流、用户关闭/点选后本页不再自动弹、气泡 5s 自动收起、徽标 30s 自动清除；点击建议一键填充当前页面（兼容 iframe 与多步登录），零新增权限
+- 新增文档「扩展使用指南」：`docs/lockpass-扩展使用指南.md` 与 `.html`（含一键配对 / 自动填充全流程截图 guide-01~06），覆盖浏览器版（file:// 双击、localhost dev、GitHub Pages）与桌面版（内嵌 HTTP 通道）使用方式及桌面版打包安装说明
+- 扩展 manifest 版本同步至 1.0.1（主应用版本保持 v1.0.1 不变）
 - 新增「浏览器扩展（v0.1 实验版）」：`extension/` 目录 Manifest V3 扩展——解锁态通信（LockPass 页面 ExtBridge + 会话令牌 + postMessage 协议，主密码不出主应用）、通用登录表单识别与填充（原生 setter + input/change 事件，兼容主流前端框架）、popup 搜索列表、不自动提交、扩展零落盘（无 storage 权限，明文瞬时转发）
 - 新增「自动备份」：可配置提醒间隔（关闭/1/3/7/30 天），解锁时距上次 .vault 导出或快照超期则 Toast 提醒（防刷屏节流）；桌面端（Tauri）与浏览器已绑定目录支持自动加密快照——解锁后检查间隔自动生成带日期时间的完整密文快照到 backups/，保留最近 N 份（默认 5，可配 3~20），Tauri 用清单文件维护、浏览器用目录枚举清理；设置面板新增备份区块（提醒间隔/快照开关/间隔/保留份数/上次备份时间/立即备份），浏览器未绑定目录时按钮引导导出 .vault；.vault 导出成功自动刷新备份时间
 - 移动端体验打磨：新增底部导航（全部/收藏/回收站/添加/标签，回收站徽标，中心凸起添加按钮）；修复移动端无 hover 导致卡片操作按钮不可见的问题（改为常显）；触控目标尺寸对齐（导航项 44px、卡片操作 36px、主按钮 40px+）；扫码流程优化（上传区更大触控面、取景框限高防溢出）；安全区适配补齐（底部导航/详情页/弹窗底栏）

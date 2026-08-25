@@ -65,6 +65,7 @@ patchJson('package-lock.json', (d) => {
   if (d.packages && d.packages['']) d.packages[''].version = V;
 }, `顶层 + packages[""] -> ${V}`);
 patchJson('src-tauri/tauri.conf.json', (d) => { d.version = V; }, `version -> ${V}（打包产物版本）`);
+patchJson('extension/manifest.json', (d) => { d.version = V; }, `version -> ${V}（浏览器扩展）`);
 
 /* ── 文本类 ─────────────────────────────────────────────────────── */
 patchText('src-tauri/Cargo.toml', /^version = "\d+\.\d+\.\d+"$/m, `version = "${V}"`, `version -> ${V}（同步 tauri.conf.json）`);
