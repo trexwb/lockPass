@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 安装 Node.js 22
+      - name: 安装 Node.js 24
         uses: actions/setup-node@v7
         with:
           node-version: 22
