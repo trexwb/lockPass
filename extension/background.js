@@ -27,7 +27,8 @@ let pairing = false
 let pairNonce = null
 let pairPollTimer = null
 
-let autoFillPending = null // { domain, tabId }：页面就绪前收到的自动填充请求
+let autoFillPending = null // { domain, tabId, frameId, hasPassword }：页面就绪前收到的自动填充请求
+let pendingCredential = null // { tabId, domain, entry, password, at }：多步登录第一步缓存，密码框出现后补填
 
 // ── 就绪判定 ─────────────────────────────────────────
 function isReady() {
@@ -165,21 +166,52 @@ async function fetchCredentials(domain) {
 }
 
 // ── 自动填充 ─────────────────────────────────────────
-async function sendFill(tabId, entry, password) {
+async function sendFill(tabId, entry, password, frameId) {
   if (!tabId || password === undefined || password === null) return { ok: false, error: '密码数据无效' }
   try {
-    const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_FILL', entry, password })
+    // 显式指定 frameId（默认顶层 0），避免 all_frames 下向所有 frame 广播导致重复填充
+    const opts = { frameId: typeof frameId === 'number' ? frameId : 0 }
+    const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_FILL', entry, password }, opts)
     return resp || { ok: true }
   } catch (e) {
     return { ok: false, error: 'page not ready: ' + (e.message || e) }
   }
 }
 
-async function autoFill(domain, tabId) {
+// 多步登录第一步：仅填用户名
+async function sendFillUsername(tabId, entry, frameId) {
+  if (!tabId) return { ok: false, error: 'no tab' }
+  try {
+    const opts = { frameId: typeof frameId === 'number' ? frameId : 0 }
+    const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_FILL_USERNAME', entry }, opts)
+    return resp || { ok: true }
+  } catch (e) {
+    return { ok: false, error: 'page not ready: ' + (e.message || e) }
+  }
+}
+
+async function autoFill(domain, tabId, frameId, hasPassword) {
+  const entryForDomain = (list) => (list && list.length ? list[0] : null)
   if (httpReadyFlag) {
-    const entries = await fetchCredentials(domain)
-    if (entries && entries.length) {
-      await sendFill(tabId, entries[0], entries[0].password)
+    let entries = await fetchCredentials(domain)
+    if ((!entries || !entries.length) && tabId) {
+      // iframe 内条目可能挂在主页面域名下：取不到时回退尝试顶层 tab 域名
+      try {
+        const tab = await chrome.tabs.get(tabId)
+        const topDomain = extractDomain(tab.url || '')
+        if (topDomain && topDomain !== domain) {
+          entries = await fetchCredentials(topDomain)
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+    const entry = entryForDomain(entries)
+    if (entry) {
+      if (hasPassword) {
+        await sendFill(tabId, entry, entry.password, frameId)
+      } else {
+        await sendFillUsername(tabId, entry, frameId)
+        pendingCredential = { tabId, domain, entry, password: entry.password, at: Date.now() }
+      }
     }
     return
   }
@@ -189,7 +221,12 @@ async function autoFill(domain, tabId) {
     if (entry) {
       const pwd = await requestPassword(entry.id)
       if (pwd.ok) {
-        await sendFill(tabId, entry, pwd.password)
+        if (hasPassword) {
+          await sendFill(tabId, entry, pwd.password, frameId)
+        } else {
+          await sendFillUsername(tabId, entry, frameId)
+          pendingCredential = { tabId, domain, entry, password: pwd.password, at: Date.now() }
+        }
       }
     }
   }
@@ -199,7 +236,7 @@ function maybeAutoFill() {
   if (!autoFillPending) return
   const p = autoFillPending
   autoFillPending = null
-  autoFill(p.domain, p.tabId)
+  autoFill(p.domain, p.tabId, p.frameId, p.hasPassword)
 }
 
 // ── 页面桥通道（网页版兼容，原逻辑保留） ─────────────
@@ -265,7 +302,7 @@ async function fillCurrentTab(entryId) {
       type: 'LP_FILL',
       entry,
       password,
-    })
+    }, { frameId: 0 })
     delete passwordCache[entryId]
     return resp || { ok: true }
   } catch (e) {
@@ -312,16 +349,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break
 
     // 网页发现登录表单 → 就绪后自动填充
+    // hasPassword=false 表示多步登录第一步（仅用户名框），先填用户名并缓存凭据
     case 'LP_PAGE_READY': {
       const tabId = sender.tab && sender.tab.id
+      const frameId = sender.frameId
+      const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
+      const hasPassword = !!msg.hasPassword
       checkHttpStatus().then(() => {
         if (isReady()) {
-          autoFill(msg.domain || extractDomain(sender.tab && sender.tab.url), tabId)
+          autoFill(domain, tabId, frameId, hasPassword)
         } else {
-          autoFillPending = { domain: msg.domain || extractDomain(sender.tab && sender.tab.url), tabId }
+          autoFillPending = { domain, tabId, frameId, hasPassword }
         }
       })
       sendResponse({ ok: true })
+      break
+    }
+
+    // 多步登录第二步：密码框出现后，用第一步缓存的凭据补填密码
+    case 'LP_PASSWORD_READY': {
+      const tabId = sender.tab && sender.tab.id
+      const frameId = sender.frameId
+      const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
+      const pc = pendingCredential
+      const fresh = pc && Date.now() - pc.at < 120000 // 120s 有效，过期丢弃
+      if (pc && fresh && pc.tabId === tabId && pc.domain === domain) {
+        pendingCredential = null
+        sendFill(tabId, pc.entry, pc.password, frameId).then(sendResponse)
+      } else {
+        // 缓存缺失/过期（如用户隔了很久才到第二步）→ 走常规自动填充兜底
+        pendingCredential = null
+        checkHttpStatus().then(() => {
+          if (isReady()) autoFill(domain, tabId, frameId, true)
+        })
+        sendResponse({ ok: true })
+      }
       break
     }
 
