@@ -29,6 +29,8 @@ let pairPollTimer = null
 
 let autoFillPending = null // { domain, tabId, frameId, hasPassword }：页面就绪前收到的自动填充请求
 let pendingCredential = null // { tabId, domain, entry, password, at }：多步登录第一步缓存，密码框出现后补填
+let lastFormFrame = null // { tabId, frameId, at }：最近上报登录表单的 frame，建议点击填充优先定位
+let lastSuggestCreds = null // { tabId, domain, entries, at }：最近一次建议条目缓存（含密码，仅内存），点击时避免重复取数
 
 // ── 就绪判定 ─────────────────────────────────────────
 function isReady() {
@@ -206,6 +208,7 @@ async function autoFill(domain, tabId, frameId, hasPassword) {
     }
     const entry = entryForDomain(entries)
     if (entry) {
+      lastSuggestCreds = { tabId, domain, entries, at: Date.now() }
       if (hasPassword) {
         await sendFill(tabId, entry, entry.password, frameId)
       } else {
@@ -213,6 +216,8 @@ async function autoFill(domain, tabId, frameId, hasPassword) {
         pendingCredential = { tabId, domain, entry, password: entry.password, at: Date.now() }
       }
     }
+    // 命中/未命中都弹建议气泡（页面有登录表单的前提下）
+    await sendSuggestions(tabId, entry ? entries : null)
     return
   }
   if (pageBridgeReady) {
@@ -227,8 +232,11 @@ async function autoFill(domain, tabId, frameId, hasPassword) {
           await sendFillUsername(tabId, entry, frameId)
           pendingCredential = { tabId, domain, entry, password: pwd.password, at: Date.now() }
         }
+        await sendSuggestions(tabId, [entry])
+        return
       }
     }
+    await sendSuggestions(tabId, null)
   }
 }
 
@@ -237,6 +245,33 @@ function maybeAutoFill() {
   const p = autoFillPending
   autoFillPending = null
   autoFill(p.domain, p.tabId, p.frameId, p.hasPassword)
+}
+
+// ── 自动弹出建议（按 URL 域名预筛选推荐条目） ────────
+// 向顶层 frame 发送建议列表（剥离密码字段，密码仅在后台内存中），并叠加徽标数字提示
+function safeSuggestEntries(entries) {
+  return (entries || []).map(({ password, ...rest }) => rest)
+}
+
+async function sendSuggestions(tabId, entries) {
+  if (!tabId) return
+  const has = !!(entries && entries.length)
+  try {
+    await chrome.tabs.sendMessage(
+      tabId,
+      { type: 'LP_SHOW_SUGGESTIONS', entries: has ? safeSuggestEntries(entries) : [], empty: !has },
+      { frameId: 0 }
+    )
+  } catch (e) { /* 页面不可达/未注入，忽略 */ }
+  // 徽标提示（action 原生能力，无需新增权限）：命中数 30s 后自动清除，避免残留
+  try {
+    chrome.action.setBadgeText({ tabId, text: has ? String(entries.length) : '' })
+    if (has) {
+      setTimeout(() => {
+        try { chrome.action.setBadgeText({ tabId, text: '' }) } catch (e) { /* 忽略 */ }
+      }, 30000)
+    }
+  } catch (e) { /* 忽略 */ }
 }
 
 // ── 页面桥通道（网页版兼容，原逻辑保留） ─────────────
@@ -355,6 +390,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const frameId = sender.frameId
       const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
       const hasPassword = !!msg.hasPassword
+      // 记录最近上报登录表单的 frame，供建议点击/后续填充定位
+      lastFormFrame = { tabId, frameId, at: Date.now() }
       checkHttpStatus().then(() => {
         if (isReady()) {
           autoFill(domain, tabId, frameId, hasPassword)
@@ -371,6 +408,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const tabId = sender.tab && sender.tab.id
       const frameId = sender.frameId
       const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
+      // 密码框 frame 通常即登录表单所在 frame，优先记录，供建议点击定位
+      lastFormFrame = { tabId, frameId, at: Date.now() }
       const pc = pendingCredential
       const fresh = pc && Date.now() - pc.at < 120000 // 120s 有效，过期丢弃
       if (pc && fresh && pc.tabId === tabId && pc.domain === domain) {
@@ -422,6 +461,67 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // popup 请求一键配对
     case 'POPUP_PAIR': {
       startPairing().then(sendResponse)
+      return true // 异步响应
+    }
+
+    // 点击自动弹出建议条目 → 按缓存/当前域名取数并一键填充
+    case 'SUGGESTION_FILL': {
+      const { entryId } = msg
+      const tabId = sender.tab && sender.tab.id
+      if (!tabId) {
+        sendResponse({ ok: false, error: 'no tab' })
+        break
+      }
+      // 定位填充 frame：优先最近上报登录表单的 frame，其次顶层
+      let frameId = 0
+      if (lastFormFrame && lastFormFrame.tabId === tabId && Date.now() - lastFormFrame.at < 300000) {
+        frameId = lastFormFrame.frameId
+      }
+      const cacheFresh = lastSuggestCreds && lastSuggestCreds.tabId === tabId && Date.now() - lastSuggestCreds.at < 60000
+      const finish = (entry, password) => {
+        if (!entry) {
+          sendResponse({ ok: false, error: 'entry not found' })
+          return
+        }
+        const domain = (lastSuggestCreds && lastSuggestCreds.domain) || ''
+        sendFill(tabId, entry, password, frameId).then((r) => {
+          const filled = !!(r && r.filledPassword)
+          // 多步登录：本次只填到用户名框 → 缓存凭据，密码框出现后由 LP_PASSWORD_READY 补填
+          if (!filled && password) {
+            pendingCredential = { tabId, domain, entry, password, at: Date.now() }
+          }
+          sendResponse({ ok: true, filled, frameId })
+          try { chrome.action.setBadgeText({ tabId, text: '' }) } catch (e) { /* 忽略 */ }
+        })
+      }
+      if (cacheFresh) {
+        const target = (lastSuggestCreds.entries || []).find((e) => e.id === entryId)
+        finish(target, target && target.password)
+        return true // 异步响应
+      }
+      // 缓存过期/缺失 → 按当前 tab 域名重新取数（兼容双通道）
+      checkHttpStatus().then(async () => {
+        if (httpReadyFlag) {
+          let tab = null
+          try { tab = await chrome.tabs.get(tabId) } catch (e) { /* 忽略 */ }
+          const domain = extractDomain((tab && tab.url) || '')
+          const entries = domain ? await fetchCredentials(domain) : []
+          const target = (entries || []).find((e) => e.id === entryId)
+          if (target) lastSuggestCreds = { tabId, domain, entries, at: Date.now() }
+          finish(target, target && target.password)
+        } else if (pageBridgeReady) {
+          await refreshEntries()
+          const target = cachedEntries.find((e) => e.id === entryId)
+          if (target) {
+            const pwd = await requestPassword(target.id)
+            finish(target, pwd.ok ? pwd.password : null)
+          } else {
+            finish(null)
+          }
+        } else {
+          finish(null)
+        }
+      })
       return true // 异步响应
     }
 
