@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.0.7 | 更新日期：2026-08-25
+> 版本：v1.0.9 | 更新日期：2026-08-25
 
 ---
 
@@ -200,6 +200,8 @@
 
 ### 3.16 浏览器扩展（自动填充）
 
+- 应用内入口：设置 → 浏览器扩展，提供「下载 zip」（指向 Pages 发布的 `lockpass-extension-v<版本>.zip`，版本号与主应用同步）与「使用指南」链接；桌面版无 shell/opener 能力时复制链接到剪贴板
+
 - 交付形态：`extension/` 目录 Manifest V3 扩展（background / popup / 双 content script），Chrome / Edge 开发者模式加载
 - 解锁态通信：LockPass 页面 `ExtBridge`（src/core/ext-bridge.js）解锁广播 ready（含一次性会话令牌，sessionStorage），锁定/登出广播 locked；扩展请求须携带令牌且来源为同窗口；解密在页面内存完成，扩展仅转发
 - 表单填充：`content.js` 通用识别（密码框定位 + 用户名常见选择器 + 可见性过滤），原生 value setter + input/change 事件（React/Vue 兼容），不自动提交、高亮提交按钮
@@ -211,7 +213,10 @@
 - 浏览器版（Chrome/Edge）：文件系统访问 API，绑定本地数据目录
 - 同步失败有 Toast + 状态标签反馈（`lastSyncError`）
 - **句柄自愈（v1.0.5）**：`FileSystemDirectoryHandle` 无法经 JSON 序列化还原、引擎升级也可能使存储句柄退化为普通对象（调用 `getFileHandle` 报 "not a function"）；`ensureUsableDirHandle()` 检测到失效即自动解绑并 Toast 提示一次，后续保存回归静默，数据不受影响；设置面板同步显示「目录句柄失效，请重新绑定」。快照浏览器分支同样走自愈
-- 桌面版：Tauri 文件存储，等价结构（见 docs/tauri.md）；**禁止绑定同步目录**（bindDirectory 硬拒绝）；file-store 在 `__TAURI__` 缺失时经 `__TAURI_INTERNALS__` 兜底桥接，防止桌面被误判为浏览器而暴露绑定入口（v1.0.6）；v1.0.7 起统一由 `core/tauri-env.js`（挂载 `window.LockTauri`，双信号）提供环境判定，sw-register 桌面分支脚本求值期立即注销残留 SW（修复 tauri.localhost 首屏 404 需刷新问题复发）
+- 桌面版：Tauri 文件存储，等价结构（见 docs/tauri.md）；**禁止绑定同步目录**（bindDirectory 硬拒绝）；file-store 在 `__TAURI__` 缺失时经 `__TAURI_INTERNALS__` 兜底桥接，防止桌面被误判为浏览器而暴露绑定入口（v1.0.6）；v1.0.7 起统一由 `core/tauri-env.js`（挂载 `window.LockTauri`，双信号）提供环境判定，sw-register 桌面分支脚本求值期立即注销残留 SW
+- **桌面包剥离 sw.js（v1.0.9）**：`beforeBuildCommand` 链尾调用 `scripts/remove-dist-sw.mjs` 删除 dist/sw.js；受控对比（fastenerTradeWorkbench 无 SW 同机不复现）证实残留注册是首屏 404 根因
+- **冷启动自愈探针（v1.0.9）**：`boot-flag.js` 同步置 `__LOCKPASS_BOOTED__`，Rust setup 线程三次 eval 探测，失败页上下文内自动 reload ≤2 次
+- **IDB→文件迁移桥（v1.0.9）**：file-store 启用时若文件空而旧 origin IndexedDB 有完整加密负载则一次性搬运（meta.salt/iterations/version + vault/main，排除 dirHandle），openDB 闸门串行化避免竞态
 
 ### 3.13 设置
 
@@ -369,4 +374,4 @@ LockPass/
 
 ---
 
-**文档版本：v1.0.7**
+**文档版本：v1.0.9**

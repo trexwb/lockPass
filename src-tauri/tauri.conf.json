@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LockPass",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "identifier": "com.lockpass",
   "build": {
     "frontendDist": "../dist",
-    "beforeBuildCommand": "vite build",
+    "beforeBuildCommand": "vite build && node scripts/remove-dist-sw.mjs",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev"
   },

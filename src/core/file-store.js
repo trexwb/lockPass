@@ -166,6 +166,83 @@
   // 替换 IndexedDB 版，后续业务代码（app / settings / import-export / file-sync）全部走文件
   window.DBUtils = DBUtilsFile;
 
+  /* ── 5. 历史数据一次性迁移：IndexedDB（浏览器误判期产物）→ 文件存储 ──
+     背景：__TAURI__ 全局注入异常的 Windows 环境里，本模块曾整段早退，
+     桌面按浏览器模式运行，密码库落在 http://tauri.localhost 的
+     IndexedDB（PasswordVaultDB）。FileStore 启用后若文件为空而该库有
+     salt，则把加密负载整体搬入文件，避免用户看到「创建保险箱」空屏。
+     只搬运 meta.salt/iterations/version 与 vault/main 加密记录；
+     刻意排除 dirHandle（浏览器版目录句柄，禁止带入桌面）。 */
+  function openLegacyIdb() {
+    return new Promise(function (resolve) {
+      var req
+      try { req = indexedDB.open('PasswordVaultDB', 1) } catch (e) { return resolve(null) }
+      req.onsuccess = function () { resolve(req.result) }
+      req.onerror = function () { resolve(null) }
+      req.onblocked = function () { resolve(null) }
+    })
+  }
+
+  function idbGetAll(db, store) {
+    return new Promise(function (resolve) {
+      try {
+        var tx = db.transaction(store)
+        var req = tx.objectStore(store).getAll()
+        req.onsuccess = function () { resolve(req.result || []) }
+        req.onerror = function () { resolve([]) }
+      } catch (e) { resolve([]) }
+    })
+  }
+
+  var legacyMigration = null
+  function migrateFromLegacyIdb() {
+    return openLegacyIdb().then(function (db) {
+      if (!db) return
+      return Promise.all([idbGetAll(db, 'meta'), idbGetAll(db, 'vault')]).then(function (lists) {
+        var metaRows = lists[0], vaultRows = lists[1]
+        var find = function (rows, keyName, keyVal) {
+          for (var i = 0; i < rows.length; i++) if (rows[i][keyName] === keyVal) return rows[i]
+          return null
+        }
+        var saltRow = find(metaRows, 'key', 'salt')
+        var mainRow = null
+        for (var j = 0; j < vaultRows.length; j++) if (vaultRows[j].id === 'main') mainRow = vaultRows[j]
+        if (!saltRow || !mainRow) return
+
+        // 目的地已有数据（meta.salt 存在）则不覆盖，尊重文件为准
+        return readJson(FILE_META, true).then(function (curMeta) {
+          if (curMeta && curMeta['salt']) return
+          return readJson(FILE_VAULT, true).then(function (curVault) {
+            ['salt', 'iterations', 'version'].forEach(function (k) {
+              var row = find(metaRows, 'key', k)
+              if (row) curMeta[k] = row
+            })
+            curVault['main'] = mainRow
+            cache[FILE_META] = curMeta
+            cache[FILE_VAULT] = curVault
+            return enqueueWrite(function () {
+              return Promise.all([
+                FileStore.write(FILE_META, JSON.stringify(curMeta)),
+                FileStore.write(FILE_VAULT, JSON.stringify(curVault))
+              ]).then(function () {
+                console.info('[LockPass/FileStore] 已将历史 IndexedDB 密码库迁移至本地文件存储')
+              })
+            })
+          })
+        })
+      }).catch(function (e) {
+        console.warn('[LockPass/FileStore] 历史 IndexedDB 迁移跳过:', e)
+      })
+    })
+  }
+
+  // 所有读写都先经 openDB —— 在此挂迁移闸门，保证 boot 首读前完成搬运判定
+  var _origOpenDB = DBUtilsFile.openDB
+  DBUtilsFile.openDB = function () {
+    if (!legacyMigration) legacyMigration = migrateFromLegacyIdb()
+    return legacyMigration.then(function () { return _origOpenDB.call(DBUtilsFile) })
+  }
+
   // 打印数据目录便于排查
   FileStore.dataDir().then(function (dir) {
     console.info('[LockPass] 桌面文件存储已启用，数据目录: ' + dir);

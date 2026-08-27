@@ -342,6 +342,43 @@ pub fn run() {
                     }
                 });
             }
+            // Windows 冷启动自愈探针（v1.0.9+）：
+            // 个别环境首次导航可能命中浏览器级 404 错误页（内嵌服务未就绪或
+            // 历史残留 ServiceWorker 干扰），此前用户需手动「刷新」，且旧实现
+            // 依赖在错误页上下文内 eval 触发 location.reload，错误页上受限。
+            // 改进：探针仅通过 eval 读回 __LOCKPASS_BOOTED__（boot-flag.js 同步
+            // 设置）的布尔值；eval 失败 / 超时 / 值为假一律走原生
+            // WebviewWindow::reload() 重载，最多重试 2 次。
+            if let Some(win) = app.get_webview_window("main") {
+                std::thread::spawn(move || {
+                    // 返回 JSON 序列化字符串："true" / "false"
+                    const PROBE_JS: &str =
+                        "(function(){try{return window.__LOCKPASS_BOOTED__===!0}catch(e){return !1}})();";
+                    let reply_timeout = std::time::Duration::from_millis(1500);
+                    let mut reloaded: u32 = 0;
+                    for ms in [500u64, 2000u64, 4000u64] {
+                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                        // 单次轮询：channel 跨线程取回调结果；eval 无响应
+                        // （错误页受限）由 recv_timeout 兜底判为未就绪。
+                        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+                        let _ = win.eval_with_callback(PROBE_JS, move |res| {
+                            let _ = tx.send(res.trim() == "true");
+                        });
+                        let booted = match rx.recv_timeout(reply_timeout) {
+                            Ok(v) => v,
+                            Err(_) => false,
+                        };
+                        if booted {
+                            break;
+                        }
+                        if reloaded < 2 {
+                            let _ = win.reload();
+                            reloaded += 1;
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

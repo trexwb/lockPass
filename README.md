@@ -242,6 +242,15 @@ LockPass/
 
 ### 安装（开发者模式）
 
+**方式一：下载在线扩展包（免克隆仓库）**
+
+0. 也可在应用内直接获取：设置 → 浏览器扩展 → 「下载 zip」/「使用指南」（桌面版会复制链接到剪贴板，请在系统浏览器打开）
+1. 下载部署在 GitHub Pages 的扩展包：`https://trexwb.github.io/lockPass/lockpass-extension-v<版本>.zip`（版本号随主应用，由流水线自动打包 `extension/` 目录生成，如 `lockpass-extension-v1.0.7.zip`）
+2. 解压到任意目录
+3. 打开 Chrome/Edge → `chrome://extensions`（Edge: `edge://extensions`）→ 开启「开发者模式」→「加载已解压的扩展程序」→ 选择解压后的目录
+
+**方式二：使用仓库源码**
+
 1. 打开 Chrome/Edge → `chrome://extensions`（Edge: `edge://extensions`）
 2. 开启「开发者模式」→「加载已解压的扩展程序」
 3. 选择本仓库的 `extension/` 目录
@@ -328,6 +337,7 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 `main` 分支推送后自动将浏览器版部署到 **GitHub Pages**：
 
 - 访问地址：`https://trexwb.github.io/lockPass/`
+- 浏览器扩展 zip 随站点一同发布：`https://trexwb.github.io/lockPass/lockpass-extension-v<版本>.zip`（见「浏览器扩展 → 安装」）
 - 首次需在仓库 Settings → Pages → Source 选择 **GitHub Actions**
 - 在线版数据存在访问者浏览器（IndexedDB），与桌面版相互独立，可用 .vault 文件导入导出互通
 
@@ -388,6 +398,23 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 ---
 
 ## 更新日志
+
+### v1.0.9 (2026-08-27)
+
+Windows 桌面启动 404 问题根治（受控对比实验锁定根因）：同机另一 Tauri 项目（fastenerTradeWorkbench，无 Service Worker）从不复现该症状——唯一结构差异即 lockPass 自 v1.0 起随包携带并注册 PWA SW，其历史注册残留在 http://tauri.localhost 的 WebView2 用户目录中，冷启动首次导航被 SW 接管时产生浏览器级 404。
+
+- **打包剥离**：`beforeBuildCommand` 追加 `node scripts/remove-dist-sw.mjs`，桌面包不再携带 `sw.js`（浏览器版/Pages 流程不受影响），从源头杜绝新的注册可能
+- **自愈探针**：`core/boot-flag.js` 最先同步设置 `__LOCKPASS_BOOTED__`；Rust setup 注入一次性探针（500ms/1400ms/3000ms 三次 eval），首屏未完成引导则页面上下文内自动 reload（最多重试 2 次），替代手动点「刷新」
+- **数据迁移桥**：发现历史上 `__TAURI__` 注入异常期间 file-store 从未激活、密码库一直存放在旧 origin 的 IndexedDB 中。新增一次性迁移——文件存储为空而 IDB(`PasswordVaultDB`) 有 salt+vault.main 时整体搬入 meta.json/vault.json（刻意排除 dirHandle，禁止把浏览器版句柄带入桌面）；所有读写经 openDB 闸门串行化保证 boot 首读前完成
+- **设置面板外链升级**：桌面端改用 Rust 命令 `open_url`（协议白名单校验）直接在系统浏览器打开扩展下载/指南链接，剪贴板复制降级为兜底
+
+### v1.0.8 (2026-08-27)
+
+设置面板新增「浏览器扩展」分组（位于「备份」之后）：
+
+- **下载扩展包**：一键打开 Pages 发布的 `lockpass-extension-v<版本>.zip`，版本号与主应用一致；浏览器直接新标签页下载
+- **使用指南**：跳转 GitHub 文档《lockpass-扩展使用指南》（安装/配对/自动填充说明）
+- **桌面版适配**：桌面端无 shell/opener 插件，点击后自动复制链接到剪贴板并提示在系统浏览器中打开（面板内有说明文案）
 
 ### v1.0.7 (2026-08-27)
 
