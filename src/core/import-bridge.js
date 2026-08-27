@@ -165,7 +165,9 @@
       } catch (e) {
         throw new Error('文件格式错误，不是有效的 JSON 备份')
       }
-      if (data.format === 'encrypted' && data.data) {
+      // 加密封套识别：兼容 .vault 导出（format:'encrypted'）与
+      // 自动快照/同步文件（format:'LockPass-file-sync'），按结构判断
+      if (data.data && data.iv && data.salt) {
         // 加密备份：使用当前会话密钥尝试解密（同一主密码的备份可直接解）
         let decrypted = null
         try {

@@ -979,20 +979,74 @@ export function useVault() {
 
   /* ── 保存条目（编辑器回调） ─────────────────── */
 
-  /* ── 密码历史（P0：历史记录与回滚） ─────────────────────
-     快照内容：旧密码明文 + 变更时间（整体随 vault 加密，不参与导入导出）。
-     保留策略：每条目最多 HISTORY_LIMIT 条，最新在前；与最新一条相同不重复记录。 */
+  /* ── 修改历史与回滚（v1.0.x：任意字段变更均记录） ───────
+     记录范围：编辑保存时任意内容字段变更都生成一条记录（不只密码）；
+     快照内容：修改前可回滚字段的深拷贝 + 变更字段列表（整体随 vault 加密，不参与导入导出）。
+     回滚语义：确认弹窗防误操作；执行成功即删除该条记录（防重复执行）；
+               回滚本身不新增记录（回滚不是编辑）。
+     兼容：旧版仅含 { password, at } 的密码快照仍可展示与回滚（只恢复密码）。
+     保留策略：每条目最多 HISTORY_LIMIT 条，最新在前。 */
   const HISTORY_LIMIT = 5
+  /* 参与历史记录/回滚的内容字段（favorite / showPassword 等状态位不入史） */
+  const HISTORY_FIELDS = ['title', 'entryType', 'username', 'password', 'url', 'port', 'notes', 'tags', 'root', 'appId', 'privateKey']
+  const HISTORY_FIELD_LABELS = {
+    title: '标题', entryType: '类型', username: '用户名', password: '密码',
+    url: '网址/地址', port: '端口', notes: '备注', tags: '标签',
+    root: 'Root 账号', appId: 'App ID', privateKey: '私钥',
+  }
 
-  function pushHistory(id, password, at) {
-    if (!id || password == null) return
+  function histEq(a, b) {
+    if (Array.isArray(a) || Array.isArray(b)) {
+      const x = Array.isArray(a) ? a : [], y = Array.isArray(b) ? b : []
+      return x.length === y.length && x.every((v, i) => histEq(v, y[i]))
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+      return [...keys].every(k => histEq(a[k], b[k]))
+    }
+    return (a == null ? '' : a) === (b == null ? '' : b)
+  }
+
+  /* 取条目可回滚字段的深拷贝，避免之后原地改数组/对象污染已存历史 */
+  function materialOf(e) {
+    const out = {}
+    HISTORY_FIELDS.forEach(k => {
+      const v = e[k]
+      if (v === undefined) return
+      out[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v
+    })
+    return out
+  }
+
+  function diffKeys(a, b) {
+    return HISTORY_FIELDS.filter(k => !histEq(a[k], b[k]))
+  }
+
+  /* 编辑保存时记录旧状态；fields 为本次变更字段列表（展示与确认提示用）
+     与最新一条快照完全相同则不重复记录（旧版仅密码记录不做全量比对去重） */
+  function recordEntryHistory(id, prevEntry, nextEntry, at) {
+    if (!id || !prevEntry) return
     const list = vaultState.history[id] || []
-    if (list.length && list[0].password === password) return
-    list.unshift({ password, at })
+    const newest = list[0]
+    if (newest && newest.snap && histEq(materialOf(prevEntry), newest.snap)) return
+    const fields = diffKeys(prevEntry, nextEntry)
+    if (!fields.length) return
+    list.unshift({ at, snap: materialOf(prevEntry), fields })
     vaultState.history[id] = list.slice(0, HISTORY_LIMIT)
   }
 
-  async function rollbackPassword(id, at) {
+  /* 该历史版本与当前条目是否存在可执行差异（旧版仅密码记录只比密码） */
+  function snapDiffers(entry, snap) {
+    if (!entry || !snap) return false
+    const target = snap.snap || { password: snap.password }
+    return Object.keys(target).some(k => HISTORY_FIELDS.includes(k) && !histEq(target[k], entry[k]))
+  }
+
+  function describeHistoryFields(fields) {
+    return (fields || []).map(f => HISTORY_FIELD_LABELS[f] || f).join('、')
+  }
+
+  async function rollbackEntry(id, at) {
     const entry = vaultState.entries.find(e => e.id === id)
     const list = vaultState.history[id] || []
     const snap = list.find(s => s.at === at)
@@ -1000,14 +1054,31 @@ export function useVault() {
       window.Utils.showToast('历史记录不存在或已过期', 'error')
       return false
     }
-    if (entry.password === snap.password) {
-      window.Utils.showToast('当前密码已是该版本', 'info')
+    const target = snap.snap || { password: snap.password } // 旧版记录仅含密码
+    if (!snapDiffers(entry, snap)) {
+      window.Utils.showToast('当前数据已是该版本', 'info')
       return false
     }
-    // 回滚前把当前密码也存入历史，防止误操作后无法恢复
-    pushHistory(id, entry.password, new Date().toISOString())
-    entry.password = snap.password
+    // 确认弹窗防误操作：回滚覆盖当前数据且不留存当前副本
+    const fieldText = snap.snap ? (describeHistoryFields(snap.fields) || '全部字段') : '密码'
+    const ok = await window.Utils.confirm({
+      title: '确认回滚',
+      message: `将把该条目恢复到所选历史版本（覆盖：${fieldText}）。\n当前数据将被覆盖且不会保存副本，该条历史执行后删除，是否继续？`,
+      confirmText: '回滚',
+      cancelText: '取消',
+      danger: true,
+    })
+    if (!ok) return false
+    Object.keys(target).forEach(k => {
+      const v = target[k]
+      entry[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v
+    })
     entry.updatedAt = new Date().toISOString()
+    // 执行成功即删除被执行的记录；回滚不是编辑，不新增历史
+    const remain = list.filter(s => s !== snap)
+    if (remain.length) vaultState.history[id] = remain
+    else delete vaultState.history[id]
+    vaultState.history = { ...vaultState.history }
     await saveVault()
     window.Utils.showToast('已回滚到历史版本', 'success')
     return true
@@ -1071,10 +1142,8 @@ export function useVault() {
       const idx = vaultState.entries.findIndex(e => e.id === vaultState.editingEntryId)
       if (idx !== -1) {
         const oldEntry = vaultState.entries[idx]
-        // 密码变更时把旧密码快照存入历史（默认保留最近 5 版）
-        if (oldEntry.password && oldEntry.password !== entry.password) {
-          pushHistory(entry.id, oldEntry.password, now)
-        }
+        // 任意内容字段有变更都生成历史记录（默认保留最近 5 版）
+        recordEntryHistory(entry.id, oldEntry, entry, now)
         vaultState.entries[idx] = entry
       }
       // 保存成功后清除草稿缓存
@@ -1126,7 +1195,9 @@ export function useVault() {
     openModal,
     closeModal,
     saveEntry,
-    rollbackPassword,
+    rollbackEntry,
+    snapDiffers,
+    describeHistoryFields,
     openRestoreFilePicker,
     handleRestoreFileSelect,
     bindRestoreFromDirectory,

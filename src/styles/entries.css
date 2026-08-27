@@ -422,6 +422,10 @@
   font-size: 0.82rem;
   word-break: break-all;
 }
+.history-changed {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
 .history-item .btn {
   flex-shrink: 0;
 }
