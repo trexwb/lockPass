@@ -127,8 +127,8 @@ const syncStatus = ref({ text: '检查中…', btnText: '绑定', btnVisible: tr
 
 async function refreshFileSyncStatus() {
   const status = syncStatus.value
-  // Tauri 桌面版：数据已通过本地文件存储，无需目录绑定
-  if (window.FileStore && window.FileStore.isTauri) {
+  // Tauri 桌面版：数据已通过本地文件存储，无需目录绑定（双信号判定）
+  if ((window.FileStore && window.FileStore.isTauri) || window.__TAURI_INTERNALS__) {
     status.text = '数据已保存在桌面本地文件'
     status.btnVisible = false
     try {
@@ -144,7 +144,10 @@ async function refreshFileSyncStatus() {
   }
   try {
     const handle = await window.FileSync.getDirHandle()
-    if (handle) {
+    if (handle && !window.FileSync.isUsableDirHandle(handle)) {
+      status.text = '目录句柄失效，请重新绑定'
+      status.btnText = '重新绑定'
+    } else if (handle) {
       status.text = '已绑定：' + handle.name + ' → LockPass-vault.json'
       status.btnText = '重新绑定'
     } else {
@@ -220,13 +223,17 @@ async function refreshDataInfo() {
   }
 
   // 文件同步状态
-  if (window.FileStore && window.FileStore.isTauri) {
+  if ((window.FileStore && window.FileStore.isTauri) || window.__TAURI_INTERNALS__) {
     info.sync = '桌面文件'
     info.file = '已启用'
     info.fileTagClass = 'tag-ok'
   } else if (window.FileSync.isSupported()) {
     const handle = await window.FileSync.getDirHandle()
-    if (handle) {
+    if (handle && !window.FileSync.isUsableDirHandle(handle)) {
+      info.sync = '句柄失效'
+      info.file = '需重绑'
+      info.fileTagClass = 'tag-warning'
+    } else if (handle) {
       if (window.FileSync.lastSyncError) {
         info.sync = '同步失败'
         info.file = '同步失败'

@@ -1,6 +1,6 @@
 {
   "name": "lockpass",
-  "version": "1.0.4",
+  "version": "1.0.7",
   "private": true,
   "description": "LockPass 密码保险箱",
   "type": "module",
@@ -17,7 +17,7 @@
     "version:check": "node scripts/check-version.mjs"
   },
   "dependencies": {
-    "vue": "^3.5.41"
+    "vue": "^3.5.42"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

@@ -121,7 +121,8 @@
           await window.FileStore.write(SNAPSHOT_DIR + '/' + name, text)
           await this._cleanupByManifest(name)
         } else if (window.FileSync && window.FileSync.isSupported()) {
-          const dir = await window.FileSync.getDirHandle()
+          // 句柄损坏自动解绑（返回 null 时按未绑定静默跳过）
+          const dir = await window.FileSync.ensureUsableDirHandle()
           if (!dir) return { ok: false, reason: 'unbound' }
           // 权限预检：IndexedDB 恢复的句柄权限可能为 'prompt'，
           // 无用户手势时 getDirectoryHandle(create) 会被浏览器拒绝（报 not allowed）。

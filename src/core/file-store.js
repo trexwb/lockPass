@@ -20,11 +20,13 @@
 (function () {
   'use strict';
 
-  const T = window.__TAURI__;
-  const isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
-  if (!isTauri) return; // 浏览器：保持 IndexedDB
+  // 桌面判定统一走 tauri-env.js（__TAURI__ 缺失时经 __TAURI_INTERNALS__ 兜底）；
+  // 若这里失效，桌面会被误判为浏览器：file 存储不启用 → 暴露「绑定目录」
+  // 入口 → 句柄经 JSON 落盘退化 → 每次写入报错
+  const LT = window.LockTauri || {};
+  if (!LT.isTauri) return; // 真·浏览器环境：保持 IndexedDB
 
-  const invoke = T.core.invoke;
+  const invoke = LT.invoke;
   const FILE_META = 'meta.json';
   const FILE_VAULT = 'vault.json';
 

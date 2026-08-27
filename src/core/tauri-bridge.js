@@ -11,8 +11,9 @@
 (function () {
   'use strict';
 
-  const T = window.__TAURI__;
-  const isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
+  // 桌面判定统一走 tauri-env.js（双信号，见 tauri-env.js 头注释）
+  const LT = window.LockTauri || {};
+  const isTauri = !!LT.isTauri;
 
   /* ── 1. 导出文件：统一包装为返回 boolean ───────────────────────
      浏览器：走原生下载，返回 true。
@@ -25,7 +26,7 @@
     }
     try {
       const isCsv = /\.csv($|\?)/i.test(filename);
-      const savePath = await T.core.invoke('plugin:dialog|save', {
+      const savePath = await LT.invoke('plugin:dialog|save', {
         options: {
           defaultPath: filename,
           filters: isCsv
@@ -34,7 +35,7 @@
         }
       });
       if (!savePath) return false; // 用户取消
-      await T.core.invoke('export_text_file', {
+      await LT.invoke('export_text_file', {
         path: savePath,
         contents: content
       });
@@ -51,7 +52,7 @@
   // 以下仅桌面环境需要
   if (!isTauri) return;
 
-  const invoke = T.core.invoke;
+  const invoke = LT.invoke;
 
   /* ── 2. 剪贴板：覆盖 navigator.clipboard.writeText ────────────── */
   try {
@@ -76,8 +77,10 @@
      注：Tauri 的 HTML5 ondrop 仅对 webview 内部有效，
          从操作系统拖入需监听 webview 级拖放事件。 */
   try {
-    if (T.webview && T.webview.getCurrentWebview) {
-      const webview = T.webview.getCurrentWebview();
+    // webview 对象仅在 __TAURI__ 正常注入时可用；兜底桥接模式优雅跳过
+    const nativeG = window.__TAURI__;
+    if (nativeG && nativeG.webview && nativeG.webview.getCurrentWebview) {
+      const webview = nativeG.webview.getCurrentWebview();
       webview.onDragDropEvent(function (event) {
         const payload = event.payload;
         if (!payload || payload.type !== 'drop') return;
