@@ -4,6 +4,7 @@
    数据管理（导入导出入口 + 修改主密码 + 销毁）/ 快捷键说明 / 关于 */
 import { ref, computed, onMounted } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
+import { APP_VERSION } from '../../core/version.js'
 import { buildShortcutDefs } from '../../composables/useShortcuts'
 import { useTheme } from '../../composables/useTheme'
 import ModalBase from '../common/ModalBase.vue'
@@ -14,6 +15,40 @@ const { closeModal, openModal, saveVault, resetLockTimer, lockVault } = useVault
 
 const lockTimeout = ref(vaultState.lockTimeoutMs)
 const clipboardClear = ref(vaultState.clipboardClearMs)
+
+/* ── 浏览器扩展：在线扩展包下载 + 使用指南 ── */
+
+const EXT_GUIDE_URL =
+  'https://github.com/trexwb/lockPass/blob/main/docs/lockpass-%E6%89%A9%E5%B1%95%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97.md'
+
+const isDesktopApp = computed(() => !!(window.LockTauri && window.LockTauri.isTauri))
+
+function openExternalUrl(url) {
+  // 桌面版：Rust 命令 open_url（协议白名单校验）在系统默认浏览器打开；
+  // 失败再退化为复制链接到剪贴板。直接跳转会劫持 WebView 导航。
+  if (window.LockTauri && window.LockTauri.isTauri && typeof window.LockTauri.invoke === 'function') {
+    window.LockTauri.invoke('open_url', { url: url }).then(function () {
+      window.Utils.showToast('已在系统浏览器中打开', 'success')
+    }).catch(function () {
+      navigator.clipboard.writeText(url).then(function () {
+        window.Utils.showToast('链接已复制，请在系统浏览器中打开', 'warning')
+      }).catch(function () {
+        window.Utils.showToast(url, 'info')
+      })
+    })
+    return
+  }
+  window.open(url, '_blank', 'noopener')
+}
+
+function downloadExtension() {
+  // 扩展 zip 由 Pages 流水线随站点发布，版本号与主应用保持一致
+  openExternalUrl('https://trexwb.github.io/lockPass/lockpass-extension-v' + APP_VERSION + '.zip')
+}
+
+function openGuide() {
+  openExternalUrl(EXT_GUIDE_URL)
+}
 
 function updateLockTimeout() {
   const value = parseInt(lockTimeout.value, 10)
@@ -457,6 +492,28 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
           <button class="btn btn-secondary btn-sm" :disabled="backupBusy" @click="backupNow()">
             {{ backupBusy ? '备份中…' : (canSnapshot ? '立即备份' : '导出 .vault') }}
           </button>
+        </div>
+      </div>
+
+      <!-- 浏览器扩展（自动填充） -->
+      <div class="settings-group">
+        <div class="settings-group-title">浏览器扩展</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">下载扩展包</div>
+            <div class="settings-desc">{{ appVersion }} · 解压后在 Chrome/Edge 中「加载已解压的扩展程序」</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" @click="downloadExtension()">下载 zip</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">使用指南</div>
+            <div class="settings-desc">安装步骤、配对流程、自动填充用法与常见问题</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" @click="openGuide()">查看文档</button>
+        </div>
+        <div class="settings-desc settings-desc-note" v-if="isDesktopApp">
+          桌面版不支持直接打开外部链接，点击下载后链接已复制到剪贴板，请在系统浏览器中粘贴打开。
         </div>
       </div>
 

@@ -342,6 +342,22 @@ pub fn run() {
                     }
                 });
             }
+            // Windows 冷启动自愈探针（v1.0.9）：
+            // 个别环境首次导航可能命中浏览器级 404 错误页（内嵌服务未就绪或
+            // 历史残留 ServiceWorker 干扰），此前用户需手动「刷新」。
+            // 探针依据 __LOCKPASS_BOOTED__（boot-flag.js 同步设置）判定首屏
+            // 是否成功；失败则在页面上下文内自动 reload，最多重试 2 次。
+            if let Some(win) = app.get_webview_window("main") {
+                std::thread::spawn(move || {
+                    const PROBE_JS: &str =
+                        "(function(){try{if(window.__LOCKPASS_BOOTED__){return}}catch(e){return}var n=window.__LP_RETRY__|0;if(n>=2){return}window.__LP_RETRY__=n+1;setTimeout(function(){location.reload()},200*(n+1))})();";
+                    for ms in [500u64, 1400u64, 3000u64] {
+                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                        let _ = win.eval(PROBE_JS);
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
