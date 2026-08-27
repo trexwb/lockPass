@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.0.4 | 更新日期：2026-08-25
+> 版本：v1.0.7 | 更新日期：2026-08-25
 
 ---
 
@@ -210,7 +210,8 @@
 
 - 浏览器版（Chrome/Edge）：文件系统访问 API，绑定本地数据目录
 - 同步失败有 Toast + 状态标签反馈（`lastSyncError`）
-- 桌面版：Tauri 文件存储，等价结构（见 docs/tauri.md）
+- **句柄自愈（v1.0.5）**：`FileSystemDirectoryHandle` 无法经 JSON 序列化还原、引擎升级也可能使存储句柄退化为普通对象（调用 `getFileHandle` 报 "not a function"）；`ensureUsableDirHandle()` 检测到失效即自动解绑并 Toast 提示一次，后续保存回归静默，数据不受影响；设置面板同步显示「目录句柄失效，请重新绑定」。快照浏览器分支同样走自愈
+- 桌面版：Tauri 文件存储，等价结构（见 docs/tauri.md）；**禁止绑定同步目录**（bindDirectory 硬拒绝）；file-store 在 `__TAURI__` 缺失时经 `__TAURI_INTERNALS__` 兜底桥接，防止桌面被误判为浏览器而暴露绑定入口（v1.0.6）；v1.0.7 起统一由 `core/tauri-env.js`（挂载 `window.LockTauri`，双信号）提供环境判定，sw-register 桌面分支脚本求值期立即注销残留 SW（修复 tauri.localhost 首屏 404 需刷新问题复发）
 
 ### 3.13 设置
 
@@ -368,4 +369,4 @@ LockPass/
 
 ---
 
-**文档版本：v1.0.4**
+**文档版本：v1.0.7**

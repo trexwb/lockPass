@@ -2,6 +2,8 @@
    LockPass — Vue 入口
    ═══════════════════════════════════════════════════════════════════ */
 
+// Tauri 环境统一探测必须最先执行（其余模块依赖 window.LockTauri 判定）
+import './core/tauri-env.js'
 // 核心逻辑层：原样迁移，保持 window.* 挂载，零算法改动
 import './core/crypto.js'
 import './core/database.js'

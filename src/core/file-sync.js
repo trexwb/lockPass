@@ -21,11 +21,35 @@ const FileSync = {
     return typeof window.showDirectoryPicker === 'function';
   },
 
+  /** 是否为可用的目录句柄
+   *  FileSystemDirectoryHandle 无法经 JSON 序列化还原（方法全部丢失），
+   *  浏览器/WebView 引擎升级也可能使存储的句柄退化为普通对象；
+   *  此类句柄调用 getFileHandle 会抛 "not a function"。 */
+  isUsableDirHandle(handle) {
+    return !!handle && typeof handle.getFileHandle === 'function';
+  },
+
   /** 获取已绑定的目录句柄 */
   async getDirHandle() {
     await DBUtils.openDB();
     const rec = await DBUtils.dbGet(DBUtils.STORE_META, 'dirHandle');
     return rec ? rec.value : null;
+  },
+
+  /** 获取可用目录句柄；句柄损坏时自动解绑并只提示一次（自愈，防每次写入都报错）
+   *  返回可用句柄或 null（未绑定 / 已失效清除） */
+  async ensureUsableDirHandle() {
+    const handle = await this.getDirHandle();
+    if (!handle) return null;
+    if (this.isUsableDirHandle(handle)) return handle;
+    console.warn('[FileSync] 存储的目录句柄无效，已自动解绑:', handle);
+    await this.clearDirHandle();
+    try { localStorage.removeItem(LS_SYNC_BOUND); } catch (e) {}
+    this.lastSyncError = null;
+    try {
+      Utils.showToast('本地文件同步已停用：目录句柄无效（可能是引擎升级或迁移导致），可在设置中重新绑定', 'warning');
+    } catch (e) {}
+    return null;
   },
 
   /** 保存目录句柄 */
@@ -70,7 +94,7 @@ const FileSync = {
   /** 将当前 IndexedDB 数据同步写入本地文件（静默失败，不阻断主流程） */
   async syncNow() {
     try {
-      const handle = await this.getDirHandle();
+      const handle = await this.ensureUsableDirHandle();
       if (!handle) return { ok: false, reason: 'unbound' };
       const payload = await this._readPayload();
       if (!payload) return { ok: false, reason: 'empty' };
@@ -106,6 +130,11 @@ const FileSync = {
 
   /** 弹出目录选择并绑定，立即同步一次 */
   async bindDirectory() {
+    // 桌面版数据由应用本地文件管理，目录同步是浏览器版专属能力；
+    // 硬拒绝以防句柄经 JSON 落盘退化为空壳后每次写入都报错
+    if ((window.FileStore && window.FileStore.isTauri) || window.__TAURI_INTERNALS__) {
+      throw new Error('桌面版数据已由本地文件自动保存，无需绑定同步目录');
+    }
     if (!this.isSupported()) {
       throw new Error('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开');
     }

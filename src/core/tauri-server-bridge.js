@@ -13,11 +13,12 @@
 (function () {
   'use strict';
 
-  var T = window.__TAURI__;
-  var isTauri = !!(T && T.core && typeof T.core.invoke === 'function');
+  // 桌面判定统一走 tauri-env.js（双信号）
+  var LT = window.LockTauri || {};
+  var isTauri = !!LT.isTauri;
   if (!isTauri) return;
 
-  var invoke = T.core.invoke;
+  var invoke = LT.invoke;
 
   function extractDomain(url) {
     try {
@@ -79,8 +80,9 @@
 
   // 转发 Rust 侧配对请求事件为 window 事件，供 PairRequestModal 监听
   try {
-    if (T.event && typeof T.event.listen === 'function') {
-      T.event.listen('lockpass:pair-request', function (event) {
+    var globalT = window.__TAURI__;
+    if (globalT && globalT.event && typeof globalT.event.listen === 'function') {
+      globalT.event.listen('lockpass:pair-request', function (event) {
         window.dispatchEvent(new CustomEvent('lockpass:pair-request', { detail: event.payload }));
       });
     }

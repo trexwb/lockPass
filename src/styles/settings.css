@@ -94,6 +94,10 @@
   background: var(--success-dim);
   color: var(--success);
 }
+.tag.tag-warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
 .tag.tag-muted {
   background: var(--bg-tertiary);
   color: var(--text-muted);

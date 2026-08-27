@@ -389,6 +389,31 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.7 (2026-08-27)
+
+修复 Windows 桌面版启动 404（需点「刷新」才能进入）复发问题：
+
+- **根因**：与 v1.0.2 所修问题同源——桌面/浏览器判定依赖 `window.__TAURI__` 全局，而该用户 Windows 环境此全局注入缺失，v1.0.2 的「桌面跳过 SW 注册 + 清残留」逻辑从未执行：WebView2 在 `http://tauri.localhost` 注册了 PWA SW，旧 SW 拦截首屏导航返回 404 错误页
+- **连锁确认**：同一缺失也是 v1.0.5/v1.0.6 所修「目录绑定入口暴露 → 句柄 JSON 落盘退化 → 每次写入报 getFileHandle 错」的源头；本次一并收口
+- **修复**：新增 `src/core/tauri-env.js` 统一环境探测（最先加载）——`__TAURI__.core.invoke` 可用则直连，否则回退恒存在的 `__TAURI_INTERNALS__.invoke` 并输出警告日志，结果挂载 `window.LockTauri`；file-store / sw-register / tauri-bridge / tauri-server-bridge 四处消费方全部改为读取 LockTauri；sw-register 桌面分支提前到脚本求值期立即清残留（不再等 load），尽量缩小旧 SW 干扰窗口
+- **升级用户**：安装本版后第一次打开若仍见 404，点一次「刷新」进入即可；此后每次启动恢复正常（残留 SW 已被清除）
+
+### v1.0.6 (2026-08-27)
+
+Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function」加固：
+
+- **背景**：Windows 上若 `window.__TAURI__` 全局注入异常，file 存储不启用，桌面被误判为浏览器 → 设置面板出现「绑定目录」入口；WebView2 选择器返回的目录句柄经 JSON 落盘（meta.json）后丢失全部方法，之后任何写入触发 syncNow 都抛 `getFileHandle is not a function`
+- **修复**：① file-store 增加 `__TAURI_INTERNALS__` 兜底桥接——`__TAURI__` 缺失时仍以文件存储模式运行并输出警告日志；② 绑定入口、设置面板状态判定升级为双信号检测；③ `bindDirectory()` 在 Tauri 环境硬拒绝并提示「桌面版数据已由本地文件自动保存，无需绑定同步目录」，从源头杜绝误绑
+- **对已有损坏状态**：升级到本版后首次写入会自动解绑失效句柄（Toast 提示一次）并恢复正常保存
+
+### v1.0.5 (2026-08-27)
+
+修复任何写入操作都报「本地文件同步失败：e.getFileHandle is not a function」的问题：
+
+- **根因**：绑定的目录句柄（FileSystemDirectoryHandle）退化为普通对象——该对象无法经 JSON 序列化还原方法（桌面文件存储/异常迁移场景），或引擎升级导致旧句柄失配；同步流程仍照常读取并调用其 `getFileHandle`，每次保存（doSave 均触发 syncNow）都抛错弹 Toast
+- **修复**：新增 `ensureUsableDirHandle()` 自愈式获取——检测到句柄无 `getFileHandle` 方法时自动解绑（清除存储句柄与绑定标记）、Toast 提示一次「本地文件同步已停用…可在设置中重新绑定」，此后未绑定状态静默跳过；自动快照浏览器分支与设置面板状态显示同步适配（面板显示「目录句柄失效，请重新绑定」）
+- **影响**：密码数据本身始终保存在 IndexedDB / 桌面本地文件中，完全不受影响；重新在设置中绑定目录即可恢复文件同步
+
 ### v1.0.4 (2026-08-27)
 
 回滚功能优化：「密码历史」升级为「修改历史」——
