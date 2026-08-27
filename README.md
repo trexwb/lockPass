@@ -388,6 +388,14 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 
 ## 更新日志
 
+### v1.0.2 (2026-08-25)
+
+修复 Windows 桌面版首次启动 404（点击刷新后恢复正常）问题：
+
+- **根因**：Tauri 桌面版也注册了 PWA Service Worker，旧 SW 缓存的资源清单与安装包内嵌资源不一致时，首屏导航被旧 SW 拦截返回 404；刷新后新 SW 接管才正常
+- **修复**：`sw-register.js` 增加 Tauri 环境检测（`window.__TAURI__`），桌面版跳过 SW 注册；启动时自动注销历史版本残留的 SW 并清空 CacheStorage，升级用户首次运行即完成清理，之后不再出现 404
+- **影响**：浏览器版（file:// / localhost / GitHub Pages）SW 注册与 PWA 更新机制保持不变，仅桌面版行为变更
+
 ### 扩展 v1.0.1 (2026-08-25)
 
 - 新增「Tauri 桌面版内嵌本地 HTTP 服务」：Rust tiny_http 仅绑定 127.0.0.1:33555，提供 `/status`、`/credentials`（Bearer 鉴权、按域名查询）、`/pair` 一键配对（6 位 nonce 桌面弹窗确认）等接口；前端解锁后经 `tauri-server-bridge.js` 同步明文条目到 Rust 内存、锁定即清空；桌面版扩展不再依赖失效的页面 postMessage 桥，改为 fetch 本地服务取数，并支持网页版页面桥与桌面版 HTTP 双就绪来源
