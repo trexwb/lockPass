@@ -95,13 +95,16 @@ function previewCSV(text) {
 function previewVault(text) {
   try {
     const data = JSON.parse(text)
-    if (data.format === 'encrypted' && data.data) {
+    // 加密封套识别：.vault 导出（format:'encrypted'）与自动快照/同步文件
+    // （format:'LockPass-file-sync'，如 LockPass-backup-*.json、LockPass-vault.json）
+    // 结构等价（salt + iterations + iv + data），统一按结构判断
+    if (data.data && data.iv && data.salt) {
       importMode.value = 'encrypted-vault'
       importData.value = data
       previewInfo.value = {
         kind: 'encrypted',
         title: '加密备份文件',
-        exportedAt: data.exportedAt || '未知',
+        exportedAt: data.exportedAt || data.updatedAt || '未知',
       }
     } else if (data.entries) {
       importMode.value = 'plaintext-vault'

@@ -8,7 +8,7 @@ import { useVault, vaultState } from '../../composables/useVault'
 const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
   softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
-  rollbackPassword,
+  rollbackEntry, snapDiffers, describeHistoryFields,
 } = useVault()
 
 const entry = computed(() => (vaultState.selectedEntry ? getEntryById(vaultState.selectedEntry) : null))
@@ -64,7 +64,7 @@ function formatDateTime(iso) {
   }
 }
 
-/* ── 密码历史（最新在前，回收站视图不展示） ────────────────── */
+/* ── 修改历史（最新在前，回收站视图不展示；回滚前由 rollbackEntry 内置确认弹窗防误操作） ── */
 
 const historyList = computed(() => {
   const e = entry.value
@@ -74,8 +74,18 @@ const historyList = computed(() => {
 
 async function onRollback(snap) {
   if (!entry.value) return
-  // 回滚成功后不关闭面板：entry 为响应式对象，密码字段与按钮禁用态自动刷新
-  await rollbackPassword(entry.value.id, snap.at)
+  // 回滚成功后不关闭面板：entry 为响应式对象，字段值与按钮禁用态自动刷新；
+  // 被执行的那条记录会被删除并从列表移除
+  await rollbackEntry(entry.value.id, snap.at)
+}
+
+function historyPw(snap) {
+  const pw = snap.snap ? snap.snap.password : snap.password
+  return showPw.value ? String(pw ?? '') : '••••••••'
+}
+
+function historyChanged(snap) {
+  return snap.snap ? ('变更：' + (describeHistoryFields(snap.fields) || '全部字段')) : '旧版记录 · 仅密码'
 }
 
 // 关联密码条目类型图标（对齐原版 related.js renderRelatedSection）
@@ -370,18 +380,19 @@ function renderNotes() {
           <div class="detail-field-value markdown-body" v-html="renderNotes()"></div>
         </div>
 
-        <!-- 密码历史（默认保留最近 5 版，可一键回滚；不参与导入导出） -->
+        <!-- 修改历史（任意字段变更均记录，默认保留最近 5 版；不参与导入导出） -->
         <div v-if="!isRecycleView && historyList.length" class="detail-field history-section">
-          <div class="detail-field-label">密码历史（{{ historyList.length }}）</div>
+          <div class="detail-field-label">修改历史（{{ historyList.length }}）</div>
           <div class="history-list">
             <div v-for="snap in historyList" :key="snap.at" class="history-item">
               <div class="history-meta">
                 <span class="history-time">{{ formatDateTime(snap.at) }}</span>
-                <span class="history-pw mono">{{ showPw ? snap.password : '••••••••' }}</span>
+                <span class="history-pw mono">{{ historyPw(snap) }}</span>
+                <span class="history-changed">{{ historyChanged(snap) }}</span>
               </div>
               <button
                 class="btn btn-secondary btn-sm"
-                :disabled="entry.password === snap.password"
+                :disabled="!snapDiffers(entry, snap)"
                 @click="onRollback(snap)"
               >回滚</button>
             </div>
