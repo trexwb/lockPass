@@ -444,10 +444,11 @@ export function useVault() {
   let _bindBannerDismissedFallback = false // sessionStorage 不可用时的内存降级标记
 
   async function showBindBannerIfNeeded() {
-    // macOS 桌面应用：数据已自动保存在本地文件（应用数据目录）且 WebView 无文件系统
-    // 访问权限，无需也无法绑定数据目录 → 不显示绑定横幅
-    if (window.FileStore && window.FileStore.isTauri &&
-        navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
+    // 桌面应用（Tauri，含 Windows/macOS）：数据已自动保存在应用数据目录的
+    // 本地文件中，无需也无法绑定数据目录 → 不显示绑定横幅。
+    // 统一走 tauri-env.js 的双信号判定（Windows 下 __TAURI__ 注入异常也有兜底），
+    // 避免按平台字符串特判漏掉某个桌面系统。
+    if (window.LockTauri && window.LockTauri.isTauri) {
       return
     }
     try {

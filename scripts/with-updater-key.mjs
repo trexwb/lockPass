@@ -52,9 +52,10 @@ function loadEnvFile(file) {
 
 ENV_FILES.forEach(loadEnvFile)
 
-// 关键：tauri build 的更新产物签名只认内联 TAURI_SIGNING_PRIVATE_KEY；
-// _PATH 形式仅 tauri signer 子命令支持。因此无论来源（.env.local / 兜底路径），
-// 只要有私钥文件就统一补齐内联变量，避免 build 期报 no private key。
+// 关键：统一走内联 TAURI_SIGNING_PRIVATE_KEY，并删除 _PATH 变量——
+// ① tauri build 的更新产物签名只认内联形式（_PATH 仅 signer 子命令支持）；
+// ② CLI 中 --private-key 与 --private-key-path 互斥，同时设置会被拒绝。
+// 读取优先级：.env.local / 旧 env 文件的 PATH 指针 → 默认 ~/.tauri 私钥。
 if (!process.env.TAURI_SIGNING_PRIVATE_KEY) {
   const cand = process.env.TAURI_SIGNING_PRIVATE_KEY_PATH || KEY_PATH
   if (cand && existsSync(cand)) {
@@ -73,6 +74,8 @@ if (!process.env.TAURI_SIGNING_PRIVATE_KEY) {
     }
   }
 }
+// 互斥规避：内联与路径不可同时存在
+delete process.env.TAURI_SIGNING_PRIVATE_KEY_PATH
 
 const hasKey = !!(process.env.TAURI_SIGNING_PRIVATE_KEY || process.env.TAURI_SIGNING_PRIVATE_KEY_PATH)
 

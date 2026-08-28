@@ -2,6 +2,28 @@
 
 > v1.0.x 全部迭代记录（最新在前）
 
+### v1.0.19 (2026-08-28) 📝 待发布
+
+Windows 桌面版横幅排除修正 + 签名路径修正：
+
+- **横幅判定统一**：v1.0.18 的桌面排除按 `navigator.platform` 特判 MAC，Windows（Win32）未覆盖导致仍显示「建议绑定数据目录」横幅；改为统一走 `window.LockTauri.isTauri` 双信号判定（Windows 下 `__TAURI__` 注入异常也有 `__TAURI_INTERNALS__` 兜底），三平台行为一致
+- **.env.local 路径修正**：`TAURI_SIGNING_PRIVATE_KEY_PATH` 由 `~/.tauri/...` 改为绝对路径（Node `fs.existsSync` 不展开波浪号，指针形式此前名不副实，包装器实际走的是兜底路径）
+
+### v1.0.18 (2026-08-28) 📝 待发布
+
+绑定横幅桌面排除初版 + 本地签名环境文件：
+
+- 解锁后「建议绑定数据目录」横幅增加桌面排除（初版按 MAC 平台特判，v1.0.19 修正为统一判定）
+- 新增本地签名环境文件 `.env.local`（600 权限、gitignore 覆盖）：私钥路径指针 + 密码，包装器 `with-updater-key.mjs` 自动加载
+- 签名密钥生成命令记录：`npm run tauri -- signer generate -p 密码 -w ~/.tauri/lockpass-updater.key`（当前密钥为 08-28 以此命令生成的加密态密钥，公钥已同步 tauri.conf.json）
+
+### v1.0.17 (2026-08-28) 📝 待发布
+
+修复签名环境变量互斥冲突：tauri CLI 中 `--private-key` 与 `--private-key-path` 互斥，包装器此前同时注入两者导致 `tauri signer` 报参数冲突。
+
+- 包装器统一为**仅内联**注入（读取 .env.local 的 PATH 指针 → 私钥文件 → 内联变量），并 `delete` 掉 `_PATH` 变量规避互斥
+- 端到端：`tauri signer` 冒烟 + 完整 `npm run tauri:build`（EXIT=0，updater .sig 408B）双双通过，密码取自 .env.local（用户已填）
+
 ### v1.0.16 (2026-08-28) 📝 待发布
 
 修复 CI 更新清单生成漏检（update-manifest 报「未找到任何带 .sig 的更新产物」）：
@@ -55,6 +77,11 @@
 - **完整性**：更新包签名校验（公钥内嵌 tauri.conf.json），拒绝篡改与错配
 - **引导说明**：v1.0.11 为首个可自更新版本，更早版本需手动安装一次；浏览器版/Pages 不具备也不需要更新能力（刷新即最新）
 - **同批**：v1.0.10 已将设置面板「使用指南」切至 Pages 托管（`lockpass-扩展使用指南.html`，构建时由 `copy-guide.mjs` 拷入站点）
+- **运维备注 · 签名密钥生成（本机一次性）**：
+  ```bash
+  npm run tauri -- signer generate -p 密码 -w ~/.tauri/lockpass-updater.key
+  ```
+  `-p` 后接密钥密码（当前密钥即为 08-28 以此命令生成的加密态密钥）；生成 `.key` 私钥与 `.key.pub` 公钥，公钥需内嵌 `tauri.conf.json` 的 `plugins.updater.pubkey`，私钥与密码分别录入 GitHub Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`）与本地 `.env.local`。密码丢失需重新生成密钥对并轮换公钥，已发版本用户须全量重装
 
 ### v1.0.9 (2026-08-27)
 
