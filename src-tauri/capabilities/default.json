@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "dialog:default",
-    "clipboard-manager:default"
+    "clipboard-manager:default",
+    "updater:default",
+    "process:default"
   ]
 }

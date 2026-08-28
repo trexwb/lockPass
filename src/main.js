@@ -6,6 +6,8 @@
 import './core/boot-flag.js'
 // Tauri 环境统一探测（其余模块依赖 window.LockTauri 判定）
 import './core/tauri-env.js'
+// 自动更新（桌面版专属；依赖 tauri-env + updater 插件）
+import './core/updater.js'
 // 核心逻辑层：原样迁移，保持 window.* 挂载，零算法改动
 import './core/crypto.js'
 import './core/database.js'

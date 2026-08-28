@@ -332,6 +332,16 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 > **注意**：每次下载新版本安装时，都需要重新执行上述解除隔离步骤。
 > 如果不需要桌面版，也可以直接使用[在线版](https://trexwb.github.io/lockPass/)，无需安装。
 
+### 自动更新（桌面版，v1.0.11 起）
+
+基于 Tauri 官方 updater 插件 + GitHub Releases：
+
+- **工作原理**：桌面版启动 5 秒后后台检查 `https://github.com/trexwb/lockPass/releases/latest/download/latest.json`；发现新版本自动下载安装（进度见 设置 → 关于 → 应用更新），完成后 Toast 提示并弹确认「立即重启」；也可关闭「自动检查更新」改为手动检查
+- **完整性校验**：更新包经 minisign 体系签名（私钥本地保管，公钥内嵌 `tauri.conf.json`），篡改/错配的更新包会被拒绝安装
+- **发布流程**：推 `v*` 标签 → CI 构建三平台产物并自动生成 `latest.json` → **Publish Draft Release** 后全量用户可达（Draft 未发布前清单 404 属预期）
+- **首次启用引导**：v1.0.11 是首个带更新能力的版本，v1.0.10 及更早安装包需**手动安装一次 v1.0.11**，此后版本即可自动升级
+- **CI 密钥配置（一次性）**：仓库 Settings → Secrets and variables → Actions 新增 `TAURI_SIGNING_PRIVATE_KEY`，内容为本地 `~/.tauri/lockpass-updater.key` 全文（私钥密码为空，无需配置 PASSWORD 变量）。私钥丢失将无法再为该公钥签名发版（需在 conf 换公钥并让用户重装），务必妥善备份
+
 ### 在线版（GitHub Pages）
 
 `main` 分支推送后自动将浏览器版部署到 **GitHub Pages**：
@@ -398,6 +408,16 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 ---
 
 ## 更新日志
+
+### v1.0.11 (2026-08-28)
+
+新增桌面版自动更新（Tauri updater 插件 + GitHub Releases）：
+
+- **更新通道**：启动 5s 后静默检查 GitHub Releases 的 `latest.json`；发现新版本自动下载安装（进度在 设置 → 关于 → 应用更新 展示），完成后弹窗重启生效；可在设置关闭自动检查
+- **发布链**：`createUpdaterArtifacts` 生成签名更新包（Windows NSIS setup.exe / macOS app.tar.gz），新增 `update-manifest` job 汇总双平台产物生成 `latest.json` 随 Draft Release 发布；签名私钥经 GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` 注入
+- **完整性**：更新包签名校验（公钥内嵌 tauri.conf.json），拒绝篡改与错配
+- **引导说明**：v1.0.11 为首个可自更新版本，更早版本需手动安装一次；浏览器版/Pages 不具备也不需要更新能力（刷新即最新）
+- **同批**：v1.0.10 已将设置面板「使用指南」切至 Pages 托管（`lockpass-扩展使用指南.html`，构建时由 `copy-guide.mjs` 拷入站点）
 
 ### v1.0.9 (2026-08-27)
 
