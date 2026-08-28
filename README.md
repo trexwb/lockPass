@@ -332,6 +332,20 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 > **注意**：每次下载新版本安装时，都需要重新执行上述解除隔离步骤。
 > 如果不需要桌面版，也可以直接使用[在线版](https://trexwb.github.io/lockPass/)，无需安装。
 
+### 自动更新（桌面版，v1.0.11 起）
+
+基于 Tauri 官方 updater 插件 + GitHub Releases：
+
+- **工作原理**：桌面版启动 5 秒后后台检查 `https://github.com/trexwb/lockPass/releases/latest/download/latest.json`；发现新版本自动下载安装（进度见 设置 → 关于 → 应用更新），完成后 Toast 提示并弹确认「立即重启」；也可关闭「自动检查更新」改为手动检查
+- **完整性校验**：更新包经 minisign 体系签名（私钥本地保管，公钥内嵌 `tauri.conf.json`），篡改/错配的更新包会被拒绝安装
+- **发布流程**：推 `v*` 标签 → CI 构建三平台产物并自动生成 `latest.json` → **Publish Draft Release** 后全量用户可达（Draft 未发布前清单 404 属预期）
+- **首次启用引导**：v1.0.11 是首个带更新能力的版本，v1.0.10 及更早安装包需**手动安装一次 v1.0.11**，此后版本即可自动升级
+- **CI 密钥配置（一次性，两个 Secret 缺一不可）**：仓库 Settings → Secrets and variables → Actions 新增
+  1. `TAURI_SIGNING_PRIVATE_KEY` — 本地 `~/.tauri/lockpass-updater.key` 全文
+  2. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — 生成密钥时设置的密码（当前密钥为加密态；release.yml 已用 ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }} 引用；若换回无密码密钥则改回空串）
+  私钥丢失将无法再为该公钥签名发版（需在 conf 换公钥并让用户重装），务必妥善备份
+- **本地构建**：v1.0.15 起签名变量统一收敛到项目根 `.env.local`（已被 .gitignore 忽略）：包装器 `scripts/with-updater-key.mjs` 在 `tauri:build` 时自动加载并注入**内联私钥**（`tauri build` 签名只认内联 `TAURI_SIGNING_PRIVATE_KEY`，`_PATH` 形式仅 signer 子命令支持）；首次使用需把其中 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 的占位值替换为生成密钥时设置的密码（当前密钥为带密码加密状态）
+
 ### 在线版（GitHub Pages）
 
 `main` 分支推送后自动将浏览器版部署到 **GitHub Pages**：
@@ -398,6 +412,52 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 ---
 
 ## 更新日志
+
+### v1.0.15 (2026-08-28)
+
+修复本地构建仍报「no private key」：包装器此前只注入 `TAURI_SIGNING_PRIVATE_KEY_PATH`，而 **`tauri build` 的更新产物签名只认内联 `TAURI_SIGNING_PRIVATE_KEY`**（`_PATH` 形式仅 `tauri signer` 子命令支持，此前冒烟测的恰好是 signer 子命令故被误导）。
+
+- 包装器在 env 加载后统一补齐内联变量：从 `.env.local` 的 PATH 或兜底私钥文件读取内容注入
+- 加密态检测：私钥首行含 encrypted 且未提供密码时打警告（当前密钥为加密态，密码取自 .env.local）
+- 实测：本机 `npm run tauri:build` 端到端产出 `LockPass.app.tar.gz` + `.sig`（408B），退出码 0
+
+### v1.0.14 (2026-08-28)
+
+签名环境变量收敛到项目根 `.env.local`：
+
+- 包装器 `with-updater-key.mjs` 改为优先加载项目根 `.env.local`（兼容旧位置 `~/.tauri/lockpass-updater.env`），`tauri:build` 无需手动 source
+- `.gitignore` 补 `.env.local`；文件含 600 权限，内容为私钥路径指针 + 密码占位（密钥现为「带密码加密」状态，密码由用户自行填写，不入库不外泄）
+- 公钥已同步为当前加密密钥对的公钥（tauri.conf.json）；端到端签名冒烟通过
+- 加载顺序：手动 export 优先 > .env.local > ~/.tauri 旧位置 > 本地私钥路径兜底
+
+### v1.0.13 (2026-08-28)
+
+修复本地打包「A public key has been found, but no private key」：
+
+- **根因**：v1.0.11 起公钥内嵌 + createUpdaterArtifacts 后，本地 `npm run build` 签名更新产物时要求 `TAURI_SIGNING_PRIVATE_KEY`，该变量此前只在 CI Secrets 中存在
+- **修复**：`tauri:build` 接入包装器 `scripts/with-updater-key.mjs`——未设置签名变量时自动注入 `~/.tauri/lockpass-updater.key` 路径与空密码 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""`（空密码密钥在无 TTY 环境必须显式提供空值，否则 CLI 交互询问密码直接失败）；CI 已有 Secrets 时原样透传；release.yml 两个构建 job 同步补显式空密码
+- **备选**：也可手动在 shell 配置里 `export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/lockpass-updater.key"`
+
+### v1.0.12 (2026-08-28)
+
+修复 macOS 桌面版「复制失败，请手动复制」：
+
+- **根因**：tauri-plugin-clipboard-manager 在 tokio worker 线程经 arboard 调 NSPasteboard，与 WebKit 主线程的粘贴板监控竞态（官方 issue plugins-workspace#3205，macOS 26 上高发）→ `write_text` 失败 → 复制报错；原实现把真实错误吞成统一文案且无法定位
+- **修复三层**：
+  1. macOS 桌面不再安装剪贴板插件 shim，点击复制回归 WebKit 原生 `navigator.clipboard.writeText`（主线程执行、手势可用、天然线程安全）；Windows 保持插件 shim 不变
+  2. 无手势场景（如 10s 自动清空剪贴板）新增 Rust 命令 `clipboard_write_text`：`run_on_main_thread` 派发 arboard 写入，绕开线程竞态（前端经 `LockClipboard.write` 统一入口）
+  3. `copyToClipboard` 失败自动降级 `execCommand('copy')` 兼容通道，仍失败才报错且 Toast 携带真实错误信息；复制后的纯 UI 装饰异常不再误报为复制失败
+- **影响面**：仅 macOS 桌面行为变化；Windows / 浏览器版复制路径不变
+
+### v1.0.11 (2026-08-28)
+
+新增桌面版自动更新（Tauri updater 插件 + GitHub Releases）：
+
+- **更新通道**：启动 5s 后静默检查 GitHub Releases 的 `latest.json`；发现新版本自动下载安装（进度在 设置 → 关于 → 应用更新 展示），完成后弹窗重启生效；可在设置关闭自动检查
+- **发布链**：`createUpdaterArtifacts` 生成签名更新包（Windows NSIS setup.exe / macOS app.tar.gz），新增 `update-manifest` job 汇总双平台产物生成 `latest.json` 随 Draft Release 发布；签名私钥经 GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` 注入
+- **完整性**：更新包签名校验（公钥内嵌 tauri.conf.json），拒绝篡改与错配
+- **引导说明**：v1.0.11 为首个可自更新版本，更早版本需手动安装一次；浏览器版/Pages 不具备也不需要更新能力（刷新即最新）
+- **同批**：v1.0.10 已将设置面板「使用指南」切至 Pages 托管（`lockpass-扩展使用指南.html`，构建时由 `copy-guide.mjs` 拷入站点）
 
 ### v1.0.9 (2026-08-27)
 

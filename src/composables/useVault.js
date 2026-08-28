@@ -851,10 +851,45 @@ export function useVault() {
 
   let clipboardCleanupFn = null
 
+  // 兼容复制：WKWebView/旧环境在 clipboard API 不可用时的最后手段
+  // （须在用户手势调用链内执行；execCommand 虽已废弃但桌面 WebView 支持稳定）
+  function legacyCopy(text) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.cssText = 'position:fixed;top:-999px;left:-999px;opacity:0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    let ok = false
+    try { ok = document.execCommand('copy') } catch (e) { ok = false }
+    ta.remove()
+    return ok
+  }
+
   async function copyToClipboard(text, entryId = null, btnEl = null) {
+    // 写入主链路：成功后立即提示；失败降级 execCommand，再失败才报错
+    // （真实错误随 Toast 透出，不再被统一文案吞掉）
+    let clipboardOk = false
+    let writeError = ''
     try {
       await navigator.clipboard.writeText(text)
-      window.Utils.showToast('已复制到剪贴板', 'success')
+      clipboardOk = true
+    } catch (e) {
+      writeError = (e && e.message) || String(e)
+      try {
+        clipboardOk = legacyCopy(text)
+        if (clipboardOk) console.warn('[clipboard] 主通道失败，已用兼容模式复制:', writeError)
+      } catch (e2) {
+        writeError = writeError || String((e2 && e2.message) || e2)
+      }
+    }
+    if (!clipboardOk) {
+      console.error('[clipboard] 复制失败:', writeError)
+      window.Utils.showToast('复制失败：' + (writeError || '未知错误'), 'error')
+      return false
+    }
+    window.Utils.showToast('已复制到剪贴板', 'success')
+    try {
 
       // ── 浮动「已复制」提示（靠近按钮位置，对齐原版 entries.js） ──
       let cleanupFloatTip = null
@@ -898,9 +933,12 @@ export function useVault() {
         if (prevCleanup) prevCleanup()
       }
 
-      // 自动清除剪贴板
+      // 自动清除剪贴板（macOS 无手势场景走 LockClipboard 主线程命令）
       vaultState.clipboardTimer = setTimeout(async () => {
-        try { await navigator.clipboard.writeText('') } catch (e) {}
+        try {
+          if (window.LockClipboard) await window.LockClipboard.write('')
+          else await navigator.clipboard.writeText('')
+        } catch (e) {}
         const note = document.getElementById('clipboard-note')
         if (note) note.classList.add('hidden')
         if (clipboardCleanupFn) {
@@ -934,9 +972,12 @@ export function useVault() {
           setTimeout(() => b.classList.remove('copied'), 1500)
         })
       }
-    } catch (e) {
-      window.Utils.showToast('复制失败，请手动复制', 'error')
+      clipboardCleanupFn = null
+    } catch (uiErr) {
+      // 写入已成功；纯 UI 装饰异常不影响复制结果
+      console.warn('[clipboard] 复制后 UI 提示异常:', uiErr)
     }
+    return true
   }
 
   async function copyPassword(id, btnEl = null) {

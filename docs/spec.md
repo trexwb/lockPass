@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.0.9 | 更新日期：2026-08-25
+> 版本：v1.0.15 | 更新日期：2026-08-25
 
 ---
 
@@ -226,6 +226,15 @@
 - 标签管理（增/删/改名称、颜色、图标）
 - 数据备份与恢复（.vault）
 - 销毁保险箱（双重确认）
+- 应用更新 / 自动检查更新（仅桌面版）：见 3.18
+- 桌面剪贴板实现（v1.0.12）：Windows 走 clipboard-manager 插件 shim；macOS 复制走 WebKit 原生 clipboard API（主线程安全），无手势清空经自定义命令 `clipboard_write_text` 主线程派发 arboard 写入——规避插件 tokio 线程与 WebKit 粘贴板监控的竞态（plugins-workspace#3205）；复制失败自动降级 execCommand 并透出真实错误
+
+### 3.18 自动更新（桌面版）
+
+- 通道：Tauri updater 插件；端点 `https://github.com/trexwb/lockPass/releases/latest/download/latest.json`；公钥内嵌 `tauri.conf.json`（`plugins.updater.pubkey`），更新包带 minisign 签名（CI 以 Secrets 注入私钥 `TAURI_SIGNING_PRIVATE_KEY` 生成 `.sig`）
+- 流程：桌面启动 5s 静默检查（开关：设置 → 关于 → 自动检查更新，默认开）→ 发现新版本后台 `downloadAndInstall`（进度 0~100 上报 设置 → 关于 → 应用更新）→ Toast + 确认弹窗 → `process.relaunch` 重启完成安装
+- 发布链：release.yml 构建期生成更新产物（NSIS setup.exe / macOS app.tar.gz + .sig），`update-manifest` job 由 `scripts/gen-latest-json.mjs` 汇总生成 latest.json 随 Draft Release 上传；Publish 后全量可达（Draft 未发布时清单 404 属预期）
+- 边界：仅桌面版联网检查；浏览器版无更新机制；私钥丢失需轮换公钥并全量重装；v1.0.11 为首个自更新版本，更早版本需手动升级一次
 
 ### 3.14 键盘快捷键
 
@@ -374,4 +383,4 @@ LockPass/
 
 ---
 
-**文档版本：v1.0.9**
+**文档版本：v1.0.15**

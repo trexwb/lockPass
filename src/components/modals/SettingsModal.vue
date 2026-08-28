@@ -50,6 +50,58 @@ function openGuide() {
   openExternalUrl(EXT_GUIDE_URL)
 }
 
+/* ── 应用更新（桌面版，Tauri updater 插件） ── */
+
+const updateStatus = ref('idle')
+const updateVersion = ref('')
+const updateProgress = ref(0)
+const updateError = ref('')
+const autoUpdate = ref(window.LockUpdater ? window.LockUpdater.autoEnabled() : false)
+let updateTimer = null
+
+function syncUpdateState() {
+  const st = window.LockUpdater ? window.LockUpdater.state : null
+  if (!st) return
+  updateStatus.value = st.status
+  updateVersion.value = st.version || ''
+  updateProgress.value = st.progress || 0
+  updateError.value = st.error || ''
+}
+
+const updateDesc = computed(() => {
+  switch (updateStatus.value) {
+    case 'checking': return '正在检查更新…'
+    case 'available': return `发现新版本 v${updateVersion.value}`
+    case 'downloading': return `正在下载 v${updateVersion.value}… ${updateProgress.value}%`
+    case 'ready': return `新版本 v${updateVersion.value} 已安装完成，重启后生效`
+    case 'uptodate': return '已是最新版本'
+    case 'error': return `检查失败：${updateError.value}`
+    default: return '检查 GitHub Releases 是否有新版本'
+  }
+})
+
+const updateBtn = computed(() => {
+  switch (updateStatus.value) {
+    case 'checking': return { label: '检查中…', disabled: true }
+    case 'available': return { label: `更新到 v${updateVersion.value}`, disabled: false, fn: startDownload }
+    case 'downloading': return { label: `下载中 ${updateProgress.value}%`, disabled: true }
+    case 'ready': return { label: '重启应用', disabled: false, fn: doRelaunch }
+    default: return { label: '检查更新', disabled: false, fn: startCheck }
+  }
+})
+
+function startCheck() { if (window.LockUpdater) { syncUpdateState(); window.LockUpdater.check(false).then(syncUpdateState) } }
+function startDownload() { if (window.LockUpdater) window.LockUpdater.download().then(syncUpdateState) }
+function doRelaunch() { if (window.LockUpdater) window.LockUpdater.relaunch() }
+function toggleAutoUpdate() { if (window.LockUpdater) window.LockUpdater.setAutoEnabled(autoUpdate.value) }
+
+onMounted(() => {
+  if (!isDesktopApp.value) return
+  syncUpdateState()
+  // 下载进度由 updater 事件驱动，这里轮询快照刷新 UI
+  updateTimer = setInterval(syncUpdateState, 600)
+})
+
 function updateLockTimeout() {
   const value = parseInt(lockTimeout.value, 10)
   vaultState.lockTimeoutMs = value
@@ -643,6 +695,25 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
             <div class="settings-label">版本</div>
             <div class="settings-desc">{{ appVersion }}</div>
           </div>
+        </div>
+        <div class="settings-row" v-if="isDesktopApp">
+          <div>
+            <div class="settings-label">应用更新</div>
+            <div class="settings-desc">{{ updateDesc }}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" :disabled="updateBtn.disabled" @click="updateBtn.fn()">
+            {{ updateBtn.label }}
+          </button>
+        </div>
+        <div class="settings-row" v-if="isDesktopApp">
+          <div>
+            <div class="settings-label">自动检查更新</div>
+            <div class="settings-desc">启动时后台检查新版本，发现后自动下载安装</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" v-model="autoUpdate" @change="toggleAutoUpdate()" />
+            <span class="switch-slider"></span>
+          </label>
         </div>
       </div>
     </div>
