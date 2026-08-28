@@ -62,7 +62,10 @@ export const vaultState = reactive({
   selectedEntry: null,
   currentFilter: 'all',
   searchQuery: '',
+  // 密码显隐状态：按条目 ID 记忆，独立于 entry 数据对象，避免污染加密 vault
+  showPasswordMap: {},
   clipboardTimer: null,
+  clipboardNoteTimer: null,
   lockTimer: null,
   lockTimeoutMs: loadSettingInt('lockpass_lock_timeout', 5 * 60 * 1000),
   clipboardClearMs: loadSettingInt('lockpass_clipboard_clear', 30 * 1000),
@@ -221,7 +224,7 @@ export function useVault() {
   async function createVault(password) {
     const salt = window.CryptoUtils.generateSalt()
     const saltBase64 = window.CryptoUtils.arrayBufferToBase64(salt)
-    const key = await window.CryptoUtils.deriveKey(password, salt, 100000)
+    const key = await window.CryptoUtils.deriveKey(password, salt, window.CryptoUtils.DEFAULT_ITERATIONS)
 
     const initialData = {
       entries: [],
@@ -233,7 +236,7 @@ export function useVault() {
     const { iv, data } = await window.CryptoUtils.encrypt(initialData, key)
 
     await window.DBUtils.dbPut(window.DBUtils.STORE_META, { key: 'salt', value: saltBase64 })
-    await window.DBUtils.dbPut(window.DBUtils.STORE_META, { key: 'iterations', value: 100000 })
+    await window.DBUtils.dbPut(window.DBUtils.STORE_META, { key: 'iterations', value: window.CryptoUtils.DEFAULT_ITERATIONS })
     await window.DBUtils.dbPut(window.DBUtils.STORE_META, { key: 'version', value: 1 })
     await window.DBUtils.dbPut(window.DBUtils.STORE_VAULT, { id: 'main', iv, data })
 
@@ -248,7 +251,7 @@ export function useVault() {
 
     const salt = window.CryptoUtils.base64ToArrayBuffer(saltRecord.value)
     const iterRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'iterations')
-    const iterations = iterRecord ? (Number(iterRecord.value) || 100000) : 100000
+    const iterations = iterRecord ? (Number(iterRecord.value) || window.CryptoUtils.LEGACY_ITERATIONS) : window.CryptoUtils.LEGACY_ITERATIONS
     const key = await window.CryptoUtils.deriveKey(password, new Uint8Array(salt), iterations)
 
     const vaultRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_VAULT, 'main')
@@ -955,11 +958,14 @@ export function useVault() {
           note.classList.remove('hidden')
           let remaining = vaultState.clipboardClearMs / 1000
           note.innerHTML = `✓ 已复制，${remaining}秒后清除`
-          const tick = setInterval(() => {
+          // 清除上一次的倒计时 interval，避免多个定时器同时运行
+          if (vaultState.clipboardNoteTimer) clearInterval(vaultState.clipboardNoteTimer)
+          vaultState.clipboardNoteTimer = setInterval(() => {
             remaining--
             if (note) note.innerHTML = `✓ 已复制，${remaining}秒后清除`
             if (remaining <= 0) {
-              clearInterval(tick)
+              clearInterval(vaultState.clipboardNoteTimer)
+              vaultState.clipboardNoteTimer = null
               if (note) note.classList.add('hidden')
             }
           }, 1000)
@@ -995,10 +1001,10 @@ export function useVault() {
   }
 
   function toggleDetailPassword() {
-    // D5 修复：密码显隐按条目记忆（对齐原版 entry.showPassword 切换），不再用全局开关
+    // 密码显隐按条目 ID 记忆（独立于 entry 数据对象，不随加密 vault 持久化）
     if (!vaultState.selectedEntry) return
-    const entry = getEntryById(vaultState.selectedEntry)
-    if (entry) entry.showPassword = !entry.showPassword
+    const id = vaultState.selectedEntry
+    vaultState.showPasswordMap[id] = !vaultState.showPasswordMap[id]
   }
 
   /* ── 模态框 ────────────────────────────────── */

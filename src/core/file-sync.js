@@ -84,7 +84,7 @@ const FileSync = {
       format: 'LockPass-file-sync',
       version: verRec ? verRec.value : 1,
       salt: saltRec.value,
-      iterations: iterRec ? iterRec.value : 100000,
+      iterations: iterRec ? iterRec.value : window.CryptoUtils.LEGACY_ITERATIONS,
       iv: vaultRec.iv,
       data: vaultRec.data,
       updatedAt: new Date().toISOString()
@@ -184,7 +184,7 @@ const FileSync = {
   async restorePayload(payload) {
     await DBUtils.openDB();
     await DBUtils.dbPut(DBUtils.STORE_META, { key: 'salt', value: payload.salt });
-    await DBUtils.dbPut(DBUtils.STORE_META, { key: 'iterations', value: payload.iterations || 100000 });
+    await DBUtils.dbPut(DBUtils.STORE_META, { key: 'iterations', value: payload.iterations || window.CryptoUtils.LEGACY_ITERATIONS });
     await DBUtils.dbPut(DBUtils.STORE_META, { key: 'version', value: payload.version || 1 });
     await DBUtils.dbPut(DBUtils.STORE_VAULT, {
       id: 'main',

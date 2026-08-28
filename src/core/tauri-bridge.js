@@ -85,8 +85,8 @@
   // clipboard_write_text 在 Rust 侧派发主线程执行 arboard 写入，绕开竞态
   window.LockClipboard = {
     write: async function (text) {
-      if (IS_MAC && typeof lt.invoke === 'function') {
-        return lt.invoke('clipboard_write_text', { text: String(text == null ? '' : text) });
+      if (IS_MAC && typeof LT.invoke === 'function') {
+        return LT.invoke('clipboard_write_text', { text: String(text == null ? '' : text) });
       }
       return navigator.clipboard.writeText(text);
     }

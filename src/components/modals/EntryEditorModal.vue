@@ -29,6 +29,27 @@ const TYPE_FIELD_KEYS = {
 
 const currentKeys = computed(() => TYPE_FIELD_KEYS[entryType.value] || TYPE_FIELD_KEYS.other)
 
+// 切换类型时清除不属于新类型的残留字段，避免旧字段被持久化到加密 vault
+watch(entryType, (newType) => {
+  const keepKeys = new Set(TYPE_FIELD_KEYS[newType] || TYPE_FIELD_KEYS.other)
+  if (newType === 'server') { keepKeys.add('rootUser'); keepKeys.add('rootPwd') }
+  Object.keys(fields).forEach(k => {
+    if (!keepKeys.has(k)) delete fields[k]
+  })
+  Object.keys(showFields).forEach(k => {
+    if (!keepKeys.has(k)) delete showFields[k]
+  })
+  // 预置新类型的空字段
+  ;(TYPE_FIELD_KEYS[newType] || TYPE_FIELD_KEYS.other).forEach(k => {
+    if (fields[k] === undefined) fields[k] = ''
+  })
+  if (newType === 'server') {
+    if (fields.rootUser === undefined) fields.rootUser = ''
+    if (fields.rootPwd === undefined) fields.rootPwd = ''
+  }
+  updateStrength()
+})
+
 const allTagNames = computed(() => Object.keys(vaultState.tagDefs))
 
 // 推荐标签 = 注册表中尚未选中的标签（原版 tag-suggestions 逻辑）

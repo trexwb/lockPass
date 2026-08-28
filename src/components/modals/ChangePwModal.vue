@@ -28,20 +28,22 @@ async function changePassword() {
     const saltRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'salt')
     const salt = window.CryptoUtils.base64ToArrayBuffer(saltRecord.value)
     const iterRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'iterations')
-    const iterations = iterRecord ? (Number(iterRecord.value) || 100000) : 100000
+    const iterations = iterRecord ? (Number(iterRecord.value) || window.CryptoUtils.LEGACY_ITERATIONS) : window.CryptoUtils.LEGACY_ITERATIONS
     const oldKey = await window.CryptoUtils.deriveKey(oldPw.value, new Uint8Array(salt), iterations)
 
     const vaultRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_VAULT, 'main')
     await window.CryptoUtils.decrypt(vaultRecord.data, vaultRecord.iv, oldKey)
 
-    // 新盐 + 新密钥（沿用当前 iterations，保证派生参数一致）
+    // 新盐 + 新密钥（升级到 DEFAULT_ITERATIONS 以获得更强保护）
+    const newIterations = window.CryptoUtils.DEFAULT_ITERATIONS
     const newSalt = window.CryptoUtils.generateSalt()
-    const newKey = await window.CryptoUtils.deriveKey(newPw.value, newSalt, iterations)
+    const newKey = await window.CryptoUtils.deriveKey(newPw.value, newSalt, newIterations)
 
-    // 重新加密数据
+    // 重新加密数据（包含密码历史，确保修改密码后历史记录可用）
     const { iv, data } = await window.CryptoUtils.encrypt(
       {
         entries: vaultState.entries,
+        history: vaultState.history,
         tagDefs: vaultState.tagDefs,
         tags: vaultState.tags,
         deleted: vaultState.deleted,
@@ -49,8 +51,9 @@ async function changePassword() {
       newKey,
     )
 
-    // 保存新盐值与加密数据
+    // 保存新盐值、新迭代次数与加密数据
     await window.DBUtils.dbPut(window.DBUtils.STORE_META, { key: 'salt', value: window.CryptoUtils.arrayBufferToBase64(newSalt) })
+    await window.DBUtils.dbPut(window.DBUtils.STORE_META, { key: 'iterations', value: newIterations })
     await window.DBUtils.dbPut(window.DBUtils.STORE_VAULT, { id: 'main', iv, data })
 
     // 更新内存密钥

@@ -2,7 +2,7 @@
 /* LockPass — 设置模态框（Vue 迁移）
    复刻原生 settings.js：安全 / 本地文件同步 / 标签管理入口 / 数据说明 /
    数据管理（导入导出入口 + 修改主密码 + 销毁）/ 快捷键说明 / 关于 */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import { APP_VERSION } from '../../core/version.js'
 import { buildShortcutDefs } from '../../composables/useShortcuts'
@@ -100,6 +100,13 @@ onMounted(() => {
   syncUpdateState()
   // 下载进度由 updater 事件驱动，这里轮询快照刷新 UI
   updateTimer = setInterval(syncUpdateState, 600)
+})
+
+onBeforeUnmount(() => {
+  if (updateTimer) {
+    clearInterval(updateTimer)
+    updateTimer = null
+  }
 })
 
 function updateLockTimeout() {

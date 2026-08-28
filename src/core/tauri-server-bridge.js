@@ -14,15 +14,15 @@
   'use strict';
 
   // 桌面判定统一走 tauri-env.js（双信号）
-  var LT = window.LockTauri || {};
-  var isTauri = !!LT.isTauri;
+  const LT = window.LockTauri || {};
+  const isTauri = !!LT.isTauri;
   if (!isTauri) return;
 
-  var invoke = LT.invoke;
+  const invoke = LT.invoke;
 
   function extractDomain(url) {
     try {
-      var u = new URL(url);
+      const u = new URL(url);
       return u.hostname.toLowerCase();
     } catch (e) {
       return '';
@@ -41,37 +41,37 @@
     };
   }
 
-  var TauriServer = {
+  const TauriServer = {
     isTauri: true,
 
     /** 解锁后标记服务就绪 */
-    ready: function ready() {
+    ready() {
       return invoke('server_ready');
     },
 
     /** 同步明文条目到 Rust 内存 */
-    setEntries: function setEntries(entries) {
-      var list = (entries || []).map(toDto);
+    setEntries(entries) {
+      const list = (entries || []).map(toDto);
       return invoke('server_set_entries', { entries: list });
     },
 
     /** 锁定/登出时清空内存 */
-    lock: function lock() {
+    lock() {
       return invoke('server_lock');
     },
 
     /** 查询待确认配对 nonce（供弹窗挂载时回查） */
-    getPendingPair: function getPendingPair() {
+    getPendingPair() {
       return invoke('server_get_pending_pair');
     },
 
     /** 用户点击「允许」：发放 token */
-    confirmPair: function confirmPair(nonce) {
+    confirmPair(nonce) {
       return invoke('server_pair_confirm', { nonce: nonce });
     },
 
     /** 用户点击「拒绝」：取消配对 */
-    rejectPair: function rejectPair(nonce) {
+    rejectPair(nonce) {
       return invoke('server_pair_reject', { nonce: nonce });
     },
   };
@@ -80,9 +80,9 @@
 
   // 转发 Rust 侧配对请求事件为 window 事件，供 PairRequestModal 监听
   try {
-    var globalT = window.__TAURI__;
+    const globalT = window.__TAURI__;
     if (globalT && globalT.event && typeof globalT.event.listen === 'function') {
-      globalT.event.listen('lockpass:pair-request', function (event) {
+      globalT.event.listen('lockpass:pair-request', (event) => {
         window.dispatchEvent(new CustomEvent('lockpass:pair-request', { detail: event.payload }));
       });
     }

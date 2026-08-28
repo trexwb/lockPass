@@ -4,13 +4,21 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
+ * PBKDF2 迭代次数常量
+ * - DEFAULT_ITERATIONS: 新建保险箱使用（OWASP 2023 推荐 600000）
+ * - LEGACY_ITERATIONS:  兼容旧数据（无 iterations 记录时回退）
+ */
+const DEFAULT_ITERATIONS = 600000;
+const LEGACY_ITERATIONS = 100000;
+
+/**
  * 从主密码派生 AES-256-GCM 密钥
  * @param {string} password - 用户主密码
  * @param {Uint8Array} salt - 盐值（32字节）
- * @param {number} [iterations=100000] - PBKDF2 迭代次数（与保险箱 meta 中的 iterations 保持一致）
+ * @param {number} [iterations=DEFAULT_ITERATIONS] - PBKDF2 迭代次数（与保险箱 meta 中的 iterations 保持一致）
  * @returns {Promise<CryptoKey>} AES-256-GCM 密钥
  */
-async function deriveKey(password, salt, iterations = 100000) {
+async function deriveKey(password, salt, iterations = DEFAULT_ITERATIONS) {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -132,6 +140,8 @@ function generateSalt() {
 
 // 导出模块
 window.CryptoUtils = {
+  DEFAULT_ITERATIONS,
+  LEGACY_ITERATIONS,
   deriveKey,
   encrypt,
   decrypt,
