@@ -14,8 +14,8 @@ const {
 const entry = computed(() => (vaultState.selectedEntry ? getEntryById(vaultState.selectedEntry) : null))
 
 const isRecycleView = computed(() => vaultState.currentFilter === 'recycle')
-// D5 修复：密码显隐按条目记忆（对齐原版 entry.showPassword），不再用全局 detailPwVisible
-const showPw = computed(() => !!(entry.value && entry.value.showPassword))
+// 密码显隐：从 vaultState.showPasswordMap 读取（独立于 entry 数据对象）
+const showPw = computed(() => !!(entry.value && vaultState.showPasswordMap[entry.value.id]))
 
 function maskValue(v) {
   return showPw.value ? String(v ?? '') : '••••••••'
@@ -143,13 +143,14 @@ function renderNotes() {
             class="btn-icon"
             :class="{ active: entry.favorite }"
             title="收藏"
+            :aria-label="entry.favorite ? '取消收藏' : '收藏'"
             @click="toggleFavorite(entry.id)"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" :fill="entry.favorite ? 'var(--warning)' : 'none'" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
           </button>
-          <button class="btn-icon" title="关闭" @click="closeDetail()">
+          <button class="btn-icon" title="关闭" aria-label="关闭详情" @click="closeDetail()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -165,7 +166,7 @@ function renderNotes() {
             <div v-if="entry.username" class="detail-field">
               <div class="detail-field-label">用户名</div>
               <div class="detail-field-value">{{ entry.username }}
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div class="detail-field">
@@ -173,11 +174,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div v-if="entry.url" class="detail-field">
@@ -201,7 +202,7 @@ function renderNotes() {
             <div v-if="entry.username" class="detail-field">
               <div class="detail-field-label">登录账号</div>
               <div class="detail-field-value">{{ entry.username }}
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div class="detail-field">
@@ -209,11 +210,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div v-if="sshCommand()" class="detail-field cmd-field">
@@ -228,7 +229,7 @@ function renderNotes() {
               <div v-if="entry.root.username" class="detail-field">
                 <div class="detail-field-label">root 账号</div>
                 <div class="detail-field-value">{{ entry.root.username }}
-                  <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.root.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                  <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.root.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
                 </div>
               </div>
               <div class="detail-field">
@@ -236,11 +237,11 @@ function renderNotes() {
                 <div class="detail-field-value mono">
                   <span :class="{ masked: !showPw }">{{ maskValue(entry.root.password) }}</span>
                   <span class="ml-auto"></span>
-                  <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                     <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                     <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                   </button>
-                  <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.root.password, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                  <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.root.password, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
                 </div>
               </div>
             </template>
@@ -258,7 +259,7 @@ function renderNotes() {
             <div v-if="entry.username" class="detail-field">
               <div class="detail-field-label">用户名</div>
               <div class="detail-field-value">{{ entry.username }}
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div class="detail-field">
@@ -266,11 +267,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div v-if="mysqlCommand()" class="detail-field cmd-field">
@@ -287,7 +288,7 @@ function renderNotes() {
             <div v-if="entry.username" class="detail-field">
               <div class="detail-field-label">服务名称</div>
               <div class="detail-field-value">{{ entry.username }}
-                <button class="btn-icon btn-icon-sm ml-auto" title="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm ml-auto" title="复制" aria-label="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div v-if="entry.url" class="detail-field">
@@ -302,11 +303,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
           </template>
@@ -316,7 +317,7 @@ function renderNotes() {
             <div v-if="entry.appId" class="detail-field">
               <div class="detail-field-label">App ID</div>
               <div class="detail-field-value">{{ entry.appId }}
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.appId, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.appId, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div class="detail-field">
@@ -324,11 +325,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div v-if="entry.privateKey" class="detail-field">
@@ -336,11 +337,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.privateKey) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.privateKey, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.privateKey, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
           </template>
@@ -350,7 +351,7 @@ function renderNotes() {
             <div v-if="entry.username" class="detail-field">
               <div class="detail-field-label">凭证名称</div>
               <div class="detail-field-value">{{ entry.username }}
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyField(entry.username, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
             <div class="detail-field">
@@ -358,11 +359,11 @@ function renderNotes() {
               <div class="detail-field-value mono">
                 <span :class="{ masked: !showPw }">{{ maskValue(entry.password) }}</span>
                 <span class="ml-auto"></span>
-                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" @click="entry.showPassword = !entry.showPassword">
+                <button class="btn-icon btn-icon-sm" :title="showPw ? '隐藏' : '显示'" :aria-label="showPw ? '隐藏密码' : '显示密码'" @click="toggleDetailPassword()">
                   <svg v-if="showPw" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 </button>
-                <button class="btn-icon btn-icon-sm" title="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="copyPassword(entry.id, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
               </div>
             </div>
           </template>
@@ -410,7 +411,11 @@ function renderNotes() {
               v-for="item in relatedEntries"
               :key="item.entry.id"
               class="related-item"
+              role="button"
+              tabindex="0"
+              :aria-label="`查看关联密码 ${item.entry.title}`"
               @click="selectRelated(item.entry.id)"
+              @keydown.enter="selectRelated(item.entry.id)"
             >
               <div class="entry-icon" v-html="relatedTypeIcon(item.entry.type)"></div>
               <div class="entry-info">

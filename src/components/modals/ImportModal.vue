@@ -305,9 +305,9 @@ async function importEncryptedVault(data) {
     throw new Error('请输入主密码')
   }
   try {
-    // 使用文件的 salt、iterations 和 iv 解密（兼容性：旧文件无 iterations 时默认 100000）
+    // 使用文件的 salt、iterations 和 iv 解密（兼容性：旧文件无 iterations 时回退到 LEGACY_ITERATIONS）
     const salt = window.CryptoUtils.base64ToArrayBuffer(data.salt)
-    const iterations = Number(data.iterations) || 100000
+    const iterations = Number(data.iterations) || window.CryptoUtils.LEGACY_ITERATIONS
     const key = await window.CryptoUtils.deriveKey(masterPassword.value, new Uint8Array(salt), iterations)
     const decrypted = await window.CryptoUtils.decrypt(data.data, data.iv, key)
 

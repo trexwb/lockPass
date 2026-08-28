@@ -55,8 +55,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="overlayRef" id="modal-overlay">
-    <div id="modal">
+  <div ref="overlayRef" id="modal-overlay" role="dialog" aria-modal="true">
+    <div id="modal" role="document">
       <slot />
     </div>
   </div>

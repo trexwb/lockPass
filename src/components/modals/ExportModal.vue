@@ -41,7 +41,7 @@ async function exportEncryptedVault() {
       exportedAt: now.toISOString(),
       format: 'encrypted',
       salt: saltRecord.value,
-      iterations: iterRecord ? (Number(iterRecord.value) || 100000) : 100000,
+      iterations: iterRecord ? (Number(iterRecord.value) || window.CryptoUtils.LEGACY_ITERATIONS) : window.CryptoUtils.LEGACY_ITERATIONS,
       iv,
       data,
       tagDefs: vaultState.tagDefs,

@@ -29,7 +29,7 @@
 
   function post(type, extra) {
     // 注意：标记值必须是布尔 true——页面监听与 lockpass-bridge 均校验 d[MSG_FLAG] !== true
-    window.postMessage(Object.assign({ [MSG_FLAG]: true, type }, extra || {}), '*')
+    window.postMessage(Object.assign({ [MSG_FLAG]: true, type }, extra || {}), window.location.origin)
   }
 
   /* ── 页面消息监听（来自扩展 content script） ── */

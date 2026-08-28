@@ -93,4 +93,9 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __LOCKPASS_VERSION__: JSON.stringify(pkg.version),
   },
+  // 生产构建移除 console.debug / console.log（保留 console.error / console.warn）
+  // 密码管理器应最小化控制台输出
+  esbuild: {
+    pure: ['console.debug', 'console.log'],
+  },
 })
