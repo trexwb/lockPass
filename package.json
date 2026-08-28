@@ -1,6 +1,6 @@
 {
   "name": "lockpass",
-  "version": "1.0.11",
+  "version": "1.0.15",
   "private": true,
   "description": "LockPass 密码保险箱",
   "type": "module",
@@ -10,7 +10,7 @@
     "vite:build": "vite build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "node scripts/with-updater-key.mjs tauri build",
     "make-dmg": "bash scripts/make-dmg.sh",
     "icons": "tauri icon app-icon.png",
     "version:set": "node scripts/bump-version.mjs",

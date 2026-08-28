@@ -54,8 +54,15 @@
 
   const invoke = LT.invoke;
 
-  /* ── 2. 剪贴板：覆盖 navigator.clipboard.writeText ────────────── */
-  try {
+  /* ── 2. 剪贴板 ────────────────────────────────────────────── */
+  // macOS：不走插件 shim。tauri-plugin-clipboard-manager 在 tokio worker
+  // 线程调用 arboard→NSPasteboard，与 WebKit 主线程粘贴板监控竞态
+  // （plugins-workspace#3205），表现为 write_text 失败甚至崩溃。
+  // WebKit 原生 navigator.clipboard.writeText 由主线程执行且天然线程安全，
+  // 用户手势场景（点击复制）直接可用。
+  const IS_MAC = /mac/i.test(navigator.userAgent)
+  if (!IS_MAC) {
+    try {
     const ClipboardShim = {
       writeText: function (text) {
         return invoke('plugin:clipboard-manager|write_text', { content: String(text == null ? '' : text) });
@@ -69,9 +76,21 @@
       configurable: true,
       writable: true
     });
-  } catch (e) {
-    console.warn('[LockPass/Tauri] 无法覆盖 navigator.clipboard:', e);
+    } catch (e) {
+      console.warn('[LockPass/Tauri] 无法覆盖 navigator.clipboard:', e);
+    }
   }
+
+  // macOS 无手势场景（如定时自动清空剪贴板）走自定义命令：
+  // clipboard_write_text 在 Rust 侧派发主线程执行 arboard 写入，绕开竞态
+  window.LockClipboard = {
+    write: async function (text) {
+      if (IS_MAC && typeof lt.invoke === 'function') {
+        return lt.invoke('clipboard_write_text', { text: String(text == null ? '' : text) });
+      }
+      return navigator.clipboard.writeText(text);
+    }
+  };
 
   /* ── 3. 从系统拖入文件 → 导入流程 ────────────────────────────────
      注：Tauri 的 HTML5 ondrop 仅对 webview 内部有效，

@@ -273,6 +273,35 @@ fn is_safe_url(url: &str) -> bool {
 
 /// 用系统默认浏览器打开外部链接
 /// 仅允许 http://、https://、mailto: 协议，防命令注入 / 非法链接
+/// macOS：NSPasteboard 仅允许主线程访问（Apple 文档要求），且 WebKit 主线程
+/// 会持续监控粘贴板（v1.0.11 起插件在 tokio worker 线程调用 arboard，
+/// 与之竞态导致复制失败甚至崩溃，见 plugins-workspace#3205）。
+/// 此命令把写剪贴板派发到主线程同步执行，绕开插件的线程问题。
+#[tauri::command]
+fn clipboard_write_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(clipboard_write_impl(&text));
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|_| "剪贴板操作超时".to_string())?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        clipboard_write_impl(&text)
+    }
+}
+
+fn clipboard_write_impl(text: &str) -> Result<(), String> {
+    use arboard::Clipboard;
+    // 每次新建实例：macOS 上 arboard 长生命周期实例与 WebKit 监控存在状态耦合
+    Clipboard::new()
+        .and_then(|mut c| c.set_text(text.to_string()))
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
@@ -384,6 +413,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            clipboard_write_text,
             file_store_write,
             file_store_read,
             file_store_exists,
