@@ -19,7 +19,7 @@ const clipboardClear = ref(vaultState.clipboardClearMs)
 /* ── 浏览器扩展：在线扩展包下载 + 使用指南 ── */
 
 const EXT_GUIDE_URL =
-  'https://github.com/trexwb/lockPass/blob/main/docs/lockpass-%E6%89%A9%E5%B1%95%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97.md'
+  'https://trexwb.github.io/lockPass/guide.html'
 
 const isDesktopApp = computed(() => !!(window.LockTauri && window.LockTauri.isTauri))
 
