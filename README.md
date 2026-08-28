@@ -340,6 +340,7 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
 - **完整性校验**：更新包经 minisign 体系签名（私钥本地保管，公钥内嵌 `tauri.conf.json`），篡改/错配的更新包会被拒绝安装
 - **发布流程**：推 `v*` 标签 → CI 构建三平台产物并自动生成 `latest.json` → **Publish Draft Release** 后全量用户可达（Draft 未发布前清单 404 属预期）
 - **首次启用引导**：v1.0.11 是首个带更新能力的版本，v1.0.10 及更早安装包需**手动安装一次 v1.0.11**，此后版本即可自动升级
+- **签名密钥生成（本机一次性）**：`npm run tauri -- signer generate -p 密码 -w ~/.tauri/lockpass-updater.key`（生成 `.key` 私钥 + `.key.pub` 公钥；密码丢失需轮换公钥并全量重装）
 - **CI 密钥配置（一次性，两个 Secret 缺一不可）**：仓库 Settings → Secrets and variables → Actions 新增
   1. `TAURI_SIGNING_PRIVATE_KEY` — 本地 `~/.tauri/lockpass-updater.key` 全文
   2. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — 生成密钥时设置的密码（当前密钥为加密态；release.yml 已用 ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }} 引用；若换回无密码密钥则改回空串）

@@ -55,6 +55,11 @@
 - **完整性**：更新包签名校验（公钥内嵌 tauri.conf.json），拒绝篡改与错配
 - **引导说明**：v1.0.11 为首个可自更新版本，更早版本需手动安装一次；浏览器版/Pages 不具备也不需要更新能力（刷新即最新）
 - **同批**：v1.0.10 已将设置面板「使用指南」切至 Pages 托管（`lockpass-扩展使用指南.html`，构建时由 `copy-guide.mjs` 拷入站点）
+- **运维备注 · 签名密钥生成（本机一次性）**：
+  ```bash
+  npm run tauri -- signer generate -p 密码 -w ~/.tauri/lockpass-updater.key
+  ```
+  `-p` 后接密钥密码（当前密钥即为 08-28 以此命令生成的加密态密钥）；生成 `.key` 私钥与 `.key.pub` 公钥，公钥需内嵌 `tauri.conf.json` 的 `plugins.updater.pubkey`，私钥与密码分别录入 GitHub Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`）与本地 `.env.local`。密码丢失需重新生成密钥对并轮换公钥，已发版本用户须全量重装
 
 ### v1.0.9 (2026-08-27)
 
