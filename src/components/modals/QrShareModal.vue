@@ -10,6 +10,9 @@ import ModalBase from '../common/ModalBase.vue'
 
 const { getSession, closeModal } = useVault()
 
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
+
 const QR_FORMAT = 'LockPass-QR v1'
 const QR_VERSION = 1
 
@@ -146,10 +149,7 @@ async function copyQrText() {
     <div class="modal-header">
       <h3>分享为二维码</h3>
       <button class="btn-icon" @click="closeModal()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <span v-html="Icons.close(16)"></span>
       </button>
     </div>
 

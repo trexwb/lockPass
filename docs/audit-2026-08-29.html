@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>LockPass 功能设计 · 操作流程 · 用户体验 审计报告</title>
+<style>
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#0d1117;color:#c9d1d9;margin:0;padding:36px 20px;line-height:1.75}
+.wrap{max-width:920px;margin:0 auto}
+h1{font-size:24px;color:#e6edf3;border-bottom:1px solid #30363d;padding-bottom:14px}
+h2{font-size:18px;color:#e6edf3;margin-top:38px;border-left:3px solid #58a6ff;padding-left:12px}
+h3{font-size:15px;color:#e6edf3;margin:22px 0 8px}
+.meta{color:#8b949e;font-size:13px;margin-bottom:6px}
+.metrics{display:flex;gap:14px;flex-wrap:wrap;margin:20px 0}
+.metric{flex:1;min-width:150px;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px}
+.metric b{display:block;font-size:26px;color:#58a6ff}
+.metric span{color:#8b949e;font-size:12px}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+th,td{border:1px solid #30363d;padding:9px 12px;text-align:left;vertical-align:top}
+th{background:#21262d;color:#e6edf3}
+td code{background:#21262d;padding:1px 6px;border-radius:4px;font-size:12.5px}
+.p1{color:#f85149;font-weight:600}
+.p2{color:#d29922}
+p{margin:10px 0}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px 20px;margin:14px 0}
+.good{border-left:3px solid #3fb950}
+.warn{border-left:3px solid #f85149}
+.muted{color:#8b949e;font-size:13px}
+ul{margin:8px 0;padding-left:22px}li{margin:5px 0}
+blockquote{border-left:3px solid #30363d;margin:10px 0;padding:8px 16px;color:#8b949e;background:#161b22;border-radius:0 8px 8px 0}
+</style>
+</head>
+<body><div class="wrap">
+<h1>LockPass 功能设计 · 操作流程 · 用户体验 审计报告</h1>
+<p class="meta">审计日期 2026-08-29 · 审计时点基线 v1.0.21（UX 报告已对 v1.0.20/22/23 修复做增量核对）· 报告核验时仓库已推进至 v1.0.24 · 方法：三路并行 Agent 审计 + 主线交叉核验 · 证据颗粒度 file:line</p>
+
+<div class="metrics">
+<div class="metric"><b>10</b><span>P1 级发现（4 项数据/安全语义级）</span></div>
+<div class="metric"><b>24</b><span>P2 级发现（合并去重后）</span></div>
+<div class="metric"><b>25</b><span>P3 级 + 18 项快速改进</span></div>
+<div class="metric"><b>50+</b><span>实测已具备的功能项</span></div>
+</div>
+
+<h2>一、执行摘要</h2>
+<p>总体评价：<b>底子扎实，问题集中在「最后一公里」闭环缺口与「洞察型功能」缺失</b>。密码管理器核心闭环（增删改查、回收站、标签、关联密码、二维码、扩展自动填充、本地加密、自动更新）完整可用；剪贴板安全链路、危险操作确认链、空状态分场景等属于同类产品中的良好实践。</p>
+<p>同时，审计在「用户实际会踩到」的层面发现了值得立即处理的问题：危险确认框默认焦点在确认键（键盘 Enter 直接触发破坏性操作）、app 条目复制值与标签不符、编辑模式无未保存保护、二维码替换导入遗留孤儿密码历史、忘记主密码无自救引导、密码健康类功能（弱密码/重复检测）整体缺失。</p>
+
+<h2>二、P1 级发现（10 项）</h2>
+
+<div class="card warn"><div class="title">2.1 危险确认框默认焦点落在「确认」键</div>
+<p>证据 <code>src/core/utils.js:270-272</code>：confirm 弹窗创建后 <code>okBtn.focus()</code>，Enter 直接触发确认。删除/回滚/销毁/清空回收站全部中招——键盘连按 Enter 即执行破坏性操作，与「危险操作默认焦点取消」的通行实践相反。</p>
+<p class="muted">建议：danger 弹窗默认焦点改为取消键；Enter 触发取消。</p></div>
+
+<div class="card warn"><div class="title">2.2 编辑模式无未保存保护，草稿「只写不读」</div>
+<p>证据 <code>EntryEditorModal.vue:241-256</code>：onMounted 仅新建分支调用 loadDraft()，编辑分支从不恢复；:82 每键 persistDraft() 写入 lockpass_draft_edit_* 但编辑模式从不读回。Esc 或误点遮罩即静默丢弃全部修改。</p>
+<p class="muted">建议：编辑分支恢复草稿（比对提示），或关闭前确认。</p></div>
+
+<div class="card warn"><div class="title">2.3 app 条目「公钥」行的复制值与标签不符</div>
+<p>证据 <code>DetailPanel.vue:222</code>：公钥行 value 实为 entry.password；配合 <code>useVault.js:1007</code> copyPassword 的 app 分支（appId 优先）——「密码」行复制的却是 App ID。复制结果与所见标签不符，对密码管理器是信任级缺陷。</p>
+<p class="muted">建议：app 类型三行（App ID/公钥/密码）标签与取值逐一对照修正。</p></div>
+
+<div class="card warn"><div class="title">2.4 二维码替换导入产生「孤儿密码历史」</div>
+<p>证据 <code>QrImportModal.vue:207-214</code>：替换 = splice 删除旧条目再插入，旧条目 ID 关联的密码历史成为孤儿——旧版本明文密码滞留在不可见的加密存储中，不参与展示与清理。</p>
+<p class="muted">建议：替换时迁移或显式清除 history[oldId]；同步检查收藏与 createdAt 语义。</p></div>
+
+<div class="card warn"><div class="title">2.5 导入去重策略四入口三种行为</div>
+<p>批量导入逐条询问、CSV 拖入静默跳过（<code>import-bridge.js:157</code>）、二维码询问但语义有缺陷（2.4）、扩展同步无交互。同一份数据不同入口结果不同。</p>
+<p class="muted">建议：统一「询问替换」+ 全局跳过选项；去重键（标题+用户名）文档明示。</p></div>
+
+<div class="card warn"><div class="title">2.6 密码健康审计缺失</div><p>无弱密码/重复密码/超期未改检测仪表盘，用户对「哪些密码该换」零可见性。建议解锁后本地一次性扫描（不出网），入口放侧边栏。</p></div>
+<div class="card warn"><div class="title">2.7 强度算法「纯熵误判」</div><p>仅按字符池×长度计熵，<code>Aa1!Aa1!</code> 等模式化弱口令得高分。建议引入常见口令字典 + 模式检测降权。</p></div>
+<div class="card warn"><div class="title">2.8 修改主密码无强度把关</div><p>未复用创建时的 8 位校验与强度条（<code>useVault.js:344/393</code> 仅创建模式有）。建议改密复用同一强度组件。</p></div>
+<div class="card warn"><div class="title">2.9 TOTP 两步验证缺失</div><p>1Password/Bitwarden 标配能力。建议列路线图（totpSecret 字段 + 30s 动态码 + 复制按钮）。</p></div>
+<div class="card warn"><div class="title">2.10 忘记主密码无自救引导</div><p>锁屏无找回入口，唯一路径 = 销毁重建（数据全失）。离线加密下这是合理设计，但应主动管理预期：锁屏加「忘记主密码？」入口 → 说明无恢复可能并引导备份恢复/销毁流程。</p></div>
+
+<h2>三、P2 级发现摘要（24 项）</h2>
+<table>
+<tr><th>维度</th><th>发现摘要</th><th>证据</th></tr>
+<tr><td>功能设计（×10）</td><td>标签搜索与批量操作、密码到期提醒、多保险箱、安全笔记类型、回收站保留期、导入字段映射保存、QR 分享有效期、关联密码自定义规则、历史版本对比、CSV 导出字段完整度</td><td>subagent_01</td></tr>
+<tr><td>用户体验（×17）</td><td>Esc 清空搜索（<b>交叉核验：v1.0.20 搜索常驻后已生效，此条误判</b>）、「退出」无确认且与锁定双轨、类型切换静默清字段、表单校验仅 3s toast 无内联错误、全局 outline:none 无 focus-visible、卡片按钮键盘聚焦不显形、解锁 busy 为「…」、修改主密码误报（已升格 P1-2.8 关联）、.vault 导入不查重语义分叉</td><td>subagent_03</td></tr>
+<tr><td>操作流程（主线）</td><td>绑定目录恢复后停留锁屏缺说明；扩展配对成功反馈弱；快照恢复入口较深</td><td>主线走查</td></tr>
+</table>
+
+<h2>四、P3 与快速改进（43 项摘要）</h2>
+<p>P3×25：图标按钮 aria-label 覆盖、Tab 焦点顺序、深色 muted 对比度、platform 废弃 API、空状态文案等。<b>快速改进 18 项（≤15 分钟/项）</b>：danger 确认聚焦取消、focus-visible 兜底、focus-within 显形按钮、toast aria-live、⌘ 平台化、busy 文案、图标 min-width 等——完整清单见 subagent_03.md §快速改进。</p>
+
+<h2>五、维度详述与亮点</h2>
+<h3>5.1 功能设计</h3>
+<p>盘点 50+ 项功能全部可用；亮点：剪贴板安全链路（复制→倒计时清除→告知）、扩展零密码出应用（脱敏列表 + 按需解密）、数据全本地不出网、六大条目类型与密码历史/标签/关联密码/回收站体系完整。缺口与一致性 11 条见 subagent_01.md。</p>
+<h3>5.2 操作流程（十条走查）</h3>
+<table>
+<tr><th>流程</th><th>结论</th><th>关键发现</th></tr>
+<tr><td>首次创建</td><td>✅</td><td>app/server 字段联动完整</td></tr>
+<tr><td>日常编辑</td><td>⚠️</td><td>草稿只写不读；类型切换静默清字段</td></tr>
+<tr><td>删除恢复</td><td>✅</td><td>软删→回收站→恢复；历史清理联动</td></tr>
+<tr><td>导入导出</td><td>⚠️</td><td>去重策略不一致；.vault 不带历史（未告知）</td></tr>
+<tr><td>二维码</td><td>⚠️</td><td>替换丢孤儿历史；扫码反馈（已修）</td></tr>
+<tr><td>扩展配对</td><td>✅</td><td>nonce 确认 + 本地 HTTP 通道</td></tr>
+<tr><td>备份体系</td><td>✅</td><td>提醒→快照→清理链完整；恢复入口较深（P2）</td></tr>
+<tr><td>自动更新</td><td>✅</td><td>检查→下载→重启闭环</td></tr>
+<tr><td>异常路径</td><td>❗</td><td>忘记主密码无自救；修改主密码误报</td></tr>
+<tr><td>锁定时机</td><td>✅</td><td>交互重置计时器 + 手动锁定</td></tr>
+</table>
+<h3>5.3 用户体验</h3>
+<p>45 项发现与 11 条亮点见 subagent_03.md。抽样复核：危险确认焦点（实证 ✓）、公钥行复制（实证 ✓）、草稿保护（实证 ✓）；「Esc 清空搜索」一条被交叉核验纠偏（v1.0.20 已生效，报告误判）。</p>
+
+<h2>六、建议路线图</h2>
+<table>
+<tr><th>阶段</th><th>内容</th><th>对应</th></tr>
+<tr><td>第一批（本周 ≤2h）</td><td>危险确认焦点改取消、修改主密码误报修复、公钥行标签对齐、快速改进 18 项</td><td>2.1 / 2.3 / P3</td></tr>
+<tr><td>第二批（下版本）</td><td>编辑草稿恢复、替换导入迁移历史、去重策略统一、QR 分享时效、健康审计仪表盘</td><td>2.2 / 2.4 / 2.5 / 2.6</td></tr>
+<tr><td>第三批（路线图）</td><td>TOTP、强度算法模式检测、改密强度把关、忘记密码引导、多保险箱</td><td>2.7 / 2.8 / 2.9 / 2.10</td></tr>
+</table>
+
+<h2>七、方法论与局限</h2>
+<p>三路并行审计（功能设计 / 操作流程 / 用户体验）+ 主线交叉核验；操作流程 Agent 在撰写前超时，由主线补做；全部 P1 断言经主线二次实证，其中 1 条 P2（Esc 搜索）被交叉核验纠偏。局限：静态代码推演为主，像素级/真机交互项已标注「需实测」；功能缺口判断以主流密码管理器通用能力为参照系。</p>
+<p class="muted">证据文件：.cluster/lp-ux-audit/subagent_01.md（功能设计 26KB）/ subagent_03.md（用户体验 26KB）/ main-audit.md（主线抽查）；对应响应式专项见 audit 前置轮（v1.0.20/v1.0.21）。</p>
+</div></body>
+</html>

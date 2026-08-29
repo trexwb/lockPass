@@ -17,6 +17,7 @@ export function buildShortcutDefs() {
     toggleFavorite, copyPassword, copyField, editCurrentEntry,
     toggleDetailPassword, softDelete, permanentDelete, restoreEntry,
     emptyRecycleBin, closeModal, closeDetail, getEntryById,
+    getFilteredEntries, selectEntry,
   } = useVault()
 
   return [
@@ -186,6 +187,12 @@ export function buildShortcutDefs() {
       run: () => emptyRecycleBin(),
     },
     {
+      id: 'list-nav', name: '列表上下导航', mac: '↑ / ↓', win: '↑ / ↓',
+      when: '全局（非输入态）', desc: '在列表中上/下移动选中条目（选中后可 Enter/Space 打开详情）',
+      test: ctx => ctx.key === 'arrowdown' || ctx.key === 'arrowup',
+      run: () => {}, // 实际分发在 handleKeyboard 中提前拦截处理
+    },
+    {
       id: 'close', name: '关闭/返回', mac: 'Esc', win: 'Esc',
       when: '全局（解锁后）', desc: '关闭弹窗/详情面板，或清空搜索',
       test: ctx => ctx.key === 'escape',
@@ -200,7 +207,9 @@ export function buildShortcutDefs() {
 function handleKeyboard(event, defs) {
   if (!vaultState.isUnlocked) return
 
-  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+  // P3-3 修复：navigator.platform 已废弃，优先用 userAgentData，platform 作兜底
+  const isMac = (navigator.userAgentData && navigator.userAgentData.platform === 'macOS')
+    || /mac/i.test(navigator.platform || '')
   const mod = isMac ? event.metaKey : event.ctrlKey
   const alt = event.altKey
   const shift = event.shiftKey
@@ -270,6 +279,27 @@ function handleKeyboard(event, defs) {
       event.preventDefault()
       const el = document.getElementById('global-search')
       if (el) el.focus()
+    }
+    return
+  }
+
+  // ── P2-12 修复：列表键盘导航 ↑/↓ 选择条目（未选中时 ↓ 选首条、↑ 选末条），并滚动到可见 ──
+  if (key === 'arrowdown' || key === 'arrowup') {
+    event.preventDefault()
+    const list = getFilteredEntries()
+    if (!list.length) return
+    const curIdx = list.findIndex(e => e.id === vaultState.selectedEntry)
+    let nextIdx
+    if (curIdx === -1) {
+      nextIdx = key === 'arrowdown' ? 0 : list.length - 1
+    } else {
+      nextIdx = key === 'arrowdown' ? Math.min(curIdx + 1, list.length - 1) : Math.max(curIdx - 1, 0)
+    }
+    const target = list[nextIdx]
+    if (target && target.id !== vaultState.selectedEntry) {
+      selectEntry(target.id)
+      const card = document.querySelector(`.entry-card[data-id="${CSS.escape(target.id)}"]`)
+      if (card) card.scrollIntoView({ block: 'nearest' })
     }
     return
   }

@@ -75,11 +75,17 @@ export const vaultState = reactive({
   // 模态框状态（activeModal: 'entry' | 'settings' | 'import' | 'export' | 'qr-import' | 'qr-share' | 'change-pw' | 'tags'）
   activeModal: null,
   editingEntryId: null,
+  // 详情面板收回再弹出动画状态（P2-6 修复：由 DetailPanel 类绑定响应式驱动）
+  // detailAnim: null（静止打开）| 'collapse'（收回中，open 暂时挂起）| 'reopen'（弹出中）
+  detailAnim: null,
+  detailAnimTimer: null,
   // 侧边栏（移动端抽屉）
   sidebarOpen: false,
   // 锁屏交互状态
   lockError: '',
   lockBusy: false,
+  // 屏幕阅读器实时通知文本
+  srAnnounce: '',
 })
 
 /* ── 自动锁定：用户交互重置（G2 修复） ───────────────
@@ -118,6 +124,21 @@ function clearSession() {
   try {
     sessionStorage.removeItem('lockpass_session')
     sessionStorage.removeItem('lockpass_session_nonce')
+  } catch (e) {}
+}
+
+/**
+ * 清空 sessionStorage 中全部编辑器草稿（lockpass_draft_*）。
+ * 草稿含明文密码，锁定/退出登录时必须一并清除，避免安全边界被打破（P1-2 修复）。
+ */
+function clearEditorDrafts() {
+  try {
+    const staleKeys = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i)
+      if (k && k.indexOf('lockpass_draft_') === 0) staleKeys.push(k)
+    }
+    staleKeys.forEach(k => sessionStorage.removeItem(k))
   } catch (e) {}
 }
 
@@ -603,10 +624,13 @@ export function useVault() {
     vaultState.editingEntryId = null
     // 锁定时清空明文滞留（R2 修复）：防止 entries/tags/回收站等敏感数据残留在内存
     vaultState.entries = []
+    vaultState.history = {} // P1-1 修复：历史快照含修改前明文密码/root/私钥，必须一并清空
     vaultState.tagDefs = {}
     vaultState.tags = []
     vaultState.deleted = []
     vaultState.selectedEntry = null
+    // P1-2 修复：锁定即安全边界，编辑器草稿（含明文）一并清除
+    clearEditorDrafts()
   }
 
   function logout() {
@@ -623,9 +647,12 @@ export function useVault() {
     // S1 修复：与 lockVault 对齐，补清回收站与界面状态，杜绝明文滞留
     vaultState.deleted = []
     vaultState.selectedEntry = null
+    vaultState.history = {} // P1-1 修复：历史快照含明文，退出登录必须清空
     vaultState.activeModal = null
     vaultState.editingEntryId = null
     vaultState.lockError = ''
+    // P1-2 修复：退出登录清除编辑器草稿（含明文）
+    clearEditorDrafts()
     if (vaultState.lockTimer) {
       clearTimeout(vaultState.lockTimer)
       vaultState.lockTimer = null
@@ -735,28 +762,29 @@ export function useVault() {
     if (event) event.stopPropagation()
     const entry = getEntryById(id)
     if (!entry) return
-    const panel = document.getElementById('detail-panel')
-    const alreadyOpen = !!panel?.classList.contains('open')
+    const alreadyOpen = !!vaultState.selectedEntry
     const sameEntry = vaultState.selectedEntry === id
     vaultState.selectedEntry = id
     if (alreadyOpen && !sameEntry) {
-      // 收回再弹出动画（对齐原版 entries.js selectEntry）
+      // 收回再弹出动画（对齐原版 entries.js selectEntry）。
+      // P2-6 修复：动画状态纳入响应式（detailAnim），由 DetailPanel 的 :class 绑定驱动，
+      // 消除原先直接改 DOM class 与 Vue 重渲染之间的覆盖竞态。
       clearTimeout(vaultState.detailAnimTimer)
-      panel.classList.remove('open')
-      panel.classList.add('animating')
+      vaultState.detailAnim = 'collapse'
       vaultState.detailAnimTimer = setTimeout(() => {
-        panel.classList.add('open')
-        vaultState.detailAnimTimer = setTimeout(() => panel.classList.remove('animating'), 30)
+        vaultState.detailAnim = 'reopen'
+        vaultState.detailAnimTimer = setTimeout(() => {
+          vaultState.detailAnim = null
+          vaultState.detailAnimTimer = null
+        }, 30)
       }, 320)
-    } else if (panel) {
-      panel.classList.add('open')
     }
   }
 
   function closeDetail() {
     clearTimeout(vaultState.detailAnimTimer)
-    const panel = document.getElementById('detail-panel')
-    panel?.classList.remove('open', 'animating')
+    vaultState.detailAnimTimer = null
+    vaultState.detailAnim = null
     vaultState.selectedEntry = null
   }
 
@@ -770,13 +798,6 @@ export function useVault() {
 
   async function softDelete(id) {
     if (!id) return
-    const confirmed = await window.Utils.confirm({
-      title: '删除密码',
-      message: '将移入回收站，您可以在回收站中恢复或彻底删除。',
-      confirmText: '移入回收站',
-      danger: true,
-    })
-    if (!confirmed) return
 
     const idx = vaultState.entries.findIndex(e => e.id === id)
     if (idx === -1) return
@@ -787,7 +808,14 @@ export function useVault() {
 
     await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
-    window.Utils.showToast('已移入回收站', 'success')
+    // 撤销 Toast：5 秒内可一键恢复，无需导航到回收站
+    window.Utils.showToast('已移入回收站', 'success', {
+      duration: 5000,
+      action: {
+        label: '撤销',
+        callback: () => { restoreEntry(id) },
+      },
+    })
   }
 
   async function restoreEntry(id) {
@@ -893,29 +921,16 @@ export function useVault() {
       return false
     }
     window.Utils.showToast('已复制到剪贴板', 'success')
+    vaultState.srAnnounce = '已复制到剪贴板'
     try {
 
       // ── 浮动「已复制」提示（靠近按钮位置，对齐原版 entries.js） ──
+      // P3-11：样式收敛到 modal.css 的 .copy-float-tip，JS 只负责定位（left/top）
       let cleanupFloatTip = null
       if (btnEl) {
         const floatTip = document.createElement('div')
+        floatTip.className = 'copy-float-tip'
         floatTip.textContent = '✓ 已复制'
-        Object.assign(floatTip.style, {
-          position: 'fixed',
-          top: '-28px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--accent, #4f86f7)',
-          color: '#fff',
-          fontSize: '11px',
-          padding: '2px 7px',
-          borderRadius: '8px',
-          pointerEvents: 'none',
-          zIndex: '99999',
-          whiteSpace: 'nowrap',
-          opacity: '1',
-          transition: 'opacity 0.4s',
-        })
         const rect = btnEl.getBoundingClientRect()
         floatTip.style.left = rect.left + rect.width / 2 + 'px'
         floatTip.style.top = rect.top + 'px'
@@ -1188,12 +1203,16 @@ export function useVault() {
 
     if (vaultState.editingEntryId) {
       const idx = vaultState.entries.findIndex(e => e.id === vaultState.editingEntryId)
-      if (idx !== -1) {
-        const oldEntry = vaultState.entries[idx]
-        // 任意内容字段有变更都生成历史记录（默认保留最近 5 版）
-        recordEntryHistory(entry.id, oldEntry, entry, now)
-        vaultState.entries[idx] = entry
+      if (idx === -1) {
+        // P2-1 修复：条目已被删除（如另一视图移入回收站）时不再静默丢弃修改并假报「已保存」。
+        // 保持编辑器打开，让用户有机会手动复制未保存的修改；可到回收站恢复该条目后再保存。
+        window.Utils.showToast('该条目已被删除，修改无法保存。请先到回收站恢复该条目（编辑器保持打开以便复制内容）', 'error')
+        return false
       }
+      const oldEntry = vaultState.entries[idx]
+      // 任意内容字段有变更都生成历史记录（默认保留最近 5 版）
+      recordEntryHistory(entry.id, oldEntry, entry, now)
+      vaultState.entries[idx] = entry
       // 保存成功后清除草稿缓存
       try { sessionStorage.removeItem('lockpass_draft_edit_' + vaultState.editingEntryId) } catch (e) {}
     } else {

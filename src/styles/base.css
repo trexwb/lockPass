@@ -8,8 +8,9 @@
   --border:       #30363d;
   --border-focus: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
   --text-primary: #e6edf3;
+  --text-secondary: #b6c2cf;
   --text-muted:   #8b949e;
-  --text-faint:   #484f58;
+  --text-faint:   #797f8b;
   /* 强调色（色相变量驱动，配合 data-accent 预设与 data-theme 深浅） */
   --accent-h: 212;
   --accent-s: 92%;
@@ -46,6 +47,7 @@
   /* 按钮交互色 */
   --accent-hover: hsl(var(--accent-h) var(--accent-s) calc(var(--accent-l) - 8%));
   --text-on-accent: #ffffff;
+  --radius-xs:  4px;
   --radius-sm:  6px;
   --radius-md:  10px;
   --radius-lg:  14px;
@@ -62,8 +64,6 @@
   --z-bg: 0;                 /* 背景粒子层 */
   --z-content: 1;            /* 内容层（相对装饰背景提升一层） */
   --z-header: 100;           /* sticky 顶部导航 */
-  --z-overlay: 199;          /* 侧边栏遮罩层 */
-  --z-sidebar: 200;          /* 移动端侧边栏抽屉 */
   --z-modal: 200;            /* 模态框遮罩 */
   --z-detail: 200;           /* 详情面板（桌面端） */
   --z-detail-fullscreen: 300;/* 详情面板（移动端全屏） */
@@ -71,6 +71,7 @@
   --z-toast: 300;            /* Toast 通知 */
   --z-confirm: 400;          /* 确认弹窗（盖过 modal / detail） */
   --z-banner: 900;           /* 顶部提醒横幅 */
+  --z-float-tip: 99999;       /* 复制成功浮动提示（瞬时元素，盖过一切层） */
 
   /* 粒子背景 RGB 三元组（canvas 用，随主题切换） */
   --particle-link: 88,166,255;
@@ -81,6 +82,7 @@
   --overlay-bg-soft: rgba(0,0,0,0.5);   /* 侧边栏遮罩 */
   --border-dim: rgba(48,54,61,0.5);     /* 细分隔线/浅边框 */
   --danger-border: rgba(248,81,73,0.3); /* 危险操作边框 */
+  --warning-border: rgba(210,153,34,0.35); /* 警示边框（主密码不可找回提示等） */
   
   /* 响应式断点变量（仅作文档参考，@media 不支持 var()） */
   --breakpoint-tablet: 1024px;
@@ -98,24 +100,26 @@
 :root[data-theme="light"] {
   --bg-primary:    #ffffff;
   --bg-secondary:  #f6f8fa;
-  --bg-tertiary:   #eef1f4;
-  --bg-hover:      #e3e8ed;
-  --border:        #d0d7de;
+  --bg-tertiary:   #eaeef2;
+  --bg-hover:      #e0e6ec;
+  --border:        #c8d1da;
+  --border-dim:    rgba(200,209,218,0.6);
   --text-primary:  #1f2328;
+  --text-secondary: #444c56;
   --text-muted:    #59636e;
-  --text-faint:    #8c959f;
+  --text-faint:    #6e7681;
   /* 强调色在浅色下略加深，保证对比度（色相/饱和度不变，仅降低明度） */
   --accent-hover:  hsl(var(--accent-h) var(--accent-s) calc(var(--accent-l) - 10%));
-  --accent-dim:    hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.14);
-  --accent-glow:   hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.28);
+  --accent-dim:    hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.16);
+  --accent-glow:   hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.30);
   --text-on-accent: #ffffff;
   --shadow-sm:  0 1px 3px rgba(31,35,40,0.08);
   --shadow-md:  0 4px 12px rgba(31,35,40,0.12);
   --shadow-lg:  0 8px 32px rgba(31,35,40,0.16);
   --overlay-bg: rgba(0,0,0,0.4);
   --overlay-bg-soft: rgba(0,0,0,0.22);
-  --border-dim: rgba(208,215,222,0.6);
   --danger-border: rgba(248,81,73,0.3);
+  --warning-border: rgba(210,153,34,0.4);
   /* 锁屏渐变（浅色系） */
   --lock-bg-1:    #eef3fa;
   --lock-bg-2:    #e8edf5;
@@ -193,15 +197,24 @@ a:hover { text-decoration: underline; }
    #lp-bind-banner 为 position:fixed;top:0，会覆盖 sticky header。
    使用 :has() 在 banner 存在时为 #app 添加 padding-top 推开内容。 */
 body:has(#lp-bind-banner) #app {
-  padding-top: 42px;
+  padding-top: var(--lp-banner-h, 42px); /* 实际高度由 useVault 的 ResizeObserver 写入 */
 }
 @media (max-width: 640px), (max-height: 500px) {
   /* 移动端 banner 内部纵向排列，高度更大 */
   body:has(#lp-bind-banner) #app {
-    padding-top: 72px;
+    padding-top: var(--lp-banner-h, 42px);
   }
 }
-
+.btn-link-plain {
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.btn-link-plain:hover {
+  color: var(--text-primary);
+}
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -283,7 +296,7 @@ kbd {
   padding: 8px 10px;
   background: var(--bg-hover);
   border-radius: var(--radius-sm);
-  border: 1px dashed rgba(255,255,255,0.15);
+  border: 1px dashed var(--border-dim); /* P2-8 修复：改设计令牌，浅色主题下白色虚线原本几乎不可见 */
 }
 .cmd-field .detail-field-label {
   font-size: 0.75rem;
@@ -316,7 +329,7 @@ kbd {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  z-index: var(--z-banner);
+  z-index: 150; /* header(100) < 横幅(150) < toast(305) ≤ 弹窗遮罩(400+)；不再压住弹窗与 Toast */
   box-sizing: border-box;
   width: 100%;
   max-width: 760px;

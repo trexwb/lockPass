@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.0.20 | 更新日期：2026-08-25
+> 版本：v1.0.25 | 更新日期：2026-08-29
 
 ---
 
@@ -97,16 +97,16 @@
 | 类型扩展字段 | 见下 | | 按 entryType 语义化字段 |
 | createdAt / updatedAt | ISO8601 | 自动 | 创建 / 更新时间 |
 
-**6 种条目类型的扩展字段**：
+**6 种条目类型的扩展字段**（C2 起统一 `url` / `password` 数据模型；旧 vault 的 host / baseUrl / apiKey 字段在读取时自动迁移）：
 
 | 类型 | 扩展字段 |
 |------|----------|
 | website | url |
-| server | host + port + rootUser + rootPassword（root 账号层级） |
-| database | host + port + username（无 root 层级） |
-| ai | serviceName + apiUrl + token |
-| app | appName + appId + publicKey + privateKey（多行 PEM） |
-| other | credentialName + credentialValue |
+| server | port；root 账号层级：`root: { username, password }`（存储为嵌套对象） |
+| database | dbType、port、dbName |
+| ai | username（服务名称）、url（API 地址）；password 承载 Token |
+| app | appId、privateKey（多行 PEM）；password 承载公钥 |
+| other | username（凭证名称）；password 承载凭证值 |
 
 ### 3.4 标签体系
 
@@ -137,7 +137,8 @@
 - 点击眼睛图标：显示/隐藏密码
 - 点击复制：复制到剪贴板，可配置 10/30/60 秒后自动清空
 - 详情面板：编辑 / 复制 / 收藏 / 二维码分享 / 删除；回收站内为恢复 / 彻底删除
-- 右键条目卡片：快捷菜单（编辑/复制/删除/收藏）
+- 右键条目卡片：快捷菜单（编辑 / 复制密码 / 收藏 / 删除；回收站视图为恢复 / 复制密码 / 彻底删除）——v1.0.22 起实现
+- 编辑器内「复制账号 / 密码」按钮走统一剪贴板安全链路（v1.0.22 起，与详情面板一致：成功提示 + 30 秒自动清除）
 
 ### 3.9 关联密码
 
@@ -218,7 +219,7 @@
 - **冷启动自愈探针（v1.0.9）**：`boot-flag.js` 同步置 `__LOCKPASS_BOOTED__`，Rust setup 线程三次 eval 探测，失败页上下文内自动 reload ≤2 次
 - **IDB→文件迁移桥（v1.0.9）**：file-store 启用时若文件空而旧 origin IndexedDB 有完整加密负载则一次性搬运（meta.salt/iterations/version + vault/main，排除 dirHandle），openDB 闸门串行化避免竞态
 
-### 3.13 设置
+### 3.18 设置
 
 - 修改主密码（需验证原密码）
 - 自动锁定时间（1/5/15/30 分钟/从不）
@@ -226,25 +227,46 @@
 - 标签管理（增/删/改名称、颜色、图标）
 - 数据备份与恢复（.vault）
 - 销毁保险箱（双重确认）
-- 应用更新 / 自动检查更新（仅桌面版）：见 3.18
+- 应用更新 / 自动检查更新（仅桌面版）：见 3.19
 - 桌面剪贴板实现（v1.0.12）：Windows 走 clipboard-manager 插件 shim；macOS 复制走 WebKit 原生 clipboard API（主线程安全），无手势清空经自定义命令 `clipboard_write_text` 主线程派发 arboard 写入——规避插件 tokio 线程与 WebKit 粘贴板监控的竞态（plugins-workspace#3205）；复制失败自动降级 execCommand 并透出真实错误
 
-### 3.18 自动更新（桌面版）
+### 3.19 自动更新（桌面版）
 
 - 通道：Tauri updater 插件；端点 `https://github.com/trexwb/lockPass/releases/latest/download/latest.json`；公钥内嵌 `tauri.conf.json`（`plugins.updater.pubkey`），更新包带 minisign 签名（CI 以 Secrets 注入私钥 `TAURI_SIGNING_PRIVATE_KEY` 生成 `.sig`）
 - 流程：桌面启动 5s 静默检查（开关：设置 → 关于 → 自动检查更新，默认开）→ 发现新版本后台 `downloadAndInstall`（进度 0~100 上报 设置 → 关于 → 应用更新）→ Toast + 确认弹窗 → `process.relaunch` 重启完成安装
 - 发布链：release.yml 构建期生成更新产物（NSIS setup.exe / macOS app.tar.gz + .sig），`update-manifest` job 由 `scripts/gen-latest-json.mjs` 汇总生成 latest.json 随 Draft Release 上传；Publish 后全量可达（Draft 未发布时清单 404 属预期）
 - 边界：仅桌面版联网检查；浏览器版无更新机制；私钥丢失需轮换公钥并全量重装；v1.0.11 为首个自更新版本，更早版本需手动升级一次
 
-### 3.14 键盘快捷键
+### 3.20 键盘快捷键
+
+快捷键体系优先使用 Alt/Option 组合（避开浏览器保留键），macOS 为 ⌥（Option）、Windows 为 Alt；⌘/Ctrl 按平台自动映射。设置面板内有完整速查表。v1.0.22 起新增列表键盘导航与主界面键盘可达（导航项 / 条目卡片可 Tab 聚焦，Enter/Space 触发）。
 
 | 快捷键 | 功能 |
 |--------|------|
-| `Ctrl/Cmd + K` | 聚焦搜索框 |
-| `Ctrl/Cmd + N` | 新建条目 |
-| `Ctrl/Cmd + L` | 锁定保险箱 |
-| `Ctrl/Cmd + ,` | 打开设置 |
-| `Escape` | 关闭模态框/面板 |
+| `⌘/Ctrl + K` | 聚焦搜索框 |
+| `⌘/Ctrl + Enter` | 保存当前表单（弹窗打开时） |
+| `⌥/Alt + N` | 新建密码 |
+| `⌥/Alt + Q` | 二维码添加 |
+| `⌥/Alt + I` | 批量导入 |
+| `⌥/Alt + E` | 导出备份 |
+| `⌥/Alt + T` | 标签管理 |
+| `⌘/Ctrl + ,` | 打开设置 |
+| `⌥/Alt + L` | 锁定保险箱 |
+| `⌥/Alt + ⇧ + L` | 退出登录 |
+| `⌥/Alt + A` | 筛选：全部 |
+| `⌥/Alt + F` | 筛选：收藏；详情面板打开时为收藏当前条目 |
+| `⌥/Alt + R` | 筛选：回收站 |
+| `⌥/Alt + 1~6` | 筛选：网站 / 服务器 / 数据库 / AI / 应用 / 其他 |
+| `⌥/Alt + ⇧ + E` | 编辑当前条目（详情面板打开时） |
+| `⌥/Alt + C` | 复制密码 |
+| `⌥/Alt + U` | 复制用户名 |
+| `⌥/Alt + P` | 切换密码可见性 |
+| `⌘/Ctrl + ⌫` | 删除当前条目（回收站视图中为彻底删除） |
+| `⌥/Alt + ⇧ + R` | 恢复条目（回收站视图中） |
+| `⌥/Alt + ⇧ + ⌫` | 清空回收站（需二次确认） |
+| `↑ / ↓` | 列表上下导航选择条目（v1.0.22；非输入态） |
+| `Enter / Space` | 卡片聚焦时打开详情（v1.0.22） |
+| `Escape` | 关闭弹窗 / 详情面板，或清空搜索 |
 
 ---
 
@@ -317,7 +339,7 @@ Entropy = log2(charset_size ^ length)
 ### 5.2 自动锁定
 
 - 监听用户交互事件（mousemove, mousedown, keydown, touchstart, scroll）重置计时器
-- 超时触发锁定：清除内存明文 + sessionStorage 会话 + cryptoKey
+- 超时触发锁定：清除内存明文（entries / 回收站 / 标签）+ **密码历史快照（含修改前明文，v1.0.22 起）** + **编辑器草稿（sessionStorage `lockpass_draft_*`，含明文，v1.0.22 起）** + sessionStorage 会话 + cryptoKey；锁定与退出登录均执行同等清理
 
 ### 5.3 安全风险与防范
 
@@ -383,4 +405,4 @@ LockPass/
 
 ---
 
-**文档版本：v1.0.20**
+**文档版本：v1.0.25**

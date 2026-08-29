@@ -54,13 +54,12 @@
 .entry-category {
   background: var(--bg-tertiary);
   padding: 1px 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
 }
 .entry-date {
   margin-left: auto;
   flex-shrink: 0;
-  font-size: 0.78rem;
   color: var(--text-faint);
   font-size: 0.86rem;
 }
@@ -69,7 +68,7 @@
 .copy-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-muted);
   border: none;
@@ -93,7 +92,7 @@
 .restore-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-muted);
   border: none;
@@ -109,7 +108,7 @@
 .delete-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-muted);
   border: none;
@@ -274,7 +273,7 @@
 .star-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-muted);
   border: none;
@@ -297,6 +296,19 @@
 }
 
 /* Detail panel */
+/* ≤1024 全屏详情的点击遮罩：默认隐藏，panel.open 时显示（桌面宽窗不出现） */
+#detail-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 199; /* 详情面板(200) 之下、内容(100) 之上 */
+  background: rgba(0, 0, 0, 0.45);
+}
+@media (max-width: 1024px) {
+  body:has(#detail-panel.open) #detail-backdrop {
+    display: block;
+  }
+}
 #detail-panel {
   width: min(640px, 92vw);
   background: var(--bg-secondary);
@@ -448,7 +460,7 @@
 .related-reason {
   font-size: 0.7rem;
   padding: 1px 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   white-space: nowrap;
   cursor: default;
 }
@@ -501,4 +513,61 @@
   .btn-empty {
     min-height: 44px;
   }
+}
+
+/* ── 右键快捷菜单（P2-2：条目卡片右键，Teleport 挂 body） ── */
+.ctx-menu {
+  position: fixed;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.93rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.ctx-item:hover,
+.ctx-item:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+.ctx-item.ctx-danger { color: var(--danger); }
+.ctx-item.ctx-danger:hover,
+.ctx-item.ctx-danger:focus-visible { background: var(--danger-dim); }
+
+/* ── 触屏：长按呼出快捷菜单（iOS Safari 不派发 contextmenu，需长按入口） ── */
+@media (hover: none) and (pointer: coarse) {
+  /* 长按不触发系统文字选择/放大镜，保证长按手势干净 */
+  .entry-card {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* 菜单项对齐项目自身 44px 触控目标规范 */
+  .ctx-item {
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+  .ctx-menu {
+    min-width: 180px;
+  }
+  /* 触屏无 hover，菜单项用 :active 提供按压反馈 */
+  .ctx-item:active { background: var(--bg-hover); }
+  .ctx-item.ctx-danger:active { background: var(--danger-dim); }
 }
