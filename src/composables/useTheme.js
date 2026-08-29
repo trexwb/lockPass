@@ -76,6 +76,7 @@ export function useTheme() {
     themeMode.value = mode
     persist()
     applyTheme()
+    flashThemeTransition()
   }
 
   function setAccent(name) {
@@ -83,6 +84,7 @@ export function useTheme() {
     accentName.value = name
     persist()
     applyTheme()
+    flashThemeTransition()
   }
 
   return { themeMode, accentName, ACCENTS, init, setMode, setAccent }

@@ -214,18 +214,18 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       closeModal()
       window.Utils.showToast(`已筛选标签：${name}`, 'info')
     } else if (action === 'copy-name') {
-      window.Utils.copyToClipboard?.(name) || navigator.clipboard?.writeText(name)
-      window.Utils.showToast?.(window.Utils.copyToClipboard ? '' : '已复制标签名称', 'info')
+      window.Utils.copyText(name)
+      window.Utils.showToast?.('已复制标签名称', 'info')
     } else if (action === 'copy-color') {
       const color = tagDefs.value[name]?.color || ''
-      if (color) navigator.clipboard?.writeText(color)
+      if (color) window.Utils.copyText(color)
       window.Utils.showToast?.('已复制颜色值', 'info')
     }
   } else if (kind === 'color-swatch') {
     const color = payload?.color
     if (!color) return
     if (action === 'copy-color') {
-      navigator.clipboard?.writeText(color)
+      window.Utils.copyText(color)
       window.Utils.showToast?.('已复制颜色值：' + color, 'info')
     } else if (action === 'apply') {
       selectColor(color)

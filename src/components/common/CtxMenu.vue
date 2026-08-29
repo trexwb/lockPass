@@ -11,6 +11,9 @@ const props = defineProps({
   menu: { type: Object, required: true },
   items: { type: Array, default: () => [] },
   ariaLabel: { type: String, default: '快捷操作' },
+  // 菜单展开锚点象限（tl/tr/bl/br），控制 transform-origin 入场动效；
+  // 未显式传入时回退 useCtxMenu 计算的 menu.origin
+  origin: { type: String, default: '' },
 })
 
 const emit = defineEmits(['action'])
@@ -72,9 +75,10 @@ onBeforeUnmount(() => {})
 <template>
   <Teleport to="body">
     <div
-      v-if="menu.visible"
+      v-if="menu.visible && visibleItems.length"
       class="ctx-menu"
       :class="{ 'ctx-sm': visibleItems.length <= 4 }"
+      :data-origin="origin || menu.origin || 'tl'"
       :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
       role="menu"
       :aria-label="ariaLabel"

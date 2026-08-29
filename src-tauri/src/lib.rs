@@ -302,6 +302,35 @@ fn clipboard_write_impl(text: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 读取剪贴板文本
+/// 与 clipboard_write_text 同线程策略：macOS 派发主线程执行 arboard 读取，
+/// 绕开 WebKit 主线程粘贴板监控竞态（plugins-workspace#3205）。
+/// 供前端粘贴/回填场景使用（WKWebView 的 navigator.clipboard.readText
+/// 在非手势上下文会被权限拦截，桌面端统一走本命令更稳定）。
+#[tauri::command]
+fn clipboard_read_text(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(clipboard_read_impl());
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|_| "剪贴板操作超时".to_string())?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        clipboard_read_impl()
+    }
+}
+
+fn clipboard_read_impl() -> Result<String, String> {
+    use arboard::Clipboard;
+    Clipboard::new()
+        .and_then(|mut c| c.get_text())
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
@@ -414,6 +443,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             clipboard_write_text,
+            clipboard_read_text,
             file_store_write,
             file_store_read,
             file_store_exists,

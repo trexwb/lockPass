@@ -136,7 +136,7 @@ async function generate() {
 async function copyQrText() {
   if (!qrText.value) return
   try {
-    await navigator.clipboard.writeText(qrText.value)
+    await window.Utils.copyText(qrText.value)
     window.Utils.showToast('二维码文本已复制', 'success')
   } catch (e) {
     window.Utils.showToast('复制失败，请手动选择复制', 'error')

@@ -82,13 +82,20 @@
   }
 
   // macOS 无手势场景（如定时自动清空剪贴板）走自定义命令：
-  // clipboard_write_text 在 Rust 侧派发主线程执行 arboard 写入，绕开竞态
+  // clipboard_write_text / clipboard_read_text 在 Rust 侧派发主线程执行
+  // arboard 读写，绕开竞态与 WKWebView 读剪贴板权限拦截。
   window.LockClipboard = {
     write: async function (text) {
       if (IS_MAC && typeof LT.invoke === 'function') {
         return LT.invoke('clipboard_write_text', { text: String(text == null ? '' : text) });
       }
       return navigator.clipboard.writeText(text);
+    },
+    read: async function () {
+      if (IS_MAC && typeof LT.invoke === 'function') {
+        return LT.invoke('clipboard_read_text');
+      }
+      return navigator.clipboard.readText();
     }
   };
 
