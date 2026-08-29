@@ -29,7 +29,10 @@
 
   function post(type, extra) {
     // 注意：标记值必须是布尔 true——页面监听与 lockpass-bridge 均校验 d[MSG_FLAG] !== true
-    window.postMessage(Object.assign({ [MSG_FLAG]: true, type }, extra || {}), window.location.origin)
+    // targetOrigin 必须用 '*':file:// 双击模式下 location.origin 为 'null'(或 'file://'),
+    // 与接收窗口(即本窗口)实际 origin 不匹配会抛 DOMException;消息只发给自身窗口,
+    // 安全边界由 e.source===window + MSG_FLAG + token 三重校验保证,不依赖 origin 校验
+    window.postMessage(Object.assign({ [MSG_FLAG]: true, type }, extra || {}), '*')
   }
 
   /* ── 页面消息监听（来自扩展 content script） ── */

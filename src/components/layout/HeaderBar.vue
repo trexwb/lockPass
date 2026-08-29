@@ -55,6 +55,7 @@ function clearSearch() {
         v-model="vaultState.searchQuery"
         type="text"
         placeholder="搜索密码 (⌘ + K)"
+        aria-label="搜索密码"
         @keydown="onSearchKeydown"
       />
       <button

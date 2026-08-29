@@ -1974,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "lockpass"
-version = "1.0.25"
+version = "1.0.34"
 dependencies = [
  "arboard",
  "serde",

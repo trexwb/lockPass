@@ -5,6 +5,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useVault, vaultState, TAG_COLOR_OPTIONS, TAG_ICON_OPTIONS } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import { useCtxMenu } from '../../composables/useCtxMenu'
+import CtxMenu from '../common/CtxMenu.vue'
 
 const { closeModal, saveVault } = useVault()
 
@@ -192,6 +194,81 @@ function tagIconSvg(name) {
 function pickerIconSvg(iconId) {
   return window.Utils.getCategoryIcon(iconId, formColor.value)
 }
+
+/* ════════════════════════════════════════════════════════════════
+   右键菜单（标签行 / 颜色点 / 图标按钮）
+   ════════════════════════════════════════════════════════════════ */
+
+const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payload) => {
+  const kind = payload?.kind
+  const name = payload?.name
+
+  if (kind === 'tag-row') {
+    if (!name) return
+    if (action === 'edit') openEditForm(name)
+    else if (action === 'merge') openMergeForm(name)
+    else if (action === 'delete') confirmDeleteTag(name)
+    else if (action === 'filter') {
+      // 切回主视图筛选该标签
+      vaultState.currentFilter = name
+      closeModal()
+      window.Utils.showToast(`已筛选标签：${name}`, 'info')
+    } else if (action === 'copy-name') {
+      window.Utils.copyToClipboard?.(name) || navigator.clipboard?.writeText(name)
+      window.Utils.showToast?.(window.Utils.copyToClipboard ? '' : '已复制标签名称', 'info')
+    } else if (action === 'copy-color') {
+      const color = tagDefs.value[name]?.color || ''
+      if (color) navigator.clipboard?.writeText(color)
+      window.Utils.showToast?.('已复制颜色值', 'info')
+    }
+  } else if (kind === 'color-swatch') {
+    const color = payload?.color
+    if (!color) return
+    if (action === 'copy-color') {
+      navigator.clipboard?.writeText(color)
+      window.Utils.showToast?.('已复制颜色值：' + color, 'info')
+    } else if (action === 'apply') {
+      selectColor(color)
+    }
+  } else if (kind === 'icon-pick') {
+    const iconId = payload?.icon
+    if (!iconId) return
+    if (action === 'apply') selectIcon(iconId)
+  }
+})
+
+const tagsCtxItems = computed(() => {
+  const p = ctxMenu.payload
+  if (!p) return []
+  const list = []
+  const name = p?.name
+  const isDef = name && tagDefs.value[name]?.isDefault
+
+  switch (p?.kind) {
+    case 'tag-row': {
+      list.push({ key: 'edit', label: '编辑标签（改色/改图标）', iconHtml: Icons?.edit(14), accent: true })
+      list.push({ key: 'filter', label: '主视图筛选此标签', iconHtml: Icons?.grid(14) })
+      list.push({ key: 'copy-name', label: '复制标签名称', iconHtml: Icons?.copy(14) })
+      list.push({ key: 'copy-color', label: '复制颜色值', iconHtml: Icons?.palette(14) })
+      if (!isDef) {
+        list.push({ divider: true })
+        list.push({ key: 'merge', label: '合并到其他标签…', iconHtml: Icons?.merge?.(14) || Icons?.share(14) })
+        list.push({ key: 'delete', label: '删除此标签', iconHtml: Icons?.trash(14), danger: true })
+      }
+      return list
+    }
+    case 'color-swatch': {
+      list.push({ key: 'apply', label: '选择此颜色', iconHtml: Icons?.palette(14), accent: true })
+      list.push({ key: 'copy-color', label: '复制颜色值 ' + (p.color || ''), iconHtml: Icons?.copy(14) })
+      return list
+    }
+    case 'icon-pick': {
+      list.push({ key: 'apply', label: '选择此图标', iconHtml: Icons?.edit(14), accent: true })
+      return list
+    }
+  }
+  return list
+})
 </script>
 
 <template>
@@ -207,7 +284,13 @@ function pickerIconSvg(iconId) {
       <div class="modal-body p-0">
         <div class="tag-manage-list">
           <div v-if="!sortedTags.length" class="empty-state-lg">暂无标签</div>
-          <div v-for="name in sortedTags" :key="name" class="tag-manage-row">
+          <div
+            v-for="name in sortedTags"
+            :key="name"
+            class="tag-manage-row"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag-row', name }, { w: 260, h: 260 })"
+            :title="name + '（右键更多操作）'"
+          >
             <div class="tag-manage-icon" v-html="tagIconSvg(name)"></div>
             <div class="tag-manage-info">
               <div class="tag-manage-name">{{ name }}</div>
@@ -216,7 +299,12 @@ function pickerIconSvg(iconId) {
                 <span v-if="tagDefs[name] && tagDefs[name].isDefault" class="tag-manage-badge">默认</span>
               </div>
             </div>
-            <div class="tag-manage-color-swatch" :style="{ background: tagDefs[name].color }" title="颜色"></div>
+            <div
+              class="tag-manage-color-swatch"
+              :style="{ background: tagDefs[name].color }"
+              title="颜色（右键可复制）"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'color-swatch', color: tagDefs[name].color }, { w: 220, h: 120 })"
+            ></div>
             <div class="tag-manage-actions">
               <button class="btn btn-ghost btn-sm" @click="openEditForm(name)" title="编辑">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -264,7 +352,9 @@ function pickerIconSvg(iconId) {
           <div class="color-picker-grid">
             <button v-for="c in TAG_COLOR_OPTIONS" :key="c" type="button"
               class="color-swatch-btn" :class="{ selected: formColor === c }"
-              :style="{ background: c }" :title="c" @click="selectColor(c)">
+              :style="{ background: c }" :title="c + '（右键可复制颜色值）'" @click="selectColor(c)"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'color-swatch', color: c }, { w: 220, h: 120 })"
+            >
             </button>
           </div>
         </div>
@@ -273,7 +363,9 @@ function pickerIconSvg(iconId) {
           <div class="icon-picker-grid">
             <button v-for="iconId in TAG_ICON_OPTIONS" :key="iconId" type="button"
               class="icon-pick-btn" :class="{ selected: formIcon === iconId }"
-              :title="iconId" @click="selectIcon(iconId)">
+              :title="iconId + '（右键快速选择）'" @click="selectIcon(iconId)"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'icon-pick', icon: iconId }, { w: 200, h: 100 })"
+            >
               <span v-html="pickerIconSvg(iconId)"></span>
             </button>
           </div>
@@ -284,6 +376,7 @@ function pickerIconSvg(iconId) {
         <button class="btn btn-primary" @click="saveTagForm()">保存</button>
       </div>
     </template>
+
     <!-- 合并视图 -->
     <template v-else-if="view === 'merge'">
       <div class="modal-header">
@@ -315,5 +408,7 @@ function pickerIconSvg(iconId) {
         <button class="btn btn-primary" @click="confirmMergeTag()">合并</button>
       </div>
     </template>
+
+    <CtxMenu :menu="ctxMenu" :items="tagsCtxItems" aria-label="标签管理快捷操作" @action="onCtxAction" />
   </ModalBase>
 </template>

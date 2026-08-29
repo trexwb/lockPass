@@ -1,18 +1,21 @@
 <script setup>
 /* LockPass — 密码详情面板
-   Vue 3 迁移：复刻原生 entries.js 的 renderDetailPanel / renderDetailFooter，
-   含各类型字段行、命令提示行、root 分区、markdown 备注、关联密码、回收站分支。
-   P2-7 重构：六类型字段块抽取为 FieldRow / SecretFieldRow 复用组件，消除约 10 处复制粘贴。 */
+   v1.0.32：为标题/字段/标签/关联/历史 增加右键快捷菜单 */
 import { computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
+import { useCtxMenu } from '../../composables/useCtxMenu'
 import FieldRow from './FieldRow.vue'
 import SecretFieldRow from './SecretFieldRow.vue'
+import CtxMenu from '../common/CtxMenu.vue'
 
 const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
   softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
-  rollbackEntry, snapDiffers, describeHistoryFields,
+  rollbackEntry, snapDiffers, describeHistoryFields, saveVault,
+  toggleDetailPassword,
 } = useVault()
+
+const Icons = window.Utils?.SvgIcons
 
 const entry = computed(() => (vaultState.selectedEntry ? getEntryById(vaultState.selectedEntry) : null))
 
@@ -31,7 +34,6 @@ function maskValue(v) {
 function tagStyle(name) {
   const def = vaultState.tagDefs[name]
   if (!def) return {}
-  // 复审修复：--chip-color 注入前过十六进制白名单（对齐 P3-6 的 safeTagColor 链路）
   return { '--chip-color': window.Utils.safeTagColor(def.color) }
 }
 
@@ -63,7 +65,7 @@ function formatDateTime(iso) {
   }
 }
 
-/* ── 修改历史（最新在前，回收站视图不展示；回滚前由 rollbackEntry 内置确认弹窗防误操作） ── */
+/* ── 修改历史 ── */
 
 const historyList = computed(() => {
   const e = entry.value
@@ -73,8 +75,6 @@ const historyList = computed(() => {
 
 async function onRollback(snap) {
   if (!entry.value) return
-  // 回滚成功后不关闭面板：entry 为响应式对象，字段值与按钮禁用态自动刷新；
-  // 被执行的那条记录会被删除并从列表移除
   await rollbackEntry(entry.value.id, snap.at)
 }
 
@@ -87,13 +87,12 @@ function historyChanged(snap) {
   return snap.snap ? ('变更：' + (describeHistoryFields(snap.fields) || '全部字段')) : '旧版记录 · 仅密码'
 }
 
-// 关联密码条目类型图标（对齐原版 related.js renderRelatedSection）
+// 关联密码条目类型图标
 function relatedTypeIcon(type) {
   return window.Utils?.SvgIcons?.typeIcon(12, type || 'website') || ''
 }
 
-/* ── 命令提示行（server / database）；
-   P3-1 修复：改 computed，避免每次重渲染重复执行拼串 ── */
+/* ── 命令提示行 ── */
 
 const sshCommand = computed(() => {
   const e = entry.value
@@ -109,7 +108,7 @@ const mysqlCommand = computed(() => {
   return `mysql -h ${e.url}${dbPort} -u ${e.username} -p`
 })
 
-/* ── 关联密码（core/related.js 已挂载到 window.RelatedEntries） ── */
+/* ── 关联密码 ── */
 
 const relatedEntries = computed(() => {
   const e = entry.value
@@ -125,10 +124,235 @@ function onDelete() {
   softDelete(entry.value?.id)
 }
 
-// P3-1 修复：renderNotes 改 computed（内容随 entry.notes 变化时才重新解析 Markdown）
 const renderedNotes = computed(() => {
   if (!entry.value?.notes || !window.Utils?.parseMarkdown) return ''
   return window.Utils.parseMarkdown(entry.value.notes)
+})
+
+/* ════════════════════════════════════════════════════════════════
+   详情面板右键菜单（payload.kind：entry/field/tag/related/history/note/title）
+   ════════════════════════════════════════════════════════════════ */
+
+const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payload) => {
+  const e = entry.value
+  if (!e) return
+  const id = e.id
+
+  switch (payload?.kind) {
+    case 'entry':
+    case 'title': {
+      if (action === 'edit') openEntryModal(id)
+      else if (action === 'duplicate') {
+        // 先写 sessionStorage 草稿，再打开编辑器（onMounted 会立即读取）
+        try {
+          sessionStorage.setItem('lockpass_draft_new', JSON.stringify({
+            title: (e.title || '未命名') + ' 副本',
+            entryType: e.entryType || 'website',
+            tags: e.tags || [],
+            notes: e.notes || '',
+            fields: {
+              username: e.username || '', password: e.password || '', url: e.url || '',
+              port: e.port ? String(e.port) : '', appId: e.appId || '',
+              privateKey: e.privateKey || '',
+              rootUser: e.root?.username || '', rootPwd: e.root?.password || '',
+            },
+          }))
+        } catch (_e) {}
+        openEntryModal(null)
+        window.Utils.showToast('已复制为新条目草稿', 'info')
+      }
+      else if (action === 'fav') toggleFavorite(id)
+      else if (action === 'qr-share') openModal('qr-share')
+      else if (action === 'copy-pw') copyPassword(id)
+      else if (action === 'copy-user') copyField(e.username || '')
+      else if (action === 'copy-url') copyField(e.url || '')
+      else if (action === 'copy-all') {
+        const text = [
+          e.title && `# ${e.title}`,
+          e.username && `用户名: ${e.username}`,
+          e.password && `密码: ${e.password}`,
+          e.url && `地址: ${e.url}`,
+          e.port && `端口: ${e.port}`,
+          e.appId && `App ID: ${e.appId}`,
+          e.tags?.length && `标签: ${e.tags.join('、')}`,
+          e.notes && `\n备注:\n${e.notes}`,
+        ].filter(Boolean).join('\n')
+        copyField(text)
+      }
+      else if (action === 'open-url' && e.url) {
+        let u = e.url
+        if (!/^https?:\/\//i.test(u)) u = 'https://' + u
+        window.open(u, '_blank', 'noopener,noreferrer')
+      }
+      else if (action === 'copy-ssh') copyField(sshCommand.value)
+      else if (action === 'copy-mysql') copyField(mysqlCommand.value)
+      else if (action === 'close-detail') closeDetail()
+      else if (action === 'soft-delete') softDelete(id)
+      else if (action === 'restore') restoreEntry(id)
+      else if (action === 'purge') permanentDelete(id)
+      break
+    }
+    case 'field': {
+      const { label, value, secret, url } = payload
+      if (action === 'copy-field') copyField(value || '')
+      else if (action === 'reveal-once' && secret) {
+        // 复用 toggleDetailPassword 的计时器管理（统一 5 秒自动隐藏）
+        if (!vaultState.showPasswordMap[id]) toggleDetailPassword()
+        else { toggleDetailPassword(); toggleDetailPassword() } // 先关再开，重置计时
+        window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
+      }
+      else if (action === 'open-url' && url) {
+        let u = value || ''
+        if (!/^https?:\/\//i.test(u)) u = 'https://' + u
+        window.open(u, '_blank', 'noopener,noreferrer')
+      }
+      break
+    }
+    case 'cmd': {
+      if (action === 'copy-field') copyField(payload.value || '')
+      break
+    }
+    case 'tag': {
+      const name = payload.name
+      if (!name) return
+      if (action === 'filter') { vaultState.currentFilter = name; closeDetail(); return }
+      if (action === 'manage') openModal('tags')
+      if (action === 'remove') {
+        if (!e.tags || !e.tags.includes(name)) return
+        e.tags = e.tags.filter(t => t !== name)
+        e.updatedAt = new Date().toISOString()
+        await saveVault()
+        window.Utils.showToast(`已从条目移除标签「${name}」`, 'success')
+      }
+      if (action === 'rename-here') {
+        const newName = window.prompt?.('将该条目中的「' + name + '」改为：', name)?.trim()
+        if (!newName || newName === name) return
+        if (!e.tags) return
+        const idx = e.tags.indexOf(name)
+        if (idx < 0) return
+        if (!vaultState.tagDefs[newName]) {
+          const attrs = window.Utils.getRandomTagAttrs(vaultState.tagDefs)
+          vaultState.tagDefs[newName] = { color: attrs.color, icon: attrs.icon, isDefault: false }
+        }
+        if (!e.tags.includes(newName)) e.tags.splice(idx, 1, newName)
+        else e.tags.splice(idx, 1)
+        e.updatedAt = new Date().toISOString()
+        await saveVault()
+        window.Utils.showToast('已修改该条目标签', 'success')
+      }
+      break
+    }
+    case 'related': {
+      const relId = payload?.id
+      if (!relId) return
+      if (action === 'open') selectRelated(relId)
+      else if (action === 'open-new') { selectRelated(relId); openEntryModal(relId) }
+      else if (action === 'copy-pw') copyPassword(relId)
+      else if (action === 'copy-url') {
+        const rel = vaultState.entries.find(x => x.id === relId)
+        copyField(rel?.url || '')
+      }
+      break
+    }
+    case 'history': {
+      const snap = payload?.snap
+      if (!snap) return
+      if (action === 'rollback') rollbackEntry(id, snap.at)
+      else if (action === 'copy-pw') {
+        const pw = snap.snap ? snap.snap.password : snap.password
+        copyField(pw || '')
+      }
+      else if (action === 'copy-snap') {
+        const s = snap.snap || { password: snap.password }
+        const fieldsText = Object.keys(s).map(k => `${k}: ${String(s[k] ?? '')}`).join('\n')
+        copyField(fieldsText)
+      }
+      break
+    }
+    case 'note': {
+      if (action === 'copy-field') copyField(entry.value?.notes || '')
+      else if (action === 'edit') openEntryModal(id)
+      break
+    }
+  }
+})
+
+const detailCtxItems = computed(() => {
+  const p = ctxMenu.payload
+  const e = entry.value
+  if (!p || !e) return []
+
+  const list = []
+  const recycled = isRecycleView.value
+
+  switch (p.kind) {
+    case 'entry':
+    case 'title': {
+      list.push({ key: 'edit', label: '编辑条目', iconHtml: Icons?.edit(14), accent: true })
+      list.push({ key: 'duplicate', label: '复制为新条目…', iconHtml: Icons?.copy(14) })
+      list.push({ key: 'fav', label: e.favorite ? '取消收藏' : '加入收藏', iconHtml: e.favorite ? Icons?.starFilled(14) : Icons?.starOutline(14) })
+      list.push({ key: 'qr-share', label: '分享为二维码', iconHtml: Icons?.qr(14) })
+      list.push({ divider: true })
+      list.push({ key: 'copy-pw', label: e.entryType === 'app' ? '复制 App ID' : '复制密码', iconHtml: Icons?.copy(14) })
+      if (e.username) list.push({ key: 'copy-user', label: '复制用户名', iconHtml: Icons?.user(14) })
+      if (e.url) list.push({ key: 'copy-url', label: '复制网址/地址', iconHtml: Icons?.link(14) })
+      list.push({ key: 'copy-all', label: '复制全部（纯文本）', iconHtml: Icons?.share(14) })
+      if (e.url) list.push({ key: 'open-url', label: '在浏览器打开', iconHtml: Icons?.external(14) })
+      if (e.entryType === 'server' && sshCommand.value) list.push({ key: 'copy-ssh', label: '复制 SSH 命令', iconHtml: Icons?.terminal(14) })
+      if (e.entryType === 'database' && mysqlCommand.value) list.push({ key: 'copy-mysql', label: '复制 MySQL 命令', iconHtml: Icons?.terminal(14) })
+      list.push({ divider: true })
+      list.push({ key: 'close-detail', label: '关闭详情面板', iconHtml: Icons?.close(14) })
+      if (recycled) {
+        list.push({ key: 'restore', label: '恢复条目', iconHtml: Icons?.restore(14), accent: true })
+        list.push({ key: 'purge', label: '彻底删除', iconHtml: Icons?.trash(14), danger: true })
+      } else {
+        list.push({ key: 'soft-delete', label: '删除（移入回收站）', iconHtml: Icons?.trash(14), danger: true })
+      }
+      return list
+    }
+    case 'field': {
+      const { label, value, secret, url } = p
+      list.push({ key: 'copy-field', label: '复制 ' + (label || '字段值'), iconHtml: Icons?.copy(14), accent: true, disabled: !value })
+      if (secret) list.push({ key: 'reveal-once', label: '临时显示 5 秒', iconHtml: Icons?.eye(14) })
+      if (url) list.push({ key: 'open-url', label: '在浏览器打开', iconHtml: Icons?.external(14) })
+      return list
+    }
+    case 'cmd': {
+      list.push({ key: 'copy-field', label: '复制命令', iconHtml: Icons?.copy(14), accent: true, disabled: !p.value })
+      return list
+    }
+    case 'tag': {
+      const name = p.name
+      list.push({ key: 'filter', label: `筛选标签：${name}`, iconHtml: tagIconSvg(name), accent: true })
+      list.push({ key: 'manage', label: '管理标签（改色/改图标）', iconHtml: Icons?.palette(14) })
+      list.push({ key: 'rename-here', label: '仅为本条目改名…', iconHtml: Icons?.edit(14) })
+      list.push({ key: 'remove', label: '从该条目移除此标签', iconHtml: Icons?.close(14), danger: true })
+      return list
+    }
+    case 'related': {
+      const rel = vaultState.entries.find(x => x.id === p.id) || relatedEntries.value.find(r => r.entry?.id === p.id)?.entry
+      const title = rel?.title || '该条目'
+      list.push({ key: 'open', label: `打开「${title}」`, iconHtml: Icons?.grid(14), accent: true })
+      list.push({ key: 'open-new', label: '打开并立即编辑', iconHtml: Icons?.edit(14) })
+      list.push({ key: 'copy-pw', label: '复制其密码', iconHtml: Icons?.copy(14) })
+      if (rel?.url) list.push({ key: 'copy-url', label: '复制其网址/地址', iconHtml: Icons?.link(14) })
+      return list
+    }
+    case 'history': {
+      const snap = p.snap
+      const differ = snap && snapDiffers(e, snap)
+      list.push({ key: 'rollback', label: '回滚到此版本', iconHtml: Icons?.restore(14), accent: true, disabled: !differ })
+      list.push({ key: 'copy-pw', label: '复制当时密码', iconHtml: Icons?.copy(14) })
+      list.push({ key: 'copy-snap', label: '复制该版本完整内容', iconHtml: Icons?.share(14) })
+      return list
+    }
+    case 'note': {
+      list.push({ key: 'copy-field', label: '复制备注', iconHtml: Icons?.copy(14), accent: true })
+      list.push({ key: 'edit', label: '编辑条目（含备注）', iconHtml: Icons?.edit(14) })
+      return list
+    }
+  }
+  return list
 })
 </script>
 
@@ -136,15 +360,18 @@ const renderedNotes = computed(() => {
   <div id="detail-backdrop" @click="closeDetail()" aria-hidden="true"></div>
   <aside id="detail-panel" :class="{ open: panelOpen, animating: panelAnimating }">
     <template v-if="entry">
-      <div class="detail-header">
-        <h3 id="detail-title">{{ entry.title || '未命名' }}</h3>
+      <div
+        class="detail-header"
+        @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'title' }, { w: 280, h: 400 })"
+      >
+        <h3 id="detail-title" title="右键：条目快捷操作">{{ entry.title || '未命名' }}</h3>
         <div class="detail-header-actions">
           <button
             v-if="!isRecycleView"
             id="detail-fav-btn"
             class="btn-icon"
             :class="{ active: entry.favorite }"
-            title="收藏"
+            title="收藏（右键条目标题有更多操作）"
             :aria-label="entry.favorite ? '取消收藏' : '收藏'"
             @click="toggleFavorite(entry.id)"
           >
@@ -161,31 +388,43 @@ const renderedNotes = computed(() => {
         </div>
       </div>
 
-      <div class="detail-body">
+      <div class="detail-body" @contextmenu.prevent.stop.self="handleCtxMenu($event, { kind: 'entry' }, { w: 280, h: 400 })">
         <div class="detail-fields">
           <!-- 网站 -->
           <template v-if="(entry.entryType || 'website') === 'website'">
-            <FieldRow v-if="entry.username" label="用户名" :value="entry.username" copyable />
-            <SecretFieldRow label="密码" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id" />
-            <FieldRow v-if="entry.url" label="网址" :value="entry.url" linkable />
+            <FieldRow v-if="entry.username" label="用户名" :value="entry.username" copyable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '用户名', value: entry.username }, { w: 220, h: 120 })" />
+            <SecretFieldRow label="密码" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '密码', value: entry.password, secret: true }, { w: 240, h: 160 })" />
+            <FieldRow v-if="entry.url" label="网址" :value="entry.url" linkable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '网址', value: entry.url, url: true }, { w: 240, h: 160 })" />
           </template>
 
           <!-- 服务器 -->
           <template v-else-if="entry.entryType === 'server'">
-            <FieldRow v-if="entry.url" label="连接地址" :value="entry.url" linkable />
-            <FieldRow v-if="entry.username" label="登录账号" :value="entry.username" copyable />
-            <SecretFieldRow label="登录密码" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id" />
-            <div v-if="sshCommand" class="detail-field cmd-field">
+            <FieldRow v-if="entry.url" label="连接地址" :value="entry.url" linkable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '连接地址', value: entry.url, url: true }, { w: 240, h: 160 })" />
+            <FieldRow v-if="entry.username" label="登录账号" :value="entry.username" copyable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '登录账号', value: entry.username }, { w: 220, h: 120 })" />
+            <SecretFieldRow label="登录密码" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '登录密码', value: entry.password, secret: true }, { w: 240, h: 160 })" />
+            <div
+              v-if="sshCommand"
+              class="detail-field cmd-field"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'cmd', label: 'SSH 命令', value: sshCommand }, { w: 200, h: 110 })"
+            >
               <div class="detail-field-label">连接命令</div>
               <div class="detail-field-value cmd-value">
                 <code class="cmd-text">{{ sshCommand }}</code>
-                <button class="btn-icon" title="复制命令" aria-label="复制命令" @click="copyField(sshCommand, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon" title="复制命令" aria-label="复制命令" @click="copyField(sshCommand, $event.currentTarget)"><span v-html="Icons.copy(14)"></span></button>
               </div>
             </div>
             <template v-if="entry.root && (entry.root.username || entry.root.password)">
               <div class="detail-section-divider"><span>root</span></div>
-              <FieldRow v-if="entry.root.username" label="root 账号" :value="entry.root.username" copyable />
-              <SecretFieldRow label="root 密码" :value="entry.root.password" :show="showPw" copy-mode="value" />
+              <FieldRow v-if="entry.root.username" label="root 账号" :value="entry.root.username" copyable
+                @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: 'root 账号', value: entry.root.username }, { w: 220, h: 120 })" />
+              <SecretFieldRow label="root 密码" :value="entry.root.password" :show="showPw" copy-mode="value"
+                @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: 'root 密码', value: entry.root.password, secret: true }, { w: 240, h: 160 })" />
             </template>
           </template>
 
@@ -197,56 +436,87 @@ const renderedNotes = computed(() => {
               :value="entry.url"
               linkable
               :display-suffix="entry.port ? ':' + entry.port : ''"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '数据库地址', value: entry.url, url: true }, { w: 240, h: 160 })"
             />
-            <FieldRow v-if="entry.username" label="用户名" :value="entry.username" copyable />
-            <SecretFieldRow label="密码" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id" />
-            <div v-if="mysqlCommand" class="detail-field cmd-field">
+            <FieldRow v-if="entry.username" label="用户名" :value="entry.username" copyable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '用户名', value: entry.username }, { w: 220, h: 120 })" />
+            <SecretFieldRow label="密码" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '密码', value: entry.password, secret: true }, { w: 240, h: 160 })" />
+            <div
+              v-if="mysqlCommand"
+              class="detail-field cmd-field"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'cmd', label: 'MySQL 命令', value: mysqlCommand }, { w: 200, h: 110 })"
+            >
               <div class="detail-field-label">连接命令</div>
               <div class="detail-field-value cmd-value">
                 <code class="cmd-text">{{ mysqlCommand }}</code>
-                <button class="btn-icon" title="复制命令" aria-label="复制命令" @click="copyField(mysqlCommand, $event.currentTarget)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                <button class="btn-icon" title="复制命令" aria-label="复制命令" @click="copyField(mysqlCommand, $event.currentTarget)"><span v-html="Icons.copy(14)"></span></button>
               </div>
             </div>
           </template>
 
           <!-- AI -->
           <template v-else-if="entry.entryType === 'ai'">
-            <FieldRow v-if="entry.username" label="服务名称" :value="entry.username" copyable push-right />
-            <FieldRow v-if="entry.url" label="API 地址" :value="entry.url" linkable />
-            <SecretFieldRow v-if="entry.password" label="Token" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id" />
+            <FieldRow v-if="entry.username" label="服务名称" :value="entry.username" copyable push-right
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '服务名称', value: entry.username }, { w: 220, h: 120 })" />
+            <FieldRow v-if="entry.url" label="API 地址" :value="entry.url" linkable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: 'API 地址', value: entry.url, url: true }, { w: 240, h: 160 })" />
+            <SecretFieldRow v-if="entry.password" label="Token" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: 'Token', value: entry.password, secret: true }, { w: 240, h: 160 })" />
           </template>
 
           <!-- 应用 -->
           <template v-else-if="entry.entryType === 'app'">
-            <FieldRow v-if="entry.appId" label="App ID" :value="entry.appId" copyable />
-            <SecretFieldRow label="公钥" :value="entry.password" :show="showPw" copy-mode="value" />
-            <SecretFieldRow v-if="entry.privateKey" label="私钥" :value="entry.privateKey" :show="showPw" copy-mode="value" />
+            <FieldRow v-if="entry.appId" label="App ID" :value="entry.appId" copyable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: 'App ID', value: entry.appId }, { w: 220, h: 120 })" />
+            <SecretFieldRow label="公钥" :value="entry.password" :show="showPw" copy-mode="value"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '公钥', value: entry.password, secret: true }, { w: 240, h: 160 })" />
+            <SecretFieldRow v-if="entry.privateKey" label="私钥" :value="entry.privateKey" :show="showPw" copy-mode="value"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '私钥', value: entry.privateKey, secret: true }, { w: 240, h: 160 })" />
           </template>
 
           <!-- 其他 -->
           <template v-else>
-            <FieldRow v-if="entry.username" label="凭证名称" :value="entry.username" copyable />
-            <SecretFieldRow label="凭证值" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id" />
+            <FieldRow v-if="entry.username" label="凭证名称" :value="entry.username" copyable
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '凭证名称', value: entry.username }, { w: 220, h: 120 })" />
+            <SecretFieldRow label="凭证值" :value="entry.password" :show="showPw" copy-mode="entry" :entry-id="entry.id"
+              @contextmenu.prevent.stop.native="handleCtxMenu($event, { kind: 'field', label: '凭证值', value: entry.password, secret: true }, { w: 240, h: 160 })" />
           </template>
         </div>
 
         <div v-if="entry.tags && entry.tags.length" class="detail-field">
           <div class="detail-field-label">标签</div>
           <div class="detail-field-value tag-list">
-            <span v-for="t in entry.tags" :key="t" class="tag-chip" :style="tagStyle(t)">{{ t }}</span>
+            <span
+              v-for="t in entry.tags"
+              :key="t"
+              class="tag-chip"
+              :style="tagStyle(t)"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag', name: t }, { w: 280, h: 200 })"
+              :title="t + '（右键更多操作）'"
+            >{{ t }}</span>
           </div>
         </div>
 
-        <div v-if="entry.notes" class="detail-field">
+        <div
+          v-if="entry.notes"
+          class="detail-field"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'note' }, { w: 240, h: 130 })"
+        >
           <div class="detail-field-label">备注</div>
           <div class="detail-field-value markdown-body" v-html="renderedNotes"></div>
         </div>
 
-        <!-- 修改历史（任意字段变更均记录，默认保留最近 5 版；不参与导入导出） -->
+        <!-- 修改历史 -->
         <div v-if="!isRecycleView && historyList.length" class="detail-field history-section">
           <div class="detail-field-label">修改历史（{{ historyList.length }}）</div>
           <div class="history-list">
-            <div v-for="snap in historyList" :key="snap.at" class="history-item">
+            <div
+              v-for="snap in historyList"
+              :key="snap.at"
+              class="history-item"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'history', snap }, { w: 260, h: 170 })"
+            >
               <div class="history-meta">
                 <span class="history-time">{{ formatDateTime(snap.at) }}</span>
                 <span class="history-pw mono">{{ historyPw(snap) }}</span>
@@ -261,7 +531,7 @@ const renderedNotes = computed(() => {
           </div>
         </div>
 
-        <!-- 关联密码（同 IP / 同域名 / 同账号） -->
+        <!-- 关联密码 -->
         <div v-if="relatedEntries.length" class="detail-field related-section">
           <div class="detail-field-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -277,8 +547,9 @@ const renderedNotes = computed(() => {
               :aria-label="`查看关联密码 ${item.entry.title}`"
               @click="selectRelated(item.entry.id)"
               @keydown.enter="selectRelated(item.entry.id)"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'related', id: item.entry.id, title: item.entry.title }, { w: 260, h: 180 })"
             >
-              <div class="entry-icon" v-html="relatedTypeIcon(item.entry.type)"></div>
+              <div class="entry-icon" v-html="relatedTypeIcon(item.entry.entryType)"></div>
               <div class="entry-info">
                 <div class="entry-title">{{ item.entry.title }}</div>
                 <div class="entry-meta">
@@ -300,7 +571,6 @@ const renderedNotes = computed(() => {
         </div>
       </div>
 
-        <div id="clipboard-note" class="clipboard-note mt-1 hidden"></div>
       <div class="detail-footer">
         <template v-if="isRecycleView">
           <button class="btn btn-secondary flex-1" @click="restoreEntry(entry.id)">
@@ -337,5 +607,8 @@ const renderedNotes = computed(() => {
         </template>
       </div>
     </template>
+
+    <!-- 详情面板统一右键菜单（Teleport 到 body，避免被 aside overflow 裁切） -->
+    <CtxMenu :menu="ctxMenu" :items="detailCtxItems" aria-label="详情快捷操作" @action="onCtxAction" />
   </aside>
 </template>

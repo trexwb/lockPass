@@ -2,6 +2,22 @@
 
 本文件记录 LockPass 各版本的变更内容。版本号遵循语义化版本（Semantic Versioning）。
 
+## v1.0.29 (2026-08-29)
+
+> 复制成功反馈重构：统一为右下角倒计时胶囊组件。v1.0.26 ~ v1.0.28 为本功能多轮构建的迭代中间版本，无独立发布内容，统一收敛至 v1.0.29。
+
+### 复制反馈改进
+
+- **新增 `CopyCountdownPill.vue` 倒计时胶囊组件**：合并原「Toast + 浮动提示」双路反馈为单一胶囊，由 `vaultState.clipboardCountdown` 响应式状态驱动，彻底移除 `useVault.js` 中 `createElement` / `appendChild` / `innerHTML` 跨层 DOM 操控
+- **右下角定位**（桌面 >480px）：`right/bottom: 24px + 安全区`，符合密码管理器惯例，不遮挡中央内容；移动端 ≤480px 改为底部全宽
+- **底边进度条**：宽度 100% → 0% 每秒递减，颜色随紧迫度渐变（绿 → ≤10s 琥珀 → ≤5s 红）
+- **倒计时秒数着色**：`tabular-nums` 等宽数字 + 随紧迫度变色，直观感知剩余时间
+- **手动关闭 + 自动消失**：× 按钮可提前关闭，剪贴板清除后自动淡出
+- **Teleport 到 body**：脱离 `#app-shell` 的 `overflow:hidden`，`position:fixed` 稳定相对视口
+- **入场动画 `pill-pop-in`**：上移 + 缩放 + 成功色辉光扩散，成功反馈更有质感
+- 保留：卡片复制按钮高亮 `.copied` + 屏幕阅读器 `srAnnounce`；新增 `--z-float-tip: 350`（盖 toast 300、低于 confirm 400）
+- 清理：移除旧版 `.copy-float-tip` 全部样式（约 120 行）及 `DetailPanel.vue` 的 `#clipboard-note` DOM、`entries.css` 的 `.clipboard-note` 样式
+
 ## v1.0.25 (2026-08-29)
 
 > 设计审计修复：可访问性 / UX / 视觉一致性 / 功能增强，覆盖 P0-P3 共 18 项。
