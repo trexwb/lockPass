@@ -16,20 +16,47 @@
   color: var(--text-secondary);
   font-size: 0.8rem;
   cursor: pointer;
-  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.type-tab::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent-dim);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-fast) var(--ease-out-quart);
+  opacity: 0;
 }
 .type-tab:hover {
   border-color: var(--accent);
   color: var(--accent);
-  background: var(--accent-dim);
+  transform: translateY(-1px);
+}
+.type-tab:hover::before {
+  transform: scaleX(1);
+  opacity: 1;
+}
+.type-tab:active {
+  transform: translateY(0) scale(0.97);
 }
 .type-tab.active {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-dim);
   font-weight: 500;
+  box-shadow: 0 0 0 1px var(--accent-dim), 0 2px 6px var(--accent-glow);
+  animation: ring-pop var(--dur-med) var(--ease-out-quart);
 }
-.type-tab-icon { display: flex; align-items: center; }
+.type-tab-icon { display: flex; align-items: center; transition: transform var(--dur-fast) var(--ease-out-quart); }
+.type-tab:hover .type-tab-icon { transform: scale(1.15) rotate(-8deg); }
+.type-tab.active .type-tab-icon { transform: scale(1.1) rotate(0deg); }
 
 /* ── 多密码行布局 ──────────────────────────────────────── */
 .input-row {
@@ -77,6 +104,12 @@
   font-size: 0.82rem;
   line-height: 1.5;
   padding-right: 36px;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+}
+.mono-textarea:focus {
+  background: var(--bg-secondary);
 }
 .mono-textarea::-webkit-scrollbar {
   height: 4px;
@@ -84,6 +117,10 @@
 .mono-textarea::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 2px;
+  transition: background var(--dur-fast);
+}
+.mono-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
 }
 
 /* Forms */
@@ -246,7 +283,25 @@ textarea.notes-textarea {
 .markdown-body strong { font-weight: 600; }
 .markdown-body em { font-style: italic; }
 
-select.form-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+select.form-input {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              background-color var(--dur-fast) var(--ease-out-quart),
+              background-position-y var(--dur-fast) var(--ease-out-quart);
+}
+select.form-input:hover {
+  border-color: var(--accent);
+  background-position-y: calc(50% + 1px);
+}
+select.form-input:focus {
+  background-position-y: calc(50% + 2px);
+}
 
 /* Password strength bar */
 .pw-strength { margin-top: 8px; }
@@ -255,9 +310,27 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
   background: var(--bg-primary);
   border-radius: 2px;
   overflow: hidden;
+  transition: transform var(--dur-micro);
 }
-.pw-strength-bar { height: 100%; border-radius: 2px; transition: width 0.3s ease, background 0.3s ease; }
-.pw-strength-text { font-size: 0.86rem; margin-top: 4px; color: var(--text-muted); }
+.pw-strength-bar {
+  height: 100%;
+  border-radius: 2px;
+  transform-origin: left center;
+  transition: width var(--dur-med) var(--ease-out-quart), background var(--dur-med) var(--ease-out-quart), box-shadow var(--dur-fast) var(--ease-out-quart);
+  animation: progress-fill-in var(--dur-med) var(--ease-out-quart) both;
+}
+.pw-strength-bar:not([style*="width: 0%"]) {
+  box-shadow: 0 0 4px currentColor;
+}
+.pw-strength-text {
+  font-size: 0.86rem;
+  margin-top: 4px;
+  color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease-out-quart), transform var(--dur-micro);
+}
+.pw-strength-text.just-updated {
+  animation: number-pop var(--dur-fast) var(--ease-out-quart);
+}
 
 /* Password generator panel */
 .pw-gen-panel {
@@ -266,6 +339,13 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
   border-radius: var(--radius-md);
   padding: 14px;
   margin-top: 10px;
+  /* 展开入场：从顶部下拉 + 淡入（JS 控制 visible 时自动播放一次） */
+  transform-origin: top center;
+  animation: panel-drop var(--dur-med) var(--ease-out-quart) both;
+}
+@keyframes panel-drop {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.96); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 .pw-gen-preview {
   font-family: var(--font-mono);
@@ -280,13 +360,91 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+  position: relative;
+  overflow: hidden;
+}
+/* 新密码生成时的"扫光"效果（JS 切换 .just-generated 触发一次） */
+.pw-gen-preview::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--accent-glow) 50%, transparent 100%);
+  transform: translateX(-100%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+.pw-gen-preview.just-generated::after {
+  animation: gen-sweep var(--dur-med) var(--ease-out-quart) both;
+}
+@keyframes gen-sweep {
+  0%   { transform: translateX(-100%); opacity: 0.7; }
+  100% { transform: translateX(100%);  opacity: 0; }
+}
+.pw-gen-preview:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+  background: var(--bg-secondary);
 }
 .pw-gen-preview-text { flex: 1; word-break: break-all; }
 .pw-gen-controls { display: flex; flex-direction: column; gap: 10px; }
 .pw-gen-row { display: flex; align-items: center; gap: 12px; }
-.pw-gen-row label { font-size: 0.86rem; color: var(--text-muted); min-width: 120px; }
-.pw-gen-row input[type=range] { flex: 1; accent-color: var(--accent); }
-.pw-gen-row span { font-family: var(--font-mono); font-size: 0.86rem; min-width: 28px; text-align: right; color: var(--accent); }
+.pw-gen-row label { font-size: 0.86rem; color: var(--text-muted); min-width: 120px; transition: color var(--dur-fast); }
+.pw-gen-row:hover label { color: var(--text-primary); }
+.pw-gen-row input[type=range] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 4px;
+  transition: transform var(--dur-micro), filter var(--dur-fast);
+  filter: saturate(1);
+}
+.pw-gen-row input[type=range]:hover { transform: scaleY(1.1); filter: saturate(1.15); }
+.pw-gen-row input[type=range]:active { transform: scaleY(0.95); }
+.pw-gen-row span {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  min-width: 28px;
+  text-align: right;
+  color: var(--accent);
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+  font-variant-numeric: tabular-nums;
+}
+.pw-gen-row:hover span { transform: scale(1.08); }
+.pw-gen-row span.just-changed {
+  animation: number-pop var(--dur-fast) var(--ease-out-quart);
+}
+/* 端口输入框：聚焦时轻微发光 + 数字弹 */
+.input-row .form-input.input-port {
+  width: 90px;
+  flex: none;
+  flex-shrink: 0;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.input-row .form-input.input-port:focus {
+  transform: translateY(-1px);
+  border-color: var(--type-server);
+  box-shadow: 0 0 0 3px rgba(16,185,129,0.14);
+}
+/* 说明/表单标签 悬浮时强调 */
+.form-group:hover .form-label {
+  color: var(--text-primary);
+}
+.form-label {
+  transition: color var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.form-group:focus-within .form-label {
+  transform: translateX(1px);
+  color: var(--accent);
+}
 .pw-gen-charsets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .charset-label {
   display: flex;
@@ -295,5 +453,31 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
   font-size: 0.86rem;
   color: var(--text-muted);
   cursor: pointer;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
 }
-.charset-label input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; }
+.charset-label:hover {
+  transform: translateX(2px);
+  border-color: var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.charset-label input[type=checkbox] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.charset-label input[type=checkbox]:hover {
+  transform: scale(1.15);
+}
+.charset-label input[type=checkbox]:checked {
+  animation: toggle-pop var(--dur-fast) var(--ease-out-quart);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}

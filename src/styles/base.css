@@ -60,6 +60,19 @@
   --header-h:   56px;
   --transition: 0.2s ease;
 
+  /* ── 动效令牌（UICraft motion-design）───────────────────────
+     统一 durations 与 easings，避免散布的硬编码动画值漂移。
+     100/300/500 规则：微反馈 / 状态变化 / 入场。 */
+  --ease-out-quart:  cubic-bezier(0.25, 1, 0.5, 1);     /* 均衡精致，默认首选 */
+  --ease-out-quint:  cubic-bezier(0.22, 1, 0.36, 1);    /* 略带戏剧性 */
+  --ease-out-expo:   cubic-bezier(0.16, 1, 0.3, 1);     /* 果断自信，入场用 */
+  --ease-in-quart:   cubic-bezier(0.7, 0, 0.84, 0);     /* 离场用 */
+  --dur-micro:   120ms;   /* 微反馈：按钮按下、toggle */
+  --dur-fast:    220ms;   /* 状态变化：hover、tooltip */
+  --dur-med:     360ms;   /* 布局变化：模态、抽屉 */
+  --dur-slow:    560ms;   /* 入场：页面、hero */
+  --dur-slower:  720ms;   /* hero 编舞收尾 */
+
   /* 层级（z-index）统一管理 */
   --z-bg: 0;                 /* 背景粒子层 */
   --z-content: 1;            /* 内容层（相对装饰背景提升一层） */
@@ -69,9 +82,9 @@
   --z-detail-fullscreen: 300;/* 详情面板（移动端全屏） */
   --z-dropdown: 300;         /* 下拉菜单 */
   --z-toast: 300;            /* Toast 通知 */
+  --z-float-tip: 350;        /* 瞬时浮动提示（复制倒计时胶囊），盖 toast 但低于 confirm */
   --z-confirm: 400;          /* 确认弹窗（盖过 modal / detail） */
   --z-banner: 900;           /* 顶部提醒横幅 */
-  --z-float-tip: 99999;       /* 复制成功浮动提示（瞬时元素，盖过一切层） */
 
   /* 粒子背景 RGB 三元组（canvas 用，随主题切换） */
   --particle-link: 88,166,255;
@@ -168,7 +181,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Utility ───────────────────────────────────────────────── */
 .hidden { display: none !important; }
-.fade-in { animation: fadeIn 0.3s ease forwards; }
+.fade-in { animation: fadeIn var(--dur-fast) var(--ease-out-quart) both; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes shake {
   0%,100% { transform: translateX(0); }
@@ -177,7 +190,7 @@ a:hover { text-decoration: underline; }
   60%      { transform: translateX(-6px); }
   80%      { transform: translateX(6px); }
 }
-.shake { animation: shake 0.4s ease; }
+.shake { animation: shake var(--dur-med) var(--ease-in-quart); }
 @keyframes pulse-green {
   0%   { box-shadow: 0 0 0 0 rgba(63,185,80,0.6); }
   70%  { box-shadow: 0 0 0 8px rgba(63,185,80,0); }
@@ -190,8 +203,468 @@ a:hover { text-decoration: underline; }
   100% { transform: rotate(0deg); }
 }
 
+/* ── 科技感动效（UICraft animate/motion-design）────────────────── */
+/* Hero 扫描脉冲：解锁成功 / 主界面进场时的光带扫过 */
+@keyframes hero-scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  20%  { opacity: 0.85; }
+  100% { transform: translateY(240%); opacity: 0; }
+}
+/* 列表入场编舞：渐次上浮 + 淡入 */
+@keyframes list-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* 复制成功：脉冲环 + 扫描扩散 */
+@keyframes copy-burst {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+  60%  { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+/* 收藏星标：旋转 + 弹跳 */
+@keyframes fav-pop {
+  0%   { transform: scale(1) rotate(0deg); }
+  40%  { transform: scale(1.35) rotate(72deg); }
+  70%  { transform: scale(0.9) rotate(144deg); }
+  100% { transform: scale(1) rotate(180deg); }
+}
+/* Toast 进场：右下角滑入 + 微弹性 */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(40px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+/* Toast 顶部进度条倒计时 */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+/* 模态入场：透视缩放 + 上浮 */
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 危险按钮微脉冲 */
+@keyframes danger-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--danger-dim); }
+  50%      { box-shadow: 0 0 0 4px transparent; }
+}
+/* 强调色辉光呼吸 */
+@keyframes accent-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+/* 浮动呼吸（用于 FAB、空状态插画） */
+@keyframes float-breath {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+/* 旋转 360°（密码生成器刷新按钮） */
+@keyframes spin-360 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+/* 上下文菜单/下拉菜单 弹出 */
+@keyframes menu-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 成功复选框"打勾"弹跳（配合 Toast/Confirm success） */
+@keyframes check-pop {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+/* 图标微摆动（hover 时） */
+@keyframes icon-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25%      { transform: rotate(-6deg); }
+  75%      { transform: rotate(6deg); }
+}
+/* 输入聚焦辉光：聚焦时边框外扩 + 背景微弹 */
+@keyframes input-pulse {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+  60%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+/* 字段行入场：淡入 + 横向轻微位移（详情面板内容切换） */
+@keyframes field-row-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* 开关滑块"啪"一声：勾选瞬间的弹跳 */
+@keyframes toggle-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+/* 色板选中的环闪扩散 */
+@keyframes ring-pop {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow); transform: scale(1); }
+  50%  { box-shadow: 0 0 0 6px var(--accent-glow); transform: scale(1.05); }
+  100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
+}
+/* 数据卡片入场：轻微上浮 + 淡入（编舞延迟） */
+@keyframes card-float-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* 标签 chip 选中弹跳：多选标签激活时 */
+@keyframes chip-bounce {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.9) rotate(-2deg); }
+  70%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+/* 危险操作按钮的持续呼吸：销毁 / 清空回收站等 */
+@keyframes danger-breathing {
+  0%, 100% { box-shadow: 0 0 0 0 var(--danger-dim); }
+  50%      { box-shadow: 0 0 0 4px transparent; }
+}
+/* 遮罩淡入（modal-overlay / detail-backdrop） */
+@keyframes overlay-fade {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to   { opacity: 1; backdrop-filter: blur(4px); }
+}
+/* 抽屉滑入（sidebar / detail / mobile bottom sheet） */
+@keyframes drawer-slide-left {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes drawer-slide-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes drawer-slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+/* 输入错误：横向抖动 + 微脉冲 */
+@keyframes input-error-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-4px); box-shadow: 0 0 0 3px var(--danger-dim); }
+  40%      { transform: translateX(4px); }
+  60%      { transform: translateX(-3px); }
+  80%      { transform: translateX(3px); }
+}
+/* 警示卡呼吸（lock-warning / confirm warning 顶部条） */
+@keyframes warning-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--warning-dim); }
+  50%      { box-shadow: 0 0 0 5px transparent; }
+}
+/* Chip/Tag 移除微缩（点击 × 触发单次） */
+@keyframes chip-collapse {
+  from { opacity: 1; transform: scale(1); max-width: 200px; padding-left: 10px; padding-right: 10px; }
+  to   { opacity: 0; transform: scale(0.6); max-width: 0;   padding-left: 0;    padding-right: 0;    }
+}
+/* 列表条目离场（删除→回收站） */
+@keyframes row-leave-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-40px) rotate(-2deg); }
+}
+/* 空状态 feature chip 入场编舞 */
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 进度条填充：从 0→value 首次渲染带微弹 */
+@keyframes progress-fill-in {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+/* Spinner 加载中（已用 spin，再提供一版"追光"双环） */
+@keyframes spinner-track {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+/* 复制/粘贴 成功"对勾"闪 */
+@keyframes check-flash {
+  0%   { color: var(--text-muted); transform: scale(1); }
+  40%  { color: var(--success);   transform: scale(1.15); }
+  100% { color: var(--success);   transform: scale(1); }
+}
+/* 汉堡菜单旋转打开（三条→×） */
+@keyframes hamburger-open {
+  from { transform: rotate(0); }
+  to   { transform: rotate(180deg); }
+}
+/* Toast 离场：反向滑出 */
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(30px) scale(0.97); }
+}
+/* 警示横幅进场 */
+@keyframes banner-slide-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* 细节分隔线"生长"入场：detail-section-divider */
+@keyframes divider-grow {
+  from { opacity: 0; }
+  50%  { opacity: 1; }
+  to   { opacity: 1; }
+}
+/* 推荐 Banner 进场（data-info-recommend） */
+@keyframes banner-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* Tag 编辑删除 X 按钮 hover：旋开 */
+@keyframes x-rotate {
+  from { transform: rotate(0); }
+  to   { transform: rotate(90deg); }
+}
+/* 搜索聚焦：图标轻跳 + 色变 */
+@keyframes search-pop {
+  0%   { transform: translateY(-50%) scale(1); }
+  50%  { transform: translateY(-58%) scale(1.12); }
+  100% { transform: translateY(-50%) scale(1); }
+}
+/* 细节 footer 进场：sticky 底部吸附时的渐显 */
+@keyframes footer-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* 密码长度数字：值变化时弹跳 */
+@keyframes number-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.2); color: var(--accent); }
+  100% { transform: scale(1); }
+}
+/* 导入预览卡片：读取完成的"扫光"确认 */
+@keyframes preview-sweep {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  50%  { opacity: 0.5; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+/* ── 通用微反馈类（跨组件复用） ─────────────────────────────── */
+/* 所有 .btn-icon：hover 放大 + focus 边框 */
+.btn-icon {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.btn-icon:hover { transform: scale(1.08); }
+.btn-icon:active { transform: scale(0.92); }
+.btn-icon:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+/* 内联 SVG 图标 hover 时 微摆动 */
+.btn-icon:hover svg,
+.nav-item:hover svg,
+.pw-gen-btn:hover svg,
+.ctx-item:hover svg,
+.settings-row:hover svg,
+.tag-manage-row:hover svg,
+.export-option:hover svg {
+  animation: icon-wiggle var(--dur-med) var(--ease-out-quart);
+}
+
+/* 输入框通用：聚焦微弹 + 辉光脉冲一次 */
+.form-input,
+#header .header-search input,
+.input-group input {
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.form-input:focus,
+#header .header-search input:focus,
+.input-group input:focus {
+  transform: translateY(-1px);
+  animation: input-pulse var(--dur-med) var(--ease-out-quart);
+}
+/* 输入框错误态：密码错误 / 主密码确认不一致时抖一下（JS 加 .error 触发单次） */
+.form-input.error,
+.input-group input.error {
+  animation: input-error-shake var(--dur-med) var(--ease-out-quart);
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px var(--danger-dim) !important;
+}
+/* 多行 textarea 聚焦：不加 translateY，避免光跳 */
+textarea.form-input:focus {
+  transform: none;
+}
+
+/* 搜索图标：focus-within 触发一次"找一找"弹跳 */
+#header .header-search:focus-within .search-icon {
+  animation: search-pop var(--dur-med) var(--ease-out-quart);
+  color: var(--accent);
+}
+
+/* 密码"眼"按钮：hover 放大 + 按下缩放，更有反馈感 */
+.toggle-pw {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+}
+.toggle-pw:hover {
+  transform: translateY(-50%) scale(1.1);
+}
+.toggle-pw:active {
+  transform: translateY(-50%) scale(0.92);
+}
+.toggle-pw.open svg {
+  animation: check-flash var(--dur-fast) var(--ease-out-quart);
+  color: var(--accent);
+}
+
+/* 搜索清除按钮：空输入态隐藏 → 出现时微放大 */
+#header .header-search .search-clear-btn {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              opacity var(--dur-fast) var(--ease-out-quart);
+}
+#header .header-search .search-clear-btn:hover {
+  transform: translateY(-50%) scale(1.08);
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+#header .header-search .search-clear-btn:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+/* 密码生成器按钮："生成"图标点击时自旋 */
+.pw-gen-btn {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+}
+.pw-gen-btn:active {
+  transform: scale(0.88);
+}
+/* 生成器按钮 SVG：点击旋转一整圈（通过 JS toggle class 触发单次）
+   基础 hover 已让所有 pw-gen-btn svg 参与 icon-wiggle */
+
+/* kbd 快捷键提示：轻微按下感 */
+kbd {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+.shortcut-table tbody tr:hover kbd {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.shortcut-table tbody tr {
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.shortcut-table tbody tr:active {
+  transform: scale(0.995);
+}
+
+/* 标签 chip 通用 hover：微放大 */
+.tag-chip {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+  animation: chip-in var(--dur-fast) var(--ease-out-quart) both;
+  animation-delay: calc(var(--tc, 0) * 40ms);
+}
+.tag-chip:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: var(--shadow-sm);
+}
+/* Tag/Chip × 删除按钮：悬停旋 90° 提示"可移除" */
+.tag-chip-x,
+.selected-tag .remove-tag,
+.selected-tag .remove-tag svg {
+  transition: transform var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+}
+.tag-chip-x:hover {
+  animation: x-rotate var(--dur-fast) var(--ease-out-quart) forwards;
+  color: var(--danger);
+}
+.tag-chip.removing {
+  animation: chip-collapse var(--dur-fast) var(--ease-in-quart) forwards;
+  overflow: hidden;
+  border-width: 0;
+  margin: 0;
+}
+
+/* 警示框通用（lock-warning / data-info-arch.warn 等） */
+.lock-warning {
+  transition: transform var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+  animation: banner-pop var(--dur-med) var(--ease-out-quart) both;
+}
+.lock-warning:hover {
+  transform: translateY(-1px);
+  animation: warning-pulse 1.4s var(--ease-out-quart) infinite;
+}
+
+/* selected-tag（tag selector 里的选中 chip）：入场 + 删除按钮 */
+.selected-tag {
+  animation: chip-in var(--dur-fast) var(--ease-out-quart) both;
+}
+.selected-tag .remove-tag:hover {
+  color: var(--text-on-accent);
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 50%;
+  animation: x-rotate var(--dur-fast) var(--ease-out-quart) forwards;
+}
+
+/* modal-footer / detail-footer 入场：sticky 底部吸附时微上弹 */
+.modal-footer,
+.detail-footer {
+  animation: footer-rise var(--dur-med) var(--ease-out-quart) both;
+}
+
+/* hamburger-btn 打开/关闭：图标轻微旋转 + 背景反馈 */
+.hamburger-btn.btn-icon:hover svg {
+  animation: hamburger-open var(--dur-fast) var(--ease-out-quart);
+}
+
+/* 通用 toast-action：按下有缩放 */
+.toast-action {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+.toast-action:active {
+  transform: scale(0.94);
+}
+
+/* 通用 Tag 类（tag-info / tag-ok 等）：入场弹跳 */
+.tag.tag-info,
+.tag.tag-ok,
+.tag.tag-warning,
+.tag.tag-muted {
+  animation: chip-in var(--dur-fast) var(--ease-out-quart) both;
+}
+
+/* 推荐/说明 横幅：呼吸式推荐感 */
+.data-info-recommend {
+  animation: banner-pop var(--dur-med) var(--ease-out-quart) both,
+             accent-breathe 2.8s var(--ease-out-quart) infinite;
+}
+
+/* ── prefers-reduced-motion：可访问性守护 ──────────────────
+   约 35% 的 40 岁以上人群有前庭功能敏感；动效必须可关闭。
+   信息型动画（进度条/spinner）保留但放慢，位移型动效关闭。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* 主界面外壳（UI 由 js/template.js 动态渲染到 #app 内） */
-#app-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#app-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; overflow: hidden; }
 
 /* ── 横幅与 header 不重叠 ──────────────────────────────────
    #lp-bind-banner 为 position:fixed;top:0，会覆盖 sticky header。
@@ -226,17 +699,27 @@ body:has(#lp-bind-banner) #app {
   font-size: 1.0rem;
   font-weight: 500;
   cursor: pointer;
-  transition: var(--transition);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
   border: none;
   font-family: var(--font-ui);
   white-space: nowrap;
+  position: relative;
+  overflow: hidden;
 }
+/* 按钮按下涟漪：active 时 transform 快速回弹，提供即时反馈 */
+.btn:active { transform: scale(0.97); }
 .btn-primary {
   background: var(--accent);
   color: var(--text-on-accent);
 }
-.btn-primary:hover { background: var(--accent-hover); box-shadow: 0 0 0 3px var(--accent-dim); }
-.btn-primary:active { transform: scale(0.98); }
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 4px 16px var(--accent-glow);
+}
+.btn-primary:active { transform: scale(0.97); }
 .btn-secondary {
   background: var(--bg-tertiary);
   color: var(--text-primary);
@@ -244,7 +727,7 @@ body:has(#lp-bind-banner) #app {
 }
 .btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-faint); }
 .btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger-border); }
-.btn-danger:hover { background: rgba(248,81,73,0.25); }
+.btn-danger:hover { background: rgba(248,81,73,0.25); box-shadow: 0 0 0 3px var(--danger-dim); }
 .btn-ghost { background: none; color: var(--text-muted); }
 .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 .btn-icon {

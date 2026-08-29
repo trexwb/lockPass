@@ -16,9 +16,7 @@ const showOldPw = ref(false)
 const showNewPw = ref(false)
 const showConfirmPw = ref(false)
 
-const eyeOpen = window.Utils?.SvgIcons?.eyeOpenPaths || ''
-const eyeClosed = window.Utils?.SvgIcons?.eyeClosedPaths || ''
-// P3-4：图标统一走 Utils.SvgIcons
+// P3-4 / N4：图标统一走 Utils.SvgIcons（移除内联 SVG 与 eyeOpenPaths/eyeClosedPaths 拼接）
 const Icons = window.Utils.SvgIcons
 
 function showError(msg) {
@@ -99,13 +97,9 @@ async function changePassword() {
       </button>
     </div>
     <div class="modal-body">
-      <div class="lock-warning" role="alert" style="margin-bottom: 12px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px;">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-        <span class="text-sm">此操作不可撤销：修改后需使用新密码解锁，请确保牢记新密码。</span>
+      <div class="lock-warning" role="alert">
+        <span class="lock-warning-icon" v-html="Icons.alert(14)"></span>
+        <span class="text-sm">此操作不可撤销：修改后需使用新密码解锁，如遗忘新主密码，将无法恢复保险箱内任何数据。请确保牢记新密码。</span>
       </div>
       <div class="form-group">
         <label class="form-label">当前主密码</label>
@@ -113,7 +107,7 @@ async function changePassword() {
           <input v-model="oldPw" class="form-input" :type="showOldPw ? 'text' : 'password'" placeholder="输入当前主密码" autocomplete="off" />
           <div class="input-affix-btns">
             <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="showOldPw = !showOldPw">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showOldPw ? eyeClosed : eyeOpen"></svg>
+              <span v-html="showOldPw ? Icons.eyeClosed(15) : Icons.eyeOpen(15)"></span>
             </button>
           </div>
         </div>
@@ -124,7 +118,7 @@ async function changePassword() {
           <input v-model="newPw" class="form-input" :type="showNewPw ? 'text' : 'password'" placeholder="至少 8 位" autocomplete="off" />
           <div class="input-affix-btns">
             <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="showNewPw = !showNewPw">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showNewPw ? eyeClosed : eyeOpen"></svg>
+              <span v-html="showNewPw ? Icons.eyeClosed(15) : Icons.eyeOpen(15)"></span>
             </button>
           </div>
         </div>
@@ -135,7 +129,7 @@ async function changePassword() {
           <input v-model="confirmPw" class="form-input" :type="showConfirmPw ? 'text' : 'password'" placeholder="再次输入新密码" autocomplete="off" />
           <div class="input-affix-btns">
             <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="showConfirmPw = !showConfirmPw">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showConfirmPw ? eyeClosed : eyeOpen"></svg>
+              <span v-html="showConfirmPw ? Icons.eyeClosed(15) : Icons.eyeOpen(15)"></span>
             </button>
           </div>
         </div>

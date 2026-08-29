@@ -86,42 +86,43 @@ function generatePassword(options = {}) {
  */
 function calcStrength(password) {
   if (!password) {
-    return { entropy: 0, label: '未输入', color: '#8b949e', pct: 0 };
+    // N7：颜色走设计令牌，与主题切换联动（内联 style 支持 var()）
+    return { entropy: 0, label: '未输入', color: 'var(--text-muted)', pct: 0 };
   }
-  
+
   // 计算字符集大小
   let charsetSize = 0;
   if (/[a-z]/.test(password)) charsetSize += 26;
   if (/[A-Z]/.test(password)) charsetSize += 26;
   if (/[0-9]/.test(password)) charsetSize += 10;
   if (/[^a-zA-Z0-9]/.test(password)) charsetSize += 32;
-  
+
   if (charsetSize === 0) charsetSize = 26;
-  
+
   // 计算熵值
   const entropy = password.length * Math.log2(charsetSize);
-  
-  // 确定强度等级
+
+  // 确定强度等级（N7：颜色统一走设计令牌，避免深浅主题对比度漂移）
   let label, color, pct;
-  
+
   if (entropy < 40) {
     label = '弱';
-    color = '#f85149';
+    color = 'var(--danger)';
     pct = 20;
   } else if (entropy < 60) {
     label = '中';
-    color = '#d29922';
+    color = 'var(--warning)';
     pct = 50;
   } else if (entropy < 80) {
     label = '强';
-    color = '#58a6ff';
+    color = 'var(--accent)';
     pct = 75;
   } else {
     label = '极强';
-    color = '#3fb950';
+    color = 'var(--success)';
     pct = 100;
   }
-  
+
   return { entropy, label, color, pct };
 }
 

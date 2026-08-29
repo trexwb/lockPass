@@ -77,8 +77,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // iife（非 module）：file:// 下可加载，避免 module script 的 CORS 拦截
+        // （移除 inlineDynamicImports：源码已无动态 import，codeSplitting 默认 false 已单 chunk）
         format: 'iife',
-        inlineDynamicImports: true,
         entryFileNames: 'assets/js/[name].js',
         assetFileNames: 'assets/[ext]/[name][extname]',
       },

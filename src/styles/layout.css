@@ -119,17 +119,38 @@
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: var(--transition);
+  /* 位移/背景/边框 + 左条（::before）淡入 */
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
   color: var(--text-muted);
   font-size: 1.0rem;
   user-select: none;
   position: relative;
+  overflow: hidden;
 }
-.nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+/* 左侧 2px accent 条：hover 或 active 时从 0→100% 展开 */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+  transition: transform var(--dur-fast) var(--ease-out-quart);
+  opacity: 0.9;
+}
+.nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); transform: translateX(2px); }
+.nav-item:hover::before { transform: translateY(-50%) scaleY(1); }
 .nav-item.active {
   background: var(--accent-dim);
   color: var(--accent);
+  transform: translateX(2px);
 }
+.nav-item.active::before { transform: translateY(-50%) scaleY(1); background: var(--accent); }
 .nav-item .count {
   margin-left: auto;
   font-size: 0.86rem;
@@ -137,9 +158,14 @@
   color: var(--text-muted);
   padding: 1px 7px;
   border-radius: var(--radius-md);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
 }
+.nav-item:hover .count { transform: scale(1.05); }
 .nav-item.active .count { background: var(--accent-dim); color: var(--accent); }
-.nav-item svg { flex-shrink: 0; opacity: 0.8; }
+.nav-item svg { flex-shrink: 0; opacity: 0.8; transition: opacity var(--dur-fast) var(--ease-out-quart), transform var(--dur-fast) var(--ease-out-quart); }
+.nav-item:hover svg { opacity: 1; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .sidebar-title-clickable {
   display: flex;
@@ -229,7 +255,7 @@
   line-height: 1.5;
 }
 .lock-form { display: flex; flex-direction: column; gap: 12px; }
-/* P2-10：创建模式「主密码无法找回」警示 */
+/* P2-10：创建模式「主密码无法找回」警示（结构样式在 layout，动效由 base.css 统一提供） */
 .lock-warning {
   display: flex;
   align-items: flex-start;
@@ -261,7 +287,21 @@
   color: var(--text-muted);
   margin-top: 32px;
   line-height: 1.5;
+  transition: color var(--dur-fast) var(--ease-out-quart);
 }
+#lock-screen:hover .lock-hint {
+  color: var(--text-secondary);
+}
+/* 锁屏 Logo：悬停时图标微弹 + 标题色变 */
+#header .logo,
+.lock-box .lock-title,
+.lock-box .lock-subtitle {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+#header .logo:hover { transform: translateY(-1px); color: var(--accent); }
+.lock-box:hover .lock-title { color: var(--accent); }
+.input-group { position: relative; }
 .input-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 .input-group input::placeholder { color: var(--text-faint); }
 .input-group input.error { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-dim); }
@@ -329,16 +369,17 @@
   }
   
   /* 遮罩层：与横幅同层（盖住内容与横幅，保持抽屉模式视觉统一） */
-  #sidebar-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: var(--overlay-bg-soft);
-    z-index: var(--z-banner);
-  }
-  #sidebar-overlay.active {
-    display: block;
-  }
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg-soft);
+  z-index: var(--z-banner);
+}
+#sidebar-overlay.active {
+  display: block;
+  animation: overlay-fade var(--dur-fast) var(--ease-out-quart) both;
+}
   
   /* Detail panel */
   #detail-panel {
@@ -689,10 +730,20 @@
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   border-left: 1px solid rgba(255, 255, 255, 0.18);
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart);
 }
 .btn-dropdown-toggle:hover {
   background: var(--accent);
   border-left-color: transparent;
+}
+.btn-dropdown-toggle .chevron-icon {
+  transition: transform var(--dur-med) var(--ease-out-quart);
+  display: inline-flex;
+}
+.btn-dropdown-toggle[aria-expanded="true"] .chevron-icon {
+  transform: rotate(180deg);
 }
 .btn-dropdown-menu {
   position: absolute;
@@ -706,6 +757,9 @@
   z-index: var(--z-dropdown);
   overflow: hidden;
   padding: 4px;
+  /* 下拉菜单入场动画（fail-open：即使 animation 失败仍可见） */
+  transform-origin: top center;
+  animation: menu-pop var(--dur-fast) var(--ease-out-quart) both;
 }
 .btn-dropdown-menu button {
   display: flex;
@@ -720,7 +774,10 @@
   font-size: 0.875rem;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s, border-color 0.15s;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              border-color var(--dur-fast) var(--ease-out-quart),
+              padding-left var(--dur-fast) var(--ease-out-quart);
 }
 .btn-dropdown-menu button + button {
   margin-top: 4px;
@@ -728,10 +785,19 @@
 .btn-dropdown-menu button:hover {
   background: var(--bg-hover);
   border-color: var(--accent);
+  transform: translateX(2px);
+  padding-left: 14px;
+}
+.btn-dropdown-menu button:active {
+  transform: translateX(2px) scale(0.98);
 }
 .btn-dropdown-menu button svg {
   color: var(--accent);
   flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-out-quart);
+}
+.btn-dropdown-menu button:hover svg {
+  transform: scale(1.15) rotate(-5deg);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -770,11 +836,38 @@
     line-height: 1.2;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    transition: color var(--transition);
+    transition: color var(--dur-fast) var(--ease-out-quart),
+                transform var(--dur-micro) var(--ease-out-quart);
+    position: relative;
   }
-  .tabbar-item svg { flex-shrink: 0; }
-  .tabbar-item.active { color: var(--accent); }
-  .tabbar-item:active { opacity: 0.7; }
+  .tabbar-item svg {
+    flex-shrink: 0;
+    transition: transform var(--dur-fast) var(--ease-out-quart);
+  }
+  .tabbar-item.active {
+    color: var(--accent);
+  }
+  .tabbar-item.active svg {
+    animation: chip-bounce var(--dur-fast) var(--ease-out-quart);
+    transform: translateY(-1px) scale(1.1);
+  }
+  .tabbar-item:active {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+  /* 选中项顶部小圆点指示器（移动端导航视觉反馈） */
+  .tabbar-item.active::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent-glow);
+  }
   .tabbar-badge {
     display: inline-block;
     margin-left: 3px;
@@ -785,11 +878,14 @@
     background: var(--danger);
     color: var(--text-on-accent);
     vertical-align: top;
+    transition: transform var(--dur-micro) var(--ease-out-quart);
   }
+  .tabbar-item:hover .tabbar-badge { transform: scale(1.1); }
   /* 中心「添加」主按钮：凸起圆形，悬浮于 tabbar 之上 */
   .tabbar-add {
     flex: 0 0 auto;
     width: 50px;
+    height: 50px;
     margin: -20px 4px 0;
     border-radius: 50%;
     border: 3px solid var(--bg-secondary);
@@ -801,9 +897,22 @@
     box-shadow: 0 4px 14px var(--accent-glow);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.15s ease;
+    transition: transform var(--dur-micro) var(--ease-out-quart),
+                box-shadow var(--dur-fast) var(--ease-out-quart),
+                background var(--dur-fast) var(--ease-out-quart);
+    /* 持续浮动呼吸，吸引用户注意（仅当无 reduced-motion 时生效） */
+    animation: float-breath 2.6s ease-in-out infinite;
+  }
+  .tabbar-add:hover {
+    box-shadow: 0 8px 22px var(--accent-glow), 0 0 0 4px var(--accent-dim);
   }
   .tabbar-add:active { transform: scale(0.92); }
+  .tabbar-add svg {
+    transition: transform var(--dur-fast) var(--ease-out-quart);
+  }
+  .tabbar-add:hover svg {
+    transform: rotate(90deg) scale(1.1);
+  }
 
   /* 内容区底部留白，避免条目被 tabbar 遮挡 */
   #content { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }

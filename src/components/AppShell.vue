@@ -5,15 +5,19 @@ import { useVault, vaultState } from '../composables/useVault'
 import HeaderBar from './layout/HeaderBar.vue'
 import SidebarNav from './layout/SidebarNav.vue'
 import DetailPanel from './entries/DetailPanel.vue'
+import CopyCountdownPill from './common/CopyCountdownPill.vue'
+import CtxMenu from './common/CtxMenu.vue'
 
 // 模板中直接引用 window 会被 Vue 编译为 _ctx.window（undefined）而抛错，
 // 故在 setup 作用域暴露 Utils，模板统一使用 Utils.xxx
 const Utils = window.Utils
+const Icons = window.Utils?.SvgIcons
 
 const {
   getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
   toggleFavorite, copyPassword, softDelete, permanentDelete,
-  setFilter, openEntryModal, computeSidebarStats,
+  setFilter, openEntryModal, computeSidebarStats, openModal,
+  copyField,
 } = useVault()
 
 // 类型中文名（P3-8 修复：卡片/详情中的类型 title 不再显示英文 id）
@@ -131,27 +135,137 @@ function onActionsClick(e) {
 
 /* ── 右键快捷菜单（P2-2 修复：兑现 spec §3.8 承诺） ── */
 
-const ctxMenu = reactive({ visible: false, x: 0, y: 0, entry: null })
+const ctxMenu = reactive({ visible: false, x: 0, y: 0, payload: null })
+// origin 锚点：用于给 .ctx-menu 切 transform-origin，点击区越靠右/下反向锚
+const ctxOrigin = ref('tl')
 
 /** 右键打开快捷菜单；位置做视口边缘钳制，避免菜单溢出屏幕 */
 function onCardContextMenu(entry, e) {
   e.preventDefault()
   e.stopPropagation()
-  const MENU_W = 180
-  const MENU_H = 200
-  ctxMenu.x = Math.min(e.clientX, window.innerWidth - MENU_W - 8)
-  ctxMenu.y = Math.min(e.clientY, window.innerHeight - MENU_H - 8)
-  ctxMenu.entry = entry
+  const MENU_W = 210
+  const MENU_H = 320
+  const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8)
+  const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8)
+  const leftHalf = e.clientX <= window.innerWidth / 2
+  const topHalf = e.clientY <= window.innerHeight / 2
+  ctxOrigin.value = (topHalf ? 't' : 'b') + (leftHalf ? 'l' : 'r')
+  ctxMenu.x = Math.max(8, x)
+  ctxMenu.y = Math.max(8, y)
+  ctxMenu.payload = { kind: 'entry', entry }
   ctxMenu.visible = true
 }
 
 /** 关闭右键菜单 */
 function closeCtxMenu() {
   ctxMenu.visible = false
-  ctxMenu.entry = null
+  ctxMenu.payload = null
 }
 
-/* ── 触屏长按呼出（iOS Safari 不派发 contextmenu，长按 500ms 等效右键） ── */
+/** 根据当前 payload 生成菜单项（扩展自旧版 4 项 → 最高 10+，按类型动态插入） */
+const entryCtxItems = computed(() => {
+  if (!ctxMenu.payload || ctxMenu.payload.kind !== 'entry') return []
+  const e = ctxMenu.payload.entry
+  if (!e) return []
+
+  const list = []
+  const isRecycle = isRecycleView.value
+
+  if (isRecycle) {
+    list.push(
+      { key: 'restore', label: '恢复', iconHtml: Icons?.restore(14), accent: true },
+      { key: 'copy', label: '复制密码', iconHtml: Icons?.copy(14) },
+    )
+    if (e.username) list.push({ key: 'copy-user', label: '复制用户名', iconHtml: Icons?.user(14) })
+    if (e.url) list.push({ key: 'copy-url', label: '复制地址', iconHtml: Icons?.link(14) })
+    list.push({ divider: true })
+    list.push({ key: 'purge', label: '彻底删除', iconHtml: Icons?.trash(14), danger: true })
+    return list
+  }
+
+  list.push({ key: 'edit', label: '编辑', iconHtml: Icons?.edit(14), shortcut: '↵' })
+  list.push({ key: 'duplicate', label: '复制条目（新建）', iconHtml: Icons?.copy(14) })
+  list.push({ key: 'fav', label: e.favorite ? '取消收藏' : '收藏', iconHtml: e.favorite ? Icons?.starFilled(14) : Icons?.starOutline(14), accent: !!e.favorite })
+  list.push({ divider: true })
+
+  list.push({ key: 'copy', label: e.entryType === 'app' ? '复制 App ID' : '复制密码', iconHtml: Icons?.copy(14), shortcut: '⌘C' })
+  if (e.username) list.push({ key: 'copy-user', label: '复制用户名', iconHtml: Icons?.user(14) })
+  if (e.url) {
+    list.push({ key: 'copy-url', label: '复制地址', iconHtml: Icons?.link(14) })
+    list.push({ key: 'open-url', label: '在浏览器打开', iconHtml: Icons?.external(14) })
+  }
+  if (e.entryType === 'server' && e.url && e.username) {
+    list.push({ key: 'copy-ssh', label: '复制 SSH 命令', iconHtml: Icons?.terminal(14) })
+  }
+  if (e.entryType === 'database' && e.url && e.username) {
+    list.push({ key: 'copy-mysql', label: '复制 MySQL 命令', iconHtml: Icons?.terminal(14) })
+  }
+  list.push({ divider: true })
+  list.push({ key: 'qr-share', label: '分享为二维码', iconHtml: Icons?.qr(14) })
+  list.push({ divider: true })
+  list.push({ key: 'delete', label: '删除（移入回收站）', iconHtml: Icons?.trash(14), danger: true })
+  return list
+})
+
+/** 右键菜单动作分发：entry 级 */
+async function onEntryCtxAction(action) {
+  const payload = ctxMenu.payload
+  closeCtxMenu()
+  const e = payload?.entry
+  if (!e) return
+  const id = e.id
+  try {
+    if (action === 'edit') openEntryModal(id)
+    else if (action === 'duplicate') {
+      // 深拷贝一条：新 id，保留字段，原 createdAt 不保留
+      // 先写 sessionStorage 草稿，再打开编辑器（onMounted 会立即读取）
+      try {
+        sessionStorage.setItem('lockpass_draft_new', JSON.stringify({
+          title: e.title ? e.title + ' 副本' : '未命名 副本',
+          entryType: e.entryType || 'website',
+          tags: e.tags || [],
+          notes: e.notes || '',
+          fields: {
+            username: e.username || '', password: e.password || '', url: e.url || '',
+            port: e.port ? String(e.port) : '', appId: e.appId || '',
+            privateKey: e.privateKey || '',
+            rootUser: e.root?.username || '',
+            rootPwd: e.root?.password || '',
+          },
+        }))
+      } catch (_err) { /* 草稿写入失败不阻断打开编辑器 */ }
+      openEntryModal(null)
+      window.Utils.showToast('已复制为新条目草稿（字段自动预填）', 'info')
+    }
+    else if (action === 'fav') toggleFavorite(id)
+    else if (action === 'copy') copyPassword(id)
+    else if (action === 'copy-user') copyField(e.username || '')
+    else if (action === 'copy-url') copyField(e.url || '')
+    else if (action === 'copy-ssh') {
+      const port = e.port ? ` -p ${e.port}` : ''
+      copyField(`ssh${port} ${e.username}@${e.url}`)
+    }
+    else if (action === 'copy-mysql') {
+      const port = e.port ? ` -P ${e.port}` : ''
+      copyField(`mysql -h ${e.url}${port} -u ${e.username} -p`)
+    }
+    else if (action === 'open-url') {
+      if (!e.url) return
+      let url = e.url
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+    else if (action === 'qr-share') {
+      selectEntry(id)
+      openModal('qr-share')
+    }
+    else if (action === 'delete') softDelete(id)
+    else if (action === 'restore') restoreEntry(id)
+    else if (action === 'purge') permanentDelete(id)
+  } catch (err) {
+    console.error('[AppShell ctx]', err)
+  }
+}
 
 let longPressTimer = null
 const LONG_PRESS_MS = 500
@@ -180,18 +294,8 @@ function cancelLongPress() {
   }
 }
 
-/** 菜单项动作统一分发（关闭后执行，避免菜单残留） */
-function onCtxAction(action) {
-  const entry = ctxMenu.entry
-  closeCtxMenu()
-  if (!entry) return
-  if (action === 'edit') openEntryModal(entry.id)
-  else if (action === 'copy') copyPassword(entry.id)
-  else if (action === 'fav') toggleFavorite(entry.id)
-  else if (action === 'delete') softDelete(entry.id)
-  else if (action === 'restore') restoreEntry(entry.id)
-  else if (action === 'purge') permanentDelete(entry.id)
-}
+/** （旧版动作分发已被 onEntryCtxAction 替代，保留 0 成本空壳避免外部引用编译告警） */
+function onCtxAction() {}
 
 function onDocMouseDown(e) {
   if (ctxMenu.visible && !e.target.closest('.ctx-menu')) closeCtxMenu()
@@ -282,7 +386,8 @@ onMounted(() => {
   if (window.LockParticles) window.LockParticles.stop()
   // 右键菜单关闭监听：点击他处 / 滚动 / 缩放视口
   document.addEventListener('mousedown', onDocMouseDown)
-  window.addEventListener('scroll', onDocScrollOrResize, true)
+  // N10：capture 监听显式标记 passive，避免主线程滚动阻塞
+  window.addEventListener('scroll', onDocScrollOrResize, { capture: true, passive: true })
   window.addEventListener('resize', onDocResize)
   // P3-5：初始化视口高度与行高（虚拟滚动窗口计算依据）
   if (contentEl.value) viewportH.value = contentEl.value.clientHeight || 600
@@ -294,13 +399,16 @@ onBeforeUnmount(() => {
   if (window.LockParticles) window.LockParticles.start()
   cancelLongPress()
   document.removeEventListener('mousedown', onDocMouseDown)
-  window.removeEventListener('scroll', onDocScrollOrResize, true)
+  // N10：移除时需匹配 capture 标志
+  window.removeEventListener('scroll', onDocScrollOrResize, { capture: true })
   window.removeEventListener('resize', onDocResize)
 })
 </script>
 
 <template>
   <div id="app-shell">
+    <!-- Hero moment：解锁成功瞬间的扫描脉冲（CSS 动画一次，fail-open） -->
+    <div class="hero-scan-line" aria-hidden="true"></div>
     <HeaderBar />
 
     <div id="main-layout">
@@ -334,7 +442,7 @@ onBeforeUnmount(() => {
             <!-- P3-5 虚拟滚动：窗口外用 spacer 撑高（≤100 条时不启用，spacer 高度为 0） -->
             <div v-if="padTop" class="vs-spacer" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
             <div
-              v-for="entry in visibleEntries"
+              v-for="(entry, idx) in visibleEntries"
               :key="entry.id"
               class="entry-card"
               :class="[
@@ -343,6 +451,7 @@ onBeforeUnmount(() => {
                 vaultState.selectedEntry === entry.id ? 'selected' : '',
               ]"
               :data-id="entry.id"
+              :style="{ '--i': Math.min(idx, 8) }"
               role="button"
               tabindex="0"
               :aria-label="'查看 ' + entry.title + '（' + typeLabelOf(entry.entryType) + '）'"
@@ -376,7 +485,7 @@ onBeforeUnmount(() => {
                   </button>
                 </template>
                 <template v-else>
-                  <button class="star-btn" :class="{ active: entry.favorite }" title="收藏" aria-label="收藏或取消收藏" @click="toggleFavorite(entry.id)">
+                  <button class="star-btn" :class="{ active: entry.favorite }" :data-id="entry.id" title="收藏" aria-label="收藏或取消收藏" @click="toggleFavorite(entry.id)">
                     <span v-html="favIconHtml(entry)"></span>
                   </button>
                   <button class="copy-btn" title="复制" aria-label="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
@@ -451,49 +560,16 @@ onBeforeUnmount(() => {
       </button>
     </nav>
 
-    <!-- 右键快捷菜单（P2-2 修复：条目卡片右键，编辑/复制/收藏/删除；回收站视图为恢复/彻底删除） -->
-    <Teleport to="body">
-      <div
-        v-if="ctxMenu.visible"
-        class="ctx-menu"
-        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-        role="menu"
-        aria-label="条目快捷操作"
-      >
-        <template v-if="isRecycleView">
-          <button class="ctx-item" role="menuitem" @click="onCtxAction('restore')">
-            <span v-html="Utils?.SvgIcons?.restore(14)"></span>
-            恢复
-          </button>
-          <button class="ctx-item" role="menuitem" @click="onCtxAction('copy')">
-            <span v-html="Utils?.SvgIcons?.copy(14)"></span>
-            复制密码
-          </button>
-          <button class="ctx-item ctx-danger" role="menuitem" @click="onCtxAction('purge')">
-            <span v-html="Utils?.SvgIcons?.trash(14)"></span>
-            彻底删除
-          </button>
-        </template>
-        <template v-else>
-          <button class="ctx-item" role="menuitem" @click="onCtxAction('edit')">
-            <span v-html="Utils?.SvgIcons?.edit(14)"></span>
-            编辑
-          </button>
-          <button class="ctx-item" role="menuitem" @click="onCtxAction('copy')">
-            <span v-html="Utils?.SvgIcons?.copy(14)"></span>
-            复制密码
-          </button>
-          <button class="ctx-item" role="menuitem" @click="onCtxAction('fav')">
-            <span v-html="Utils?.SvgIcons?.starOutline(14)"></span>
-            {{ ctxMenu.entry && ctxMenu.entry.favorite ? '取消收藏' : '收藏' }}
-          </button>
-          <button class="ctx-item ctx-danger" role="menuitem" @click="onCtxAction('delete')">
-            <span v-html="Utils?.SvgIcons?.trash(14)"></span>
-            删除
-          </button>
-        </template>
-      </div>
-    </Teleport>
+    <!-- 条目右键快捷菜单（扩展版：编辑/复制/二维码分享/打开链接/复制命令/删除/恢复等动态） -->
+    <CtxMenu
+      :menu="ctxMenu"
+      :items="entryCtxItems"
+      aria-label="条目快捷操作"
+      :data-origin="ctxOrigin"
+      @action="onEntryCtxAction"
+    />
+    <!-- 复制成功倒计时胶囊（响应式状态驱动，替代旧版 DOM 操控浮动提示） -->
+    <CopyCountdownPill />
     <!-- 屏幕阅读器实时通知区域 -->
     <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ vaultState.srAnnounce }}</div>
   </div>

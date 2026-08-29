@@ -49,8 +49,17 @@ onMounted(() => {
       ariaLabelledBy.value = heading.id
     }
   }
-  const firstFocusable = overlayRef.value?.querySelector('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
-  if (firstFocusable) firstFocusable.focus()
+  // N5：首焦跳过 modal-header 内的关闭按钮（.btn-icon），避免误按 Enter 关闭模态丢表单
+  // 优先选 input/textarea/select/a，再回退到非 .btn-icon 的 button
+  const firstFocusable = overlayRef.value?.querySelector(
+    'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], button:not([disabled]):not(.btn-icon), [tabindex]:not([tabindex="-1"])'
+  )
+  if (firstFocusable) {
+    firstFocusable.focus()
+  } else {
+    // 无可聚焦元素时，模态容器自身聚焦以接收键盘事件
+    overlayRef.value?.focus?.()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -62,7 +71,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="overlayRef" id="modal-overlay" role="dialog" aria-modal="true" :aria-labelledby="ariaLabelledBy || undefined">
+  <div ref="overlayRef" id="modal-overlay" role="dialog" aria-modal="true" tabindex="-1" :aria-labelledby="ariaLabelledBy || undefined">
     <div id="modal" role="document">
       <slot />
     </div>

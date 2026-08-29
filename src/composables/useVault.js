@@ -4,7 +4,7 @@
    加密、存储、同步等底层能力仍由 core/ 模块提供（零改动）。
    ═══════════════════════════════════════════════════════════════════ */
 
-import { reactive } from 'vue'
+import { reactive, nextTick } from 'vue'
 
 /* ── 常量定义（与原生版一致） ─────────────────────────────── */
 
@@ -65,7 +65,6 @@ export const vaultState = reactive({
   // 密码显隐状态：按条目 ID 记忆，独立于 entry 数据对象，避免污染加密 vault
   showPasswordMap: {},
   clipboardTimer: null,
-  clipboardNoteTimer: null,
   lockTimer: null,
   lockTimeoutMs: loadSettingInt('lockpass_lock_timeout', 5 * 60 * 1000),
   clipboardClearMs: loadSettingInt('lockpass_clipboard_clear', 30 * 1000),
@@ -86,6 +85,8 @@ export const vaultState = reactive({
   lockBusy: false,
   // 屏幕阅读器实时通知文本
   srAnnounce: '',
+  // 复制成功倒计时胶囊状态（CopyCountdownPill 组件消费）
+  clipboardCountdown: { active: false, remaining: 0, total: 0 },
 })
 
 /* ── 自动锁定：用户交互重置（G2 修复） ───────────────
@@ -629,8 +630,17 @@ export function useVault() {
     vaultState.tags = []
     vaultState.deleted = []
     vaultState.selectedEntry = null
+    // 清除密码显示自动隐藏计时器
+    Object.keys(_pwHideTimers).forEach(k => { clearTimeout(_pwHideTimers[k]); delete _pwHideTimers[k] })
+    vaultState.showPasswordMap = {}
     // P1-2 修复：锁定即安全边界，编辑器草稿（含明文）一并清除
     clearEditorDrafts()
+    // 清除复制倒计时胶囊（锁定时剪贴板可能仍含明文，胶囊不应残留）
+    if (activeCopyTipTimer) {
+      clearInterval(activeCopyTipTimer)
+      activeCopyTipTimer = null
+    }
+    vaultState.clipboardCountdown = { active: false, remaining: 0, total: 0 }
   }
 
   function logout() {
@@ -651,8 +661,17 @@ export function useVault() {
     vaultState.activeModal = null
     vaultState.editingEntryId = null
     vaultState.lockError = ''
+    // 清除密码显示自动隐藏计时器
+    Object.keys(_pwHideTimers).forEach(k => { clearTimeout(_pwHideTimers[k]); delete _pwHideTimers[k] })
+    vaultState.showPasswordMap = {}
     // P1-2 修复：退出登录清除编辑器草稿（含明文）
     clearEditorDrafts()
+    // 清除复制倒计时胶囊
+    if (activeCopyTipTimer) {
+      clearInterval(activeCopyTipTimer)
+      activeCopyTipTimer = null
+    }
+    vaultState.clipboardCountdown = { active: false, remaining: 0, total: 0 }
     if (vaultState.lockTimer) {
       clearTimeout(vaultState.lockTimer)
       vaultState.lockTimer = null
@@ -794,6 +813,18 @@ export function useVault() {
     entry.favorite = !entry.favorite
     entry.updatedAt = new Date().toISOString()
     await saveVault()
+    // 收藏激活时触发星标旋转动画（CSS .star-btn.just-faved）
+    if (entry.favorite) {
+      nextTick(() => {
+        const btn = document.querySelector(`.star-btn[data-id="${CSS.escape(String(id))}"], #detail-fav-btn`)
+        if (!btn) return
+        btn.classList.remove('just-faved')
+        // 强制 reflow 重启动画
+        void btn.offsetWidth
+        btn.classList.add('just-faved')
+        setTimeout(() => btn.classList.remove('just-faved'), 400)
+      })
+    }
   }
 
   async function softDelete(id) {
@@ -882,6 +913,7 @@ export function useVault() {
   /* ── 剪贴板 ────────────────────────────────── */
 
   let clipboardCleanupFn = null
+  let activeCopyTipTimer = null
 
   // 兼容复制：WKWebView/旧环境在 clipboard API 不可用时的最后手段
   // （须在用户手势调用链内执行；execCommand 虽已废弃但桌面 WebView 支持稳定）
@@ -920,85 +952,70 @@ export function useVault() {
       window.Utils.showToast('复制失败：' + (writeError || '未知错误'), 'error')
       return false
     }
-    window.Utils.showToast('已复制到剪贴板', 'success')
+    // srAnnounce 供屏幕阅读器播报（CopyCountdownPill 的 aria-label 同步覆盖）
     vaultState.srAnnounce = '已复制到剪贴板'
+
+    // ── 复制成功倒计时胶囊（响应式状态驱动，替代 DOM 操控） ──
+    // 先清理旧的倒计时
+    if (activeCopyTipTimer) {
+      clearInterval(activeCopyTipTimer)
+      activeCopyTipTimer = null
+    }
+
+    const totalSec = Math.round(vaultState.clipboardClearMs / 1000)
+
+    // 激活倒计时胶囊（CopyCountdownPill 组件消费此状态）
+    vaultState.clipboardCountdown = { active: true, remaining: totalSec, total: totalSec }
+
+    // 每秒递减倒计时
+    activeCopyTipTimer = setInterval(() => {
+      const cd = vaultState.clipboardCountdown
+      if (!cd.active) {
+        clearInterval(activeCopyTipTimer)
+        activeCopyTipTimer = null
+        return
+      }
+      cd.remaining--
+      if (cd.remaining <= 0) {
+        clearInterval(activeCopyTipTimer)
+        activeCopyTipTimer = null
+        cd.active = false
+      }
+    }, 1000)
+
+    // 清除旧的剪贴板自动清除定时器，并注册新的清理回调
+    clearTimeout(vaultState.clipboardTimer)
+    const prevCleanup = clipboardCleanupFn
+    clipboardCleanupFn = () => {
+      if (activeCopyTipTimer) {
+        clearInterval(activeCopyTipTimer)
+        activeCopyTipTimer = null
+      }
+      vaultState.clipboardCountdown.active = false
+      if (prevCleanup) prevCleanup()
+    }
+
+    // 自动清除剪贴板（macOS 无手势场景走 LockClipboard 主线程命令）
+    vaultState.clipboardTimer = setTimeout(async () => {
+      try {
+        if (window.LockClipboard) await window.LockClipboard.write('')
+        else await navigator.clipboard.writeText('')
+      } catch (e) {}
+      if (clipboardCleanupFn) {
+        clipboardCleanupFn()
+        clipboardCleanupFn = null
+      }
+    }, vaultState.clipboardClearMs)
+
+    // 卡片复制按钮高亮（对齐原版 .copy-btn.copied）
     try {
-
-      // ── 浮动「已复制」提示（靠近按钮位置，对齐原版 entries.js） ──
-      // P3-11：样式收敛到 modal.css 的 .copy-float-tip，JS 只负责定位（left/top）
-      let cleanupFloatTip = null
-      if (btnEl) {
-        const floatTip = document.createElement('div')
-        floatTip.className = 'copy-float-tip'
-        floatTip.textContent = '✓ 已复制'
-        const rect = btnEl.getBoundingClientRect()
-        floatTip.style.left = rect.left + rect.width / 2 + 'px'
-        floatTip.style.top = rect.top + 'px'
-        document.body.appendChild(floatTip)
-        cleanupFloatTip = () => floatTip.remove()
-        setTimeout(() => {
-          if (floatTip.parentNode) {
-            floatTip.style.opacity = '0'
-            setTimeout(() => floatTip.remove(), 400)
-          }
-        }, 1200)
-      }
-
-      // 清除旧的定时器与浮动提示
-      clearTimeout(vaultState.clipboardTimer)
-      const prevCleanup = clipboardCleanupFn
-      clipboardCleanupFn = () => {
-        if (cleanupFloatTip) cleanupFloatTip()
-        if (prevCleanup) prevCleanup()
-      }
-
-      // 自动清除剪贴板（macOS 无手势场景走 LockClipboard 主线程命令）
-      vaultState.clipboardTimer = setTimeout(async () => {
-        try {
-          if (window.LockClipboard) await window.LockClipboard.write('')
-          else await navigator.clipboard.writeText('')
-        } catch (e) {}
-        const note = document.getElementById('clipboard-note')
-        if (note) note.classList.add('hidden')
-        if (clipboardCleanupFn) {
-          clipboardCleanupFn()
-          clipboardCleanupFn = null
-        }
-      }, vaultState.clipboardClearMs)
-
-      // 详情面板倒计时提示（对齐原版 entries.js clipboard-note）
-      if (entryId === vaultState.selectedEntry) {
-        const note = document.getElementById('clipboard-note')
-        if (note) {
-          note.classList.remove('hidden')
-          let remaining = vaultState.clipboardClearMs / 1000
-          note.innerHTML = `✓ 已复制，${remaining}秒后清除`
-          // 清除上一次的倒计时 interval，避免多个定时器同时运行
-          if (vaultState.clipboardNoteTimer) clearInterval(vaultState.clipboardNoteTimer)
-          vaultState.clipboardNoteTimer = setInterval(() => {
-            remaining--
-            if (note) note.innerHTML = `✓ 已复制，${remaining}秒后清除`
-            if (remaining <= 0) {
-              clearInterval(vaultState.clipboardNoteTimer)
-              vaultState.clipboardNoteTimer = null
-              if (note) note.classList.add('hidden')
-            }
-          }, 1000)
-        }
-      }
-
-      // 卡片复制按钮高亮（对齐原版 .copy-btn.copied）
       if (entryId) {
         document.querySelectorAll(`.entry-card[data-id="${CSS.escape(String(entryId))}"] .copy-btn`).forEach(b => {
           b.classList.add('copied')
           setTimeout(() => b.classList.remove('copied'), 1500)
         })
       }
-      clipboardCleanupFn = null
-    } catch (uiErr) {
-      // 写入已成功；纯 UI 装饰异常不影响复制结果
-      console.warn('[clipboard] 复制后 UI 提示异常:', uiErr)
-    }
+    } catch (e) { /* CSS.escape 或 querySelector 异常不影响复制结果 */ }
     return true
   }
 
@@ -1015,11 +1032,26 @@ export function useVault() {
     await copyToClipboard(value || '', null, btnEl)
   }
 
+  // 密码显示自动隐藏计时器（按条目 ID 管理，5 秒后自动切回隐藏）
+  const _pwHideTimers = {}
+  const PW_AUTO_HIDE_MS = 5000
+
   function toggleDetailPassword() {
     // 密码显隐按条目 ID 记忆（独立于 entry 数据对象，不随加密 vault 持久化）
     if (!vaultState.selectedEntry) return
     const id = vaultState.selectedEntry
     vaultState.showPasswordMap[id] = !vaultState.showPasswordMap[id]
+    // 显示时启动 5 秒自动隐藏计时器
+    if (vaultState.showPasswordMap[id]) {
+      if (_pwHideTimers[id]) clearTimeout(_pwHideTimers[id])
+      _pwHideTimers[id] = setTimeout(() => {
+        vaultState.showPasswordMap[id] = false
+        delete _pwHideTimers[id]
+      }, PW_AUTO_HIDE_MS)
+    } else {
+      // 手动隐藏时清除计时器
+      if (_pwHideTimers[id]) { clearTimeout(_pwHideTimers[id]); delete _pwHideTimers[id] }
+    }
   }
 
   /* ── 模态框 ────────────────────────────────── */

@@ -10,6 +10,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  animation: overlay-fade var(--dur-fast) var(--ease-out-quart) both;
 }
 /* 确认弹窗必须盖过详情抽屉(300)/toast(300)/下拉菜单(300) */
 .confirm-overlay { z-index: var(--z-confirm); }
@@ -33,7 +34,20 @@
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
-  animation: fadeIn 0.2s ease;
+  /* 模态入场：透视缩放 + 上浮（fail-open，animation 终止在可见态） */
+  animation: modal-rise var(--dur-med) var(--ease-out-quart) both;
+  position: relative;
+  overflow: hidden;
+}
+/* 危险/确认弹窗：顶部强调色细条 + 背景呼吸提示 */
+.confirm-dialog[data-kind="danger"] {
+  border-top: 3px solid var(--danger);
+}
+.confirm-dialog[data-kind="danger"] .btn-danger {
+  animation: danger-breathing 2s var(--ease-out-quart) infinite;
+}
+.confirm-dialog[data-kind="warning"] {
+  border-top: 3px solid var(--warning);
 }
 .modal-header {
   display: flex;
@@ -47,6 +61,23 @@
   background: var(--bg-secondary);
   z-index: var(--z-content);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+/* modal-header 标题：入场时颜色呼吸；关闭按钮 hover 红化 */
+.modal-header h2 {
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+.modal-header:hover h2 {
+  color: var(--accent);
+}
+.modal-header .modal-close {
+  transition: transform var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+.modal-header .modal-close:hover {
+  transform: rotate(90deg);
+  background: var(--danger-dim);
+  color: var(--danger);
 }
 
 /* Toast */
@@ -83,15 +114,34 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  animation: fadeIn 0.2s ease;
+  animation: toast-in var(--dur-med) var(--ease-out-quart) both;
   max-width: 320px;
+  position: relative;
+  overflow: hidden;
+}
+/* Toast 顶部进度条：倒计时视觉化，让用户感知剩余阅读时间。
+   默认 3s 对齐 TOAST_VISIBLE_DURATION；JS 通过 inline style 覆盖为实际 duration。 */
+.toast::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: toast-progress var(--toast-duration, 3s) linear forwards;
+  opacity: 0.85;
 }
 .toast.success { border-color: var(--success); }
 .toast.success .toast-icon { color: var(--success); }
+.toast.success::before { background: var(--success); }
 .toast.error { border-color: var(--danger); }
 .toast.error .toast-icon { color: var(--danger); }
+.toast.error::before { background: var(--danger); }
 .toast.warning { border-color: var(--warning); }
 .toast.warning .toast-icon { color: var(--warning); }
+.toast.warning::before { background: var(--warning); }
 .toast-msg { flex: 1; }
 .toast-action {
   background: transparent;
@@ -107,28 +157,149 @@
 }
 .toast-action:hover { background: var(--accent-dim); }
 
-/* 复制成功浮动提示（P3-11：useVault 动态插入，位置 left/top 由 JS 内联指定） */
-.copy-float-tip {
+/* 复制成功倒计时胶囊（CopyCountdownPill.vue 消费，v1.0.29 重新定位）
+   - Teleport 到 body，不受 #app-shell overflow:hidden 影响
+   - 桌面端：右下角（贴近右下角，与 1P/Bitwarden 一致），不遮挡中央内容
+   - 移动端：底部全宽，留安全区边距
+   - 底边进度条从满到空，颜色随紧迫度渐变（绿→琥珀→红） */
+.copy-pill {
   position: fixed;
-  top: -28px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--accent);
-  color: var(--text-on-accent);
-  font-size: 0.6875rem; /* 11px，与原内联样式一致 */
-  line-height: 1;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  pointer-events: none;
+  /* 桌面：右下角，距边距 24px + 安全区；z-index 拉到 toast 之上，避免被右下角菜单遮挡 */
+  right: calc(24px + env(safe-area-inset-right, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 0 var(--success-dim);
+  font-size: 0.8rem;
+  font-weight: 500;
   z-index: var(--z-float-tip);
+  overflow: hidden;
   white-space: nowrap;
-  opacity: 1;
-  transition: opacity 0.4s ease;
+  /* 入场过渡带辉光扩散 */
+  animation: pill-pop-in var(--dur-med) var(--ease-out-quart) both;
+}
+/* 复制成功的微辉光（入场时短暂闪烁） */
+@keyframes pill-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+    box-shadow: var(--shadow-lg), 0 0 0 0 var(--success-dim);
+  }
+  50% {
+    box-shadow: var(--shadow-lg), 0 0 0 6px var(--success-dim);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: var(--shadow-lg), 0 0 16px var(--success-dim);
+  }
+}
+.copy-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--success);
+  flex-shrink: 0;
+}
+.copy-pill-icon svg { display: block; }
+.copy-pill-text {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.copy-pill-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-width: 2em;
+  text-align: right;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+.copy-pill-suffix {
+  color: var(--text-muted);
+}
+.copy-pill-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+  flex-shrink: 0;
+}
+.copy-pill-dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.copy-pill-dismiss:active { transform: scale(0.9); }
+/* 底边进度条：从左到右 depletion */
+.copy-pill-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 0 1px 1px 0;
+  transition: width 1s linear, background var(--dur-fast) var(--ease-out-quart);
+}
+
+/* Vue Transition 滑入/滑出：配合 fixed 定位，不加 translateX */
+.pill-slide-enter-active {
+  transition: opacity var(--dur-med) var(--ease-out-quart),
+              transform var(--dur-med) var(--ease-out-quart),
+              box-shadow var(--dur-med) var(--ease-out-quart);
+}
+.pill-slide-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-in-quart),
+              transform var(--dur-fast) var(--ease-in-quart);
+}
+.pill-slide-enter-from {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+.pill-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+}
+/* 离场态不再显示辉光，更快淡出 */
+.pill-slide-leave-active .copy-pill {
+  animation: none;
+}
+
+/* 移动端：底部全宽胶囊（左→右全宽，居中对齐文字） */
+@media (max-width: 480px) {
+  .copy-pill {
+    left: 12px;
+    right: 12px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    justify-content: center;
+  }
 }
 
 /* Progress bar */
-.progress-bar { width: 100%; height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--accent); transition: width 0.3s ease; }
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: width var(--dur-med) var(--ease-out-quart), background var(--dur-fast);
+  animation: progress-fill-in var(--dur-med) var(--ease-out-quart) both;
+}
 
 /* Loading */
 .spinner {
@@ -139,6 +310,12 @@
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   display: inline-block;
+  transition: transform var(--dur-micro) var(--ease-out-quart), opacity var(--dur-fast);
+}
+.spinner-wrap {
+  text-align: center;
+  padding: 32px 0;
+  animation: card-float-in var(--dur-med) var(--ease-out-quart) both;
 }
 
 /* ── 二维码导入预览 ───────────────────────────────────────── */
@@ -147,6 +324,30 @@
   border-radius: var(--radius-md);
   padding: 12px 14px;
   background: var(--bg-secondary);
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+  animation: card-float-in var(--dur-med) var(--ease-out-quart) both;
+  position: relative;
+  overflow: hidden;
+}
+/* 读取完成扫光（JS 加 .just-loaded 触发一次） */
+.import-preview-card::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+  transform: translateX(-100%);
+  pointer-events: none;
+  opacity: 0;
+}
+.import-preview-card.just-loaded::after {
+  animation: preview-sweep var(--dur-med) var(--ease-out-quart) both;
+}
+.import-preview-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 .import-preview-row {
   display: flex;
@@ -155,11 +356,23 @@
   padding: 4px 0;
   font-size: 0.9rem;
   word-break: break-all;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+  border-radius: var(--radius-xs);
+  padding-left: 4px;
+}
+.import-preview-row:hover {
+  transform: translateX(2px);
+  background: var(--bg-tertiary);
 }
 .import-preview-row span {
   min-width: 48px;
   flex-shrink: 0;
   font-size: 0.85rem;
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+.import-preview-row:hover span {
+  color: var(--accent);
 }
 
 /* ── 摄像头扫码识别 ─────────────────────────────────────────── */
@@ -171,6 +384,13 @@
   border-radius: var(--radius-md);
   overflow: hidden;
   aspect-ratio: 4 / 3;
+  animation: menu-pop var(--dur-med) var(--ease-out-quart) both;
+  transition: transform var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.qr-scan-frame:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 .qr-scan-frame video {
   width: 100%;
@@ -186,6 +406,26 @@
   border-radius: var(--radius-lg);
   pointer-events: none;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+}
+/* 扫码中的水平扫描线：上下循环移动（持续动画，信息类保留在 reduced-motion 但放慢） */
+.qr-scan-frame::before {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 12%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  border-radius: 1px;
+  z-index: 2;
+  pointer-events: none;
+  animation: scan-line 2.2s var(--ease-out-quart) infinite;
+}
+@keyframes scan-line {
+  0%   { transform: translateY(0); opacity: 0.6; }
+  50%  { transform: translateY(calc((100% / 0.76) - 2px)); opacity: 1; } /* 12% inset → 76% usable */
+  100% { transform: translateY(0); opacity: 0.6; }
 }
 
 
