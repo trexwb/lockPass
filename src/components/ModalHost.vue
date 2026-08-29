@@ -35,14 +35,16 @@ const activeName = computed(() => {
 </script>
 
 <template>
-  <EntryEditorModal v-if="activeName === 'entry'" />
-  <SettingsModal v-else-if="activeName === 'settings'" />
-  <ChangePwModal v-else-if="activeName === 'change-pw'" />
-  <TagsModal v-else-if="activeName === 'tags'" />
-  <ImportModal v-else-if="activeName === 'import'" />
-  <ExportModal v-else-if="activeName === 'export'" />
-  <QrShareModal v-else-if="activeName === 'qr-share'" />
-  <QrImportModal v-else-if="activeName === 'qr-import'" />
+  <Transition name="modal-swap" mode="out-in">
+    <EntryEditorModal v-if="activeName === 'entry'" key="entry" />
+    <SettingsModal v-else-if="activeName === 'settings'" key="settings" />
+    <ChangePwModal v-else-if="activeName === 'change-pw'" key="change-pw" />
+    <TagsModal v-else-if="activeName === 'tags'" key="tags" />
+    <ImportModal v-else-if="activeName === 'import'" key="import" />
+    <ExportModal v-else-if="activeName === 'export'" key="export" />
+    <QrShareModal v-else-if="activeName === 'qr-share'" key="qr-share" />
+    <QrImportModal v-else-if="activeName === 'qr-import'" key="qr-import" />
+  </Transition>
   <!-- 一键配对弹窗：独立于 activeModal，桌面版配对请求时弹出 -->
   <PairRequestModal />
 </template>

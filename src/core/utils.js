@@ -125,6 +125,62 @@ function downloadFile(filename, content, type) {
 }
 
 /**
+ * 打开外部链接（跨端统一入口）
+ * Tauri 桌面：调用 Rust 命令 open_url（协议/字符白名单校验）交由系统默认
+ * 浏览器打开；命令失败时降级为新窗口打开。
+ * 浏览器：window.open 原行为。
+ * 替代裸 window.open —— Tauri WebView 中 target=_blank 静默失败且不会调起
+ * 系统浏览器，tauri-bridge 的 click 委托只拦截 <a target="_blank">，脚本
+ * 内 window.open 必须显式走本入口。
+ * @param {string} url - 外部链接
+ * @returns {Promise<void>}
+ */
+async function openExternal(url) {
+  if (!url) return;
+  let u = String(url);
+  if (!/^https?:\/\//i.test(u) && !/^mailto:/i.test(u)) u = 'https://' + u;
+  const LT = window.LockTauri || {};
+  if (LT.isTauri && typeof LT.invoke === 'function') {
+    try {
+      await LT.invoke('open_url', { url: u });
+      return;
+    } catch (e) {
+      console.error('[LockPass] open_url 命令失败，降级新窗口:', e);
+    }
+  }
+  window.open(u, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * 复制文本到剪贴板（跨端统一入口）
+ * Tauri 桌面优先走 LockClipboard（macOS 主线程 arboard 命令，绕开 WebKit
+ * 竞态与无手势场景权限问题；其余平台走已覆盖的 plugin shim）。
+ * 浏览器回退 navigator.clipboard.writeText。
+ * @param {string|number|null|undefined} text
+ * @returns {Promise<void>}
+ */
+async function copyText(text) {
+  const value = String(text == null ? '' : text);
+  if (window.LockClipboard && typeof window.LockClipboard.write === 'function') {
+    return window.LockClipboard.write(value);
+  }
+  return navigator.clipboard.writeText(value);
+}
+
+/**
+ * 从剪贴板读取文本（跨端统一入口）
+ * macOS WKWebView 的 navigator.clipboard.readText 在非手势/权限受限上下文
+ * 会被拦截，桌面端统一走 Rust 命令 clipboard_read_text（主线程 arboard）。
+ * @returns {Promise<string>}
+ */
+async function readClipboard() {
+  if (window.LockClipboard && typeof window.LockClipboard.read === 'function') {
+    return window.LockClipboard.read();
+  }
+  return navigator.clipboard.readText();
+}
+
+/**
  * 解析 CSV 行（RFC 4180：支持引号字段内的逗号、引号转义 "" 与换行）
  * @param {string} line - CSV 行
  * @returns {Array<string>} 字段数组
@@ -315,6 +371,99 @@ function confirmDialog(options) {
     // 点击遮罩视为取消
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) finish(false);
+    });
+    document.addEventListener('keydown', onKeydown);
+  });
+}
+
+/**
+ * Element 风格输入弹窗（替代系统 prompt，打包应用/手机端可用）
+ * 与 confirmDialog 共用 #confirm-overlay 容器与 .modal 结构，仅多一个输入框。
+ * @param {Object} options - 配置项
+ * @param {string} [options.title='请输入'] - 标题
+ * @param {string} [options.message=''] - 说明文字（支持 \n 换行，可附可选列表）
+ * @param {string} [options.value=''] - 输入框默认值
+ * @param {string} [options.placeholder=''] - 输入框占位符
+ * @param {string} [options.confirmText='确定'] - 确认按钮文字
+ * @param {string} [options.cancelText='取消'] - 取消按钮文字
+ * @param {boolean} [options.selectAll=true] - 聚焦时是否全选已有文本（默认全选便于直接覆盖）
+ * @returns {Promise<string|null>} resolve(输入值) / resolve(null)=取消
+ */
+function promptDialog(options) {
+  return new Promise(resolve => {
+    const opts = {
+      title: '请输入',
+      message: '',
+      value: '',
+      placeholder: '',
+      confirmText: '确定',
+      cancelText: '取消',
+      selectAll: true,
+      ...(options || {})
+    };
+
+    let overlay = document.getElementById('confirm-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'confirm-overlay';
+      overlay.className = 'confirm-overlay';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      document.body.appendChild(overlay);
+    }
+
+    const messageHtml = escHtml(opts.message || '').replace(/\n/g, '<br>');
+
+    overlay.innerHTML = `
+      <div class="modal confirm-dialog prompt-dialog">
+        <div class="modal-header">
+          <h2>${escHtml(opts.title)}</h2>
+        </div>
+        <div class="modal-body">
+          ${messageHtml ? `<div class="confirm-message">${messageHtml}</div>` : ''}
+          <input class="prompt-input" type="text" value="${escHtml(opts.value)}" placeholder="${escHtml(opts.placeholder)}" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary confirm-cancel" tabindex="1">${escHtml(opts.cancelText)}</button>
+          <button class="btn btn-primary confirm-ok" tabindex="2">${escHtml(opts.confirmText)}</button>
+        </div>
+      </div>
+    `;
+
+    overlay.classList.remove('hidden');
+
+    const input = overlay.querySelector('.prompt-input');
+    if (input) {
+      input.focus();
+      if (opts.selectAll) {
+        try { input.select(); input.setSelectionRange?.(0, input.value.length); } catch (_e) {}
+      }
+    }
+
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      overlay.classList.add('hidden');
+      document.removeEventListener('keydown', onKeydown);
+      resolve(result);
+    };
+
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(null);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        finish(input?.value ?? '');
+      }
+    };
+
+    overlay.querySelector('.confirm-ok').addEventListener('click', () => finish(input?.value ?? ''));
+    overlay.querySelector('.confirm-cancel').addEventListener('click', () => finish(null));
+    // 点击遮罩视为取消
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) finish(null);
     });
     document.addEventListener('keydown', onKeydown);
   });
@@ -748,10 +897,14 @@ window.Utils = {
   formatDate,
   formatDateFilename,
   downloadFile,
+  openExternal,
+  copyText,
+  readClipboard,
   parseCSVLine,
   splitCSVLines,
   showToast,
   confirm: confirmDialog,
+  prompt: promptDialog,
   getCategoryIcon,
   getCategoryColor,
   safeTagColor,

@@ -85,6 +85,7 @@ const {
     case 'recycle':  await handleRecycle(action); break
     case 'add':      await handleAdd(action); break
     case 'logout':   await handleLogout(action); break
+    case 'tag-manage': await handleTagManage(action); break
   }
 })
 
@@ -139,6 +140,15 @@ const navCtxItems = computed(() => {
       list.push({ key: 'logout', label: '退出登录', iconHtml: Icons?.logoutIcon(14), danger: true })
       return list
     }
+    case 'tag-manage': {
+      const custom = Object.keys(vaultState.tagDefs || {}).filter(n => !vaultState.tagDefs[n]?.isDefault)
+      list.push({ key: 'open', label: '打开标签管理', iconHtml: Icons?.palette(14), accent: true })
+      list.push({ key: 'new-tag', label: '新建标签', iconHtml: Icons?.tag(14) })
+      list.push({ divider: true })
+      list.push({ key: 'expand', label: '展开标签区', iconHtml: Icons?.refresh(14), disabled: tagSectionOpen.value })
+      list.push({ key: 'clear-custom', label: `删除全部自定义标签（${custom.length} 个）`, iconHtml: Icons?.trash(14), danger: true, disabled: !custom.length })
+      return list
+    }
   }
   return list
 })
@@ -187,7 +197,12 @@ async function handleTag(action, name) {
   if (action === 'rename') {
     const def = vaultState.tagDefs[name]
     if (!def || def.isDefault) return
-    const newName = window.prompt?.('将标签改名为：', name)?.trim()
+    const newName = await window.Utils.prompt({
+      title: '重命名标签',
+      message: `将标签「${name}」改名为：`,
+      value: name,
+      confirmText: '重命名',
+    })?.trim()
     if (!newName || newName === name) return
     if (vaultState.tagDefs[newName]) {
       window.Utils.showToast('已存在同名标签，请改用「合并到另一标签」', 'error')
@@ -256,10 +271,12 @@ async function handleTag(action, name) {
     if (!def || def.isDefault) return
     const others = Object.keys(vaultState.tagDefs).filter(n => n !== name)
     if (!others.length) { window.Utils.showToast('没有可合并的目标标签', 'warning'); return }
-    const target = window.prompt?.(
-      '将「' + name + '」合并到目标标签（现有条目同时拥有的会去重）：\n\n可选：' + others.join('、'),
-      others[0],
-    )?.trim()
+    const target = await window.Utils.prompt({
+      title: '合并标签',
+      message: '将「' + name + '」合并到目标标签（现有条目同时拥有的会去重）：\n\n可选：' + others.join('、'),
+      value: others[0],
+      confirmText: '合并',
+    })?.trim()
     if (!target || target === name) return
     if (!vaultState.tagDefs[target]) { window.Utils.showToast('目标标签不存在', 'error'); return }
     const mergeOne = (list) => list.forEach(e => {
@@ -314,29 +331,43 @@ async function handleAdd(action) {
   else if (action === 'import') openModal('import')
 }
 
+/** 标签区标题右键：打开标签管理 / 新建 / 展开 / 清空自定义标签 */
+async function handleTagManage(action) {
+  if (action === 'open') { openModal('tags'); return }
+  if (action === 'new-tag') {
+    openModal('tags')
+    window.Utils.showToast('在标签管理中点击「新建标签」即可添加', 'info')
+    return
+  }
+  if (action === 'expand') { tagSectionOpen.value = true; return }
+  if (action === 'clear-custom') {
+    const custom = Object.keys(vaultState.tagDefs || {}).filter(n => !vaultState.tagDefs[n]?.isDefault)
+    if (!custom.length) return
+    const ok = await window.Utils.confirm({
+      title: '删除全部自定义标签？',
+      message: `将删除 ${custom.length} 个自定义标签（${custom.join('、')}），并从所有条目中移除；系统默认标签保留。该操作不可撤销，是否继续？`,
+      confirmText: '全部删除',
+      danger: true,
+    })
+    if (!ok) return
+    const customSet = new Set(custom)
+    const strip = (list) => list.forEach(e => {
+      if (!e.tags) return
+      e.tags = e.tags.filter(t => !customSet.has(t))
+    })
+    strip(vaultState.entries)
+    strip(vaultState.deleted)
+    custom.forEach(n => delete vaultState.tagDefs[n])
+    if (vaultState.currentFilter && customSet.has(vaultState.currentFilter)) vaultState.currentFilter = 'all'
+    await saveVault()
+    window.Utils.showToast(`已删除 ${custom.length} 个自定义标签`, 'success')
+  }
+}
+
 async function handleLogout(action) {
   if (action === 'lock') {
-    // 直接复用：利用 lockVault 不 showToast，避免 logout 文案混淆
-    // useVault 未导出 lockVault —— 这里通过 window.App（由 boot 注入）兜底
-    try {
-      // 最简：退出登录等价（内存清理一致，只是不展示 logout Toast，这里额外盖一个 lock Toast）
-      // 注意：若后续 composable 直接导出 lockVault 则直接调用最佳
-      vaultState.isUnlocked = false
-      if (vaultState.cryptoKey) vaultState.cryptoKey = null
-      try { sessionStorage.removeItem('lockpass_session'); sessionStorage.removeItem('lockpass_session_nonce') } catch (_e) {}
-      clearTimeout(vaultState.lockTimer); vaultState.lockTimer = null
-      vaultState.entries = []; vaultState.tagDefs = {}; vaultState.tags = []
-      vaultState.deleted = []; vaultState.selectedEntry = null; vaultState.history = {}
-      vaultState.activeModal = null; vaultState.editingEntryId = null
-      // P1-2 锁草稿清
-      try {
-        for (let i = sessionStorage.length - 1; i >= 0; i--) {
-          const k = sessionStorage.key(i)
-          if (k && k.indexOf('lockpass_draft_') === 0) sessionStorage.removeItem(k)
-        }
-      } catch (_e) {}
-      window.Utils.showToast('已锁定，请输入主密码解锁', 'info')
-    } catch (_e) {}
+    // 复用 composable 导出的 lockVault（内存清理 + 状态重置 + 锁定 Toast 统一在内部完成）
+    lockVault()
     return
   }
   if (action === 'logout') logout()
@@ -466,7 +497,7 @@ async function handleLogout(action) {
           role="button" tabindex="0"
           @click="tagSectionOpen = !tagSectionOpen"
           @keydown.enter.prevent="tagSectionOpen = !tagSectionOpen"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag-manage' }) /* 保留：后续可扩展标签设置 */"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag-manage' }, { w: 250, h: 190 })"
         >
           热门标签
           <svg class="tag-chevron" :style="{ transform: !tagSectionOpen ? 'rotate(-90deg)' : 'rotate(0deg)' }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

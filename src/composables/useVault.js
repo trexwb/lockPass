@@ -580,6 +580,11 @@ export function useVault() {
   async function bindRestoreFromDirectory() {
     try {
       vaultState.lockError = ''
+      // Tauri 桌面版数据由本地文件管理，目录同步是浏览器版专属能力
+      if ((window.FileStore && window.FileStore.isTauri) || window.__TAURI_INTERNALS__) {
+        vaultState.lockError = '桌面版数据已由本地文件自动保存，无需绑定同步目录'
+        return
+      }
       if (!window.FileSync.isSupported()) {
         vaultState.lockError = '当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开'
         return
@@ -871,6 +876,13 @@ export function useVault() {
     })
     if (!confirmed) return
 
+    // 彻底删除同样先播离场动画，再移除数据
+    const card = document.querySelector(`.entry-card[data-id="${CSS.escape(String(id))}"]`)
+    if (card) {
+      card.classList.add('leaving')
+      await new Promise(r => setTimeout(r, 240))
+    }
+
     vaultState.deleted = vaultState.deleted.filter(e => e.id !== id)
     // 彻底删除后清理该条目的密码历史（无主数据不保留）
     if (vaultState.history[id]) {
@@ -936,7 +948,12 @@ export function useVault() {
     let clipboardOk = false
     let writeError = ''
     try {
-      await navigator.clipboard.writeText(text)
+      // 桌面端优先走 LockClipboard（macOS 主线程 arboard 命令 / 其余平台 shim）
+      if (window.LockClipboard && typeof window.LockClipboard.write === 'function') {
+        await window.LockClipboard.write(text)
+      } else {
+        await navigator.clipboard.writeText(text)
+      }
       clipboardOk = true
     } catch (e) {
       writeError = (e && e.message) || String(e)

@@ -26,9 +26,15 @@ import './core/backup.js'
 import './core/sw-register.js'
 // 粒子动效（锁屏/工作区背景，暴露 window.LockParticles）
 import './core/particles.js'
+// 全局右键守卫：取消浏览器默认右键，统一走自定义菜单（输入框保留原生粘贴菜单）
+import { installContextMenuGuard } from './core/contextmenu-guard.js'
+// 全局微交互：按钮涟漪等触觉反馈（prefers-reduced-motion 下自动禁用）
+import { installMicroInteractions } from './core/micro-interactions.js'
 
 // 样式（保留原设计令牌，按组件拆分的样式由各 SFC 引入）
 import './styles/main.css'
+// UX 深化增强层（主题过渡/列表编舞/删除离场/模态关闭/涟漪/焦点可见性等）
+import './styles/ux-enhance.css'
 
 // Vue 应用
 import { createApp } from 'vue'

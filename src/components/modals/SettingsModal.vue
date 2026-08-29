@@ -44,21 +44,20 @@ const isMac = (navigator.userAgentData && navigator.userAgentData.platform === '
   || /mac/i.test(navigator.platform || '')
 
 function openExternalUrl(url) {
-  // 桌面版：Rust 命令 open_url（协议白名单校验）在系统默认浏览器打开；
-  // 失败再退化为复制链接到剪贴板。直接跳转会劫持 WebView 导航。
-  if (window.LockTauri && window.LockTauri.isTauri && typeof window.LockTauri.invoke === 'function') {
-    window.LockTauri.invoke('open_url', { url: url }).then(function () {
+  // 统一入口 Utils.openExternal：桌面走 Rust open_url（协议/字符白名单校验）
+  // 在系统默认浏览器打开，命令失败自动降级新窗口；浏览器走 window.open。
+  // 失败再退化为复制链接到剪贴板。直接 location 跳转会劫持 WebView 导航。
+  window.Utils.openExternal(url).then(function () {
+    if (window.LockTauri && window.LockTauri.isTauri) {
       window.Utils.showToast('已在系统浏览器中打开', 'success')
+    }
+  }).catch(function () {
+    window.Utils.copyText(url).then(function () {
+      window.Utils.showToast('链接已复制，请在系统浏览器中打开', 'warning')
     }).catch(function () {
-      navigator.clipboard.writeText(url).then(function () {
-        window.Utils.showToast('链接已复制，请在系统浏览器中打开', 'warning')
-      }).catch(function () {
-        window.Utils.showToast(url, 'info')
-      })
+      window.Utils.showToast(url, 'info')
     })
-    return
-  }
-  window.open(url, '_blank', 'noopener')
+  })
 }
 
 function downloadExtension() {
@@ -445,7 +444,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
         else if (target === 'check-update') updateBtn.value.fn?.()
       } else if (action === 'copy-desc') {
         const text = payload.desc || ''
-        if (text) navigator.clipboard?.writeText(String(text))
+        if (text) window.Utils.copyText(String(text))
       } else if (action === 'go-tab' && payload.tab) {
         settingsTab.value = payload.tab
       }
@@ -453,22 +452,22 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
     }
     case 'card': {
       const text = payload.value
-      if (action === 'copy-value' && text) navigator.clipboard?.writeText(String(text))
+      if (action === 'copy-value' && text) window.Utils.copyText(String(text))
       return
     }
     case 'arch-item': {
       const name = payload.name
       const desc = payload.desc
-      if (action === 'copy-name' && name) navigator.clipboard?.writeText(String(name))
-      else if (action === 'copy-desc' && desc) navigator.clipboard?.writeText(String(desc))
+      if (action === 'copy-name' && name) window.Utils.copyText(String(name))
+      else if (action === 'copy-desc' && desc) window.Utils.copyText(String(desc))
       return
     }
     case 'shortcut': {
       if (action === 'copy-combo') {
         const keys = shortcutKeyText(payload.def)
-        if (keys) navigator.clipboard?.writeText(keys)
+        if (keys) window.Utils.copyText(keys)
       } else if (action === 'copy-name') {
-        navigator.clipboard?.writeText(payload.def?.name || '')
+        window.Utils.copyText(payload.def?.name || '')
       }
       return
     }
@@ -476,7 +475,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       const a = payload.accent
       if (action === 'apply' && a) setAccent(a)
       else if (action === 'copy-label' && a) {
-        navigator.clipboard?.writeText(accentLabel(a))
+        window.Utils.copyText(accentLabel(a))
       }
       return
     }
@@ -488,13 +487,13 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
     case 'select': {
       const value = payload.value
       const label = payload.label || ''
-      if (action === 'copy-value') navigator.clipboard?.writeText(String(value ?? ''))
-      else if (action === 'copy-label') navigator.clipboard?.writeText(label)
+      if (action === 'copy-value') window.Utils.copyText(String(value ?? ''))
+      else if (action === 'copy-label') window.Utils.copyText(label)
       return
     }
     case 'version': {
       if (action === 'copy-version') {
-        navigator.clipboard?.writeText(appVersion.value || APP_VERSION)
+        window.Utils.copyText(appVersion.value || APP_VERSION)
       }
       return
     }

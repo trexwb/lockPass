@@ -392,7 +392,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       if (action === 'copy-value' && val) copyText(val)
       else if (action === 'paste-value' && fieldKey) {
         try {
-          const t = await navigator.clipboard?.readText()
+          const t = await window.Utils.readClipboard()
           if (t != null) {
             if (fieldKey === '__title') title.value = t
             else if (fieldKey === '__notes') notes.value = t
@@ -437,7 +437,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       const name = payload.name
       if (!name) return
       if (action === 'toggle-off') toggleTag(name)
-      else if (action === 'copy-name') navigator.clipboard?.writeText(name)
+      else if (action === 'copy-name') window.Utils.copyText(name)
       else if (action === 'manage') {
         openModal('tags')
       }
@@ -447,7 +447,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       const name = payload.name
       if (!name) return
       if (action === 'add') addNewTagByName(name)
-      else if (action === 'copy-name') navigator.clipboard?.writeText(name)
+      else if (action === 'copy-name') window.Utils.copyText(name)
       else if (action === 'manage') {
         openModal('tags')
       }

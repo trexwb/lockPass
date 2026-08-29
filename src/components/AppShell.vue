@@ -17,7 +17,7 @@ const {
   getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
   toggleFavorite, copyPassword, softDelete, permanentDelete,
   setFilter, openEntryModal, computeSidebarStats, openModal,
-  copyField,
+  copyField, lockVault,
 } = useVault()
 
 // 类型中文名（P3-8 修复：卡片/详情中的类型 title 不再显示英文 id）
@@ -162,6 +162,34 @@ function closeCtxMenu() {
   ctxMenu.payload = null
 }
 
+/**
+ * 工作区兜底右键：工具栏 / 列表空白 / 空状态 命中时打开 kind='workspace' 菜单
+ * （条目卡片右键仍走 onCardContextMenu，其 stopPropagation 保证不会冒泡到此处）
+ */
+function onWorkspaceContextMenu(e) {
+  e.preventDefault()
+  e.stopPropagation()
+  const MENU_W = 240
+  const MENU_H = isRecycleView.value ? 220 : 300
+  const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8)
+  const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8)
+  const leftHalf = e.clientX <= window.innerWidth / 2
+  const topHalf = e.clientY <= window.innerHeight / 2
+  ctxOrigin.value = (topHalf ? 't' : 'b') + (leftHalf ? 'l' : 'r')
+  ctxMenu.x = Math.max(8, x)
+  ctxMenu.y = Math.max(8, y)
+  ctxMenu.payload = { kind: 'workspace' }
+  ctxMenu.visible = true
+}
+
+// 列表重播编舞：筛选 / 搜索切换时整表重挂载，重播 list-rise 入场动画
+// （增删走卡片自身 leaving / just-restored 动画，不触发整表重播以免打断离场）
+const listEpoch = ref(0)
+watch(
+  () => [vaultState.currentFilter, vaultState.searchQuery],
+  () => { listEpoch.value++ },
+)
+
 /** 根据当前 payload 生成菜单项（扩展自旧版 4 项 → 最高 10+，按类型动态插入） */
 const entryCtxItems = computed(() => {
   if (!ctxMenu.payload || ctxMenu.payload.kind !== 'entry') return []
@@ -253,7 +281,7 @@ async function onEntryCtxAction(action) {
       if (!e.url) return
       let url = e.url
       if (!/^https?:\/\//i.test(url)) url = 'https://' + url
-      window.open(url, '_blank', 'noopener,noreferrer')
+      window.Utils.openExternal(url)
     }
     else if (action === 'qr-share') {
       selectEntry(id)
@@ -419,12 +447,12 @@ onBeforeUnmount(() => {
       <main id="content" ref="contentEl" @scroll.passive="onContentScroll">
         <canvas id="workspace-bg" aria-hidden="true"></canvas>
         <div id="content-inner" :class="{ 'empty-active': !filteredEntries.length }">
-          <div class="content-toolbar">
+          <div class="content-toolbar" @contextmenu.self.prevent.stop="onWorkspaceContextMenu">
             <div>
               <h2 id="content-title">{{ contentTitle }}</h2>
             </div>
             <div class="toolbar-right">
-              <span id="entry-count" class="text-muted text-sm">{{ filteredEntries.length }} 项</span>
+              <span id="entry-count" :key="filteredEntries.length" class="text-muted text-sm count-pop">{{ filteredEntries.length }} 项</span>
               <button
                 v-if="vaultState.currentFilter === 'recycle' && filteredEntries.length"
                 id="empty-recycle-btn"
@@ -438,7 +466,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div id="entries-list">
+          <div id="entries-list" :key="listEpoch" @contextmenu.self.prevent.stop="onWorkspaceContextMenu">
             <!-- P3-5 虚拟滚动：窗口外用 spacer 撑高（≤100 条时不启用，spacer 高度为 0） -->
             <div v-if="padTop" class="vs-spacer" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
             <div
@@ -500,7 +528,7 @@ onBeforeUnmount(() => {
             <div v-if="padBottom" class="vs-spacer" :style="{ height: padBottom + 'px' }" aria-hidden="true"></div>
           </div>
 
-          <div v-if="!filteredEntries.length" id="empty-state" class="empty-state">
+          <div v-if="!filteredEntries.length" id="empty-state" class="empty-state" @contextmenu.prevent.stop="onWorkspaceContextMenu">
             <div class="empty-illustration">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -565,7 +593,7 @@ onBeforeUnmount(() => {
       :menu="ctxMenu"
       :items="entryCtxItems"
       aria-label="条目快捷操作"
-      :data-origin="ctxOrigin"
+      :origin="ctxOrigin"
       @action="onEntryCtxAction"
     />
     <!-- 复制成功倒计时胶囊（响应式状态驱动，替代旧版 DOM 操控浮动提示） -->

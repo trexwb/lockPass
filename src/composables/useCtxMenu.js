@@ -25,6 +25,7 @@ export function useCtxMenu(actionHandler) {
     x: 0,
     y: 0,
     payload: null,
+    origin: 'tl', // 菜单位置锚点象限：tl/tr/bl/br，供 CtxMenu 设置 transform-origin
   })
 
   /**
@@ -36,8 +37,11 @@ export function useCtxMenu(actionHandler) {
   function openCtxMenu(clientX, clientY, payload, sizeHint) {
     const w = sizeHint?.w || DEFAULT_MENU_W
     const h = sizeHint?.h || DEFAULT_MENU_H
-    ctxMenu.x = Math.max(EDGE_PAD, Math.min(clientX, window.innerWidth - w - EDGE_PAD))
-    ctxMenu.y = Math.max(EDGE_PAD, Math.min(clientY, window.innerHeight - h - EDGE_PAD))
+    const x = Math.max(EDGE_PAD, Math.min(clientX, window.innerWidth - w - EDGE_PAD))
+    const y = Math.max(EDGE_PAD, Math.min(clientY, window.innerHeight - h - EDGE_PAD))
+    ctxMenu.x = x
+    ctxMenu.y = y
+    ctxMenu.origin = `${y + h / 2 >= window.innerHeight / 2 ? 'b' : 't'}${x + w / 2 >= window.innerWidth / 2 ? 'r' : 'l'}`
     ctxMenu.payload = payload || {}
     ctxMenu.visible = true
   }

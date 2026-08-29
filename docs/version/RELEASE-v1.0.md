@@ -1,18 +1,53 @@
 # LockPass 版本日志 · v1.0
 
 > v1.0.x 全部迭代记录（最新在前）
+>
+> 收敛说明：以下版本号无独立分节，内容并入相邻分节——
+> `v1.0.1`（并入 v1.0.0 初版）· `v1.0.22~24`（并入 v1.0.25，过渡版本号）·
+> `v1.0.26~28`（并入 v1.0.29，复制反馈迭代）· `v1.0.30~33`（并入 v1.0.34，同批次）
 
-### v1.0.21 (2026-08-28) 📝 待发布
+### v1.0.34 (2026-08-29)
 
-清偿 v1.0.20 审计遗留项（F6/F11/F14/F16）：
+复制成功反馈重构（v1.0.26 ~ v1.0.34 多轮迭代统一收敛至本分节）：
 
-- **F6 触屏输入框**：`(hover:none)` 下 `.input-affix .form-input` 预留宽度 80→96px，容纳触屏放大的双按钮
-- **F11 触控区**：`.type-tab / .tag-option / .tag-chip / .accent-dot / .color-swatch-btn` 统一 ≥32px；header 设置按钮图标态补 `min-width:40px`
-- **F14 死代码清理**：补 `--text-secondary` 变量映射（5 处历史引用原本静默回退）；删除未引用的 `--z-overlay/--z-sidebar`；对齐导出弹窗类名（`.export-option-info h4/p` → `.export-option-title / .export-option-text .text-muted`）；补齐模板已用未定义的工具类（`.py-4/.py-6/.mr-1/.text-xs/.qr-text-box`）
-- **F16 详情面板**：≤1024 全屏态新增点击遮罩（z 199，面板 200 之下），点击面板外关闭；面板加层级阴影
-- 全部修复仅触响应式/触屏/清理路径，桌面宽窗视觉与业务逻辑零改动
+- **新增 CopyCountdownPill.vue 倒计时胶囊组件**：合并原「Toast + 浮动提示」双路反馈为单一胶囊，由 `vaultState.clipboardCountdown` 响应式状态驱动，移除 useVault.js 中的跨层 DOM 操控
+- **右下角定位**（桌面 >480px）：`right/bottom: 24px + 安全区`，符合密码管理器惯例；移动端 ≤480px 改为底部全宽
+- **底边进度条**：100%→0% 每秒递减，颜色随紧迫度渐变（绿 → ≤10s 琥珀 → ≤5s 红）
+- **倒计时秒数**：`tabular-nums` 等宽数字 + 随紧迫度变色；手动 × 关闭 + 清除后自动淡出
+- **Teleport 到 body**：脱离 `#app-shell` 的 `overflow:hidden`
+- **入场动画 pill-pop-in**；**保留**卡片复制高亮 `.copied` 与 `srAnnounce`；新增 `--z-float-tip: 350`
+- **清理**：移除旧版 `.copy-float-tip` 全部样式与 `#clipboard-note` DOM
 
-### v1.0.25 (2026-08-28) 📝 待发布
+### v1.0.29 (2026-08-29)
+
+> v1.0.26 ~ v1.0.28 为复制反馈功能的多轮构建迭代中间版本，无独立发布内容，统一收敛至 v1.0.29。
+
+**可访问性修复（P0）**
+- 颜色对比度：`--text-faint` 暗 `#484f58`→`#797f8b`、浅 `#8c959f`→`#6e7681`，达 WCAG AA
+- ModalBase ARIA 完整：`ariaLabel` prop + `ariaLabelledBy` 自动关联 + `role="dialog" aria-modal="true"`
+- 修改密码弹窗三个密码框独立可见性切换 + 顶部不可撤销警告框（`role="alert"`）
+- 条目卡片键盘可达：`tabindex="0"` + `role="button"`，Enter/Space 触发
+
+**操作流程改进（P1）**
+- 设置模态框重构为 6 标签页（安全/外观/同步/数据/扩展/关于），`role="tablist"` 语义化
+- 编辑器关闭未保存警告：`snapshotForm()` + `hasUnsavedChanges()` 检测
+- 编辑器表单校验：标题非空、URL 格式、端口 1-65535、邮箱格式
+- AppShell 支持 Shift+F10 键盘呼出右键菜单；搜索框清除按钮 + Esc 先清空再失焦
+- CSV 导入列头校验：缺 title/password 中止，未知列名警告
+
+**用户体验（P2）**
+- 软删除撤销：删除后 toast 带「撤销」按钮（5 秒有效）
+- 复制反馈 aria-live：`srAnnounce` + `role="status" aria-live="polite"`
+- Toast 支持 action 按钮（label + callback）
+
+**视觉一致性（P2）**
+- `.btn-icon.btn-icon-sm` 24→28px、`.btn-icon-xs` 26→24px（xs 应比 sm 小）
+- 新增 `--radius-xs: 4px` 令牌，批量替换硬编码圆角；硬编码 `#fff` 改 `var(--text-on-accent)`
+
+**功能增强（P3）**
+- 浅色主题对比度微调；导出按标签筛选；标签合并视图（选择源/目标标签遍历替换）
+
+### v1.0.25 (2026-08-28)
 
 多维审计 P1 修复包（六项）+ 构建阻断修复：
 
@@ -25,7 +60,44 @@
 - **构建修复**：AuthView 断裂字符串重建；TagsModal 合并视图（并行编辑引入）的孤立 v-else-if 修正为三态链（list/form/merge）
 - 实测：vite:build 通过（353KB）；签名链路冒烟通过
 
-### v1.0.20 (2026-08-28) 📝 待发布
+
+### v1.0.22 (2026-08-29)
+
+> v1.0.22 ~ v1.0.24 为审计复审期间的过渡版本号，无独立发布内容，统一并入 v1.0.25 分节（多维审计 P1 修复包）。
+
+### v1.0.21 (2026-08-28)
+
+清偿 v1.0.20 审计遗留项（F6/F11/F14/F16）：
+
+- **F6 触屏输入框**：`(hover:none)` 下 `.input-affix .form-input` 预留宽度 80→96px，容纳触屏放大的双按钮
+- **F11 触控区**：`.type-tab / .tag-option / .tag-chip / .accent-dot / .color-swatch-btn` 统一 ≥32px；header 设置按钮图标态补 `min-width:40px`
+- **F14 死代码清理**：补 `--text-secondary` 变量映射（5 处历史引用原本静默回退）；删除未引用的 `--z-overlay/--z-sidebar`；对齐导出弹窗类名（`.export-option-info h4/p` → `.export-option-title / .export-option-text .text-muted`）；补齐模板已用未定义的工具类（`.py-4/.py-6/.mr-1/.text-xs/.qr-text-box`）
+- **F16 详情面板**：≤1024 全屏态新增点击遮罩（z 199，面板 200 之下），点击面板外关闭；面板加层级阴影
+- 全部修复仅触响应式/触屏/清理路径，桌面宽窗视觉与业务逻辑零改动
+
+
+### v1.0.20 (2026-08-28)
+
+> 本版本包含两批内容：① 响应式专项修复（主线审计）；② 安全与正确性修复批次（下方，来源 CHANGELOG.md）。
+
+#### 安全与正确性修复批次
+
+**[CRITICAL] 安全修复**
+- 修复 macOS 剪贴板清除功能失效：`tauri-bridge.js` 中 `lt.invoke` 变量名大小写错误（应为 `LT.invoke`），复制密码后自动清除完全失效，密码永久留在剪贴板
+- 修复扩展桥 postMessage 通配 origin：`ext-bridge.js` 的 `'*'` targetOrigin 改为 `window.location.origin`，防任意页面截获会话令牌与明文密码
+- PBKDF2 迭代次数提升至 OWASP 2023 推荐：新建保险箱 100,000 → 600,000（旧保险箱保持兼容；修改主密码时自动升级）
+- 修改主密码时纳入密码历史：`ChangePwModal.vue` 重加密 payload 补 `history` 字段（此前修改密码后历史无法解密）
+
+**正确性修复**
+- 编辑器切换类型时清理残留字段（旧类型字段残留被持久化进加密 vault）
+- 密码显隐状态移出 entry 数据对象：改 `vaultState.showPasswordMap` 按 ID 管理（此前被序列化污染数据模型）
+
+**性能修复**
+- SettingsModal 600ms 轮询定时器 onBeforeUnmount 清理；剪贴板倒计时 interval 引用管理（防累积闪烁）
+
+**可维护性 / 可访问性**
+- tauri-server-bridge.js var→const/let；生产构建移除 console.debug/log（esbuild pure）
+- DetailPanel 关联密码项键盘操作（role/tabindex/enter）；ModalBase aria-modal；图标按钮 aria-label
 
 响应式专项审计与修复（红队交叉核验报告 16 项发现，本轮落地 10 项）：
 
@@ -48,14 +120,16 @@
 
 **过程说明**：本版本由集群模式交付——两个审计 subagent 因上游 API 不稳（403/超时）中断，核验报告 128 行抢收成功 + 主线补审完成合并；期间发现 exec 管道对特定序列存在字符污染，已用字符码断言方式规避。
 
-### v1.0.19 (2026-08-28) 📝 待发布
+
+### v1.0.19 (2026-08-28)
 
 Windows 桌面版横幅排除修正 + 签名路径修正：
 
 - **横幅判定统一**：v1.0.18 的桌面排除按 `navigator.platform` 特判 MAC，Windows（Win32）未覆盖导致仍显示「建议绑定数据目录」横幅；改为统一走 `window.LockTauri.isTauri` 双信号判定（Windows 下 `__TAURI__` 注入异常也有 `__TAURI_INTERNALS__` 兜底），三平台行为一致
 - **.env.local 路径修正**：`TAURI_SIGNING_PRIVATE_KEY_PATH` 由 `~/.tauri/...` 改为绝对路径（Node `fs.existsSync` 不展开波浪号，指针形式此前名不副实，包装器实际走的是兜底路径）
 
-### v1.0.18 (2026-08-28) 📝 待发布
+
+### v1.0.18 (2026-08-28)
 
 绑定横幅桌面排除初版 + 本地签名环境文件：
 
@@ -63,20 +137,23 @@ Windows 桌面版横幅排除修正 + 签名路径修正：
 - 新增本地签名环境文件 `.env.local`（600 权限、gitignore 覆盖）：私钥路径指针 + 密码，包装器 `with-updater-key.mjs` 自动加载
 - 签名密钥生成命令记录：`npm run tauri -- signer generate -p 密码 -w ~/.tauri/lockpass-updater.key`（当前密钥为 08-28 以此命令生成的加密态密钥，公钥已同步 tauri.conf.json）
 
-### v1.0.17 (2026-08-28) 📝 待发布
+
+### v1.0.17 (2026-08-28)
 
 修复签名环境变量互斥冲突：tauri CLI 中 `--private-key` 与 `--private-key-path` 互斥，包装器此前同时注入两者导致 `tauri signer` 报参数冲突。
 
 - 包装器统一为**仅内联**注入（读取 .env.local 的 PATH 指针 → 私钥文件 → 内联变量），并 `delete` 掉 `_PATH` 变量规避互斥
 - 端到端：`tauri signer` 冒烟 + 完整 `npm run tauri:build`（EXIT=0，updater .sig 408B）双双通过，密码取自 .env.local（用户已填）
 
-### v1.0.16 (2026-08-28) 📝 待发布
+
+### v1.0.16 (2026-08-28)
 
 修复 CI 更新清单生成漏检（update-manifest 报「未找到任何带 .sig 的更新产物」）：
 
 - **根因**：download-artifact 会保留上传时的子目录层级（产物在 artifacts/windows/nsis/... 与 artifacts/macos/macos/...），gen-latest-json.mjs 只扫描顶层目录导致漏检；本地夹具（模拟 CI 嵌套层级）复现并验证修复
 - **修复**：gen-latest-json.mjs 改为递归扫描，未找到产物时打印已扫描目录树辅助排障
 - **附带**：版本日志体系迁移至 docs/version/（按主版本归档，对齐 fastenerTradeWorkbench 模式）
+
 
 ### v1.0.15 (2026-08-28)
 
@@ -85,6 +162,7 @@ Windows 桌面版横幅排除修正 + 签名路径修正：
 - 包装器在 env 加载后统一补齐内联变量：从 `.env.local` 的 PATH 或兜底私钥文件读取内容注入
 - 加密态检测：私钥首行含 encrypted 且未提供密码时打警告（当前密钥为加密态，密码取自 .env.local）
 - 实测：本机 `npm run tauri:build` 端到端产出 `LockPass.app.tar.gz` + `.sig`（408B），退出码 0
+
 
 ### v1.0.14 (2026-08-28)
 
@@ -95,6 +173,7 @@ Windows 桌面版横幅排除修正 + 签名路径修正：
 - 公钥已同步为当前加密密钥对的公钥（tauri.conf.json）；端到端签名冒烟通过
 - 加载顺序：手动 export 优先 > .env.local > ~/.tauri 旧位置 > 本地私钥路径兜底
 
+
 ### v1.0.13 (2026-08-28)
 
 修复本地打包「A public key has been found, but no private key」：
@@ -102,6 +181,7 @@ Windows 桌面版横幅排除修正 + 签名路径修正：
 - **根因**：v1.0.11 起公钥内嵌 + createUpdaterArtifacts 后，本地 `npm run build` 签名更新产物时要求 `TAURI_SIGNING_PRIVATE_KEY`，该变量此前只在 CI Secrets 中存在
 - **修复**：`tauri:build` 接入包装器 `scripts/with-updater-key.mjs`——未设置签名变量时自动注入 `~/.tauri/lockpass-updater.key` 路径与空密码 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""`（空密码密钥在无 TTY 环境必须显式提供空值，否则 CLI 交互询问密码直接失败）；CI 已有 Secrets 时原样透传；release.yml 两个构建 job 同步补显式空密码
 - **备选**：也可手动在 shell 配置里 `export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/lockpass-updater.key"`
+
 
 ### v1.0.12 (2026-08-28)
 
@@ -113,6 +193,7 @@ Windows 桌面版横幅排除修正 + 签名路径修正：
   2. 无手势场景（如 10s 自动清空剪贴板）新增 Rust 命令 `clipboard_write_text`：`run_on_main_thread` 派发 arboard 写入，绕开线程竞态（前端经 `LockClipboard.write` 统一入口）
   3. `copyToClipboard` 失败自动降级 `execCommand('copy')` 兼容通道，仍失败才报错且 Toast 携带真实错误信息；复制后的纯 UI 装饰异常不再误报为复制失败
 - **影响面**：仅 macOS 桌面行为变化；Windows / 浏览器版复制路径不变
+
 
 ### v1.0.11 (2026-08-28)
 
@@ -129,7 +210,16 @@ Windows 桌面版横幅排除修正 + 签名路径修正：
   ```
   `-p` 后接密钥密码（当前密钥即为 08-28 以此命令生成的加密态密钥）；生成 `.key` 私钥与 `.key.pub` 公钥，公钥需内嵌 `tauri.conf.json` 的 `plugins.updater.pubkey`，私钥与密码分别录入 GitHub Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`）与本地 `.env.local`。密码丢失需重新生成密钥对并轮换公钥，已发版本用户须全量重装
 
-### v1.0.9 (2026-08-27)
+
+### v1.0.10 (2026-08-28)
+
+扩展使用指南切 Pages 托管 + 扩展 zip 随站发布：
+
+- 设置面板「浏览器扩展 → 使用指南」链接切至 Pages 托管（`lockpass-扩展使用指南.html`，构建时由 `copy-guide.mjs` 拷入 dist 根目录）
+- Pages 流水线（pages.yml）新增扩展 zip 打包步骤：随站点发布 `lockpass-extension-v<版本>.zip`
+- 指南页图片链接更新为 GitHub 仓库地址；Vue 依赖版本更新
+
+### v1.0.9 (2026-08-27) ✅ 已发布
 
 Windows 桌面启动 404 问题根治（受控对比实验锁定根因）：同机另一 Tauri 项目（fastenerTradeWorkbench，无 Service Worker）从不复现该症状——唯一结构差异即 lockPass 自 v1.0 起随包携带并注册 PWA SW，其历史注册残留在 http://tauri.localhost 的 WebView2 用户目录中，冷启动首次导航被 SW 接管时产生浏览器级 404。
 
@@ -138,7 +228,8 @@ Windows 桌面启动 404 问题根治（受控对比实验锁定根因）：同�
 - **数据迁移桥**：发现历史上 `__TAURI__` 注入异常期间 file-store 从未激活、密码库一直存放在旧 origin 的 IndexedDB 中。新增一次性迁移——文件存储为空而 IDB(`PasswordVaultDB`) 有 salt+vault.main 时整体搬入 meta.json/vault.json（刻意排除 dirHandle，禁止把浏览器版句柄带入桌面）；所有读写经 openDB 闸门串行化保证 boot 首读前完成
 - **设置面板外链升级**：桌面端改用 Rust 命令 `open_url`（协议白名单校验）直接在系统浏览器打开扩展下载/指南链接，剪贴板复制降级为兜底
 
-### v1.0.8 (2026-08-27)
+
+### v1.0.8 (2026-08-27) ✅ 已发布
 
 设置面板新增「浏览器扩展」分组（位于「备份」之后）：
 
@@ -146,7 +237,8 @@ Windows 桌面启动 404 问题根治（受控对比实验锁定根因）：同�
 - **使用指南**：跳转 GitHub 文档《lockpass-扩展使用指南》（安装/配对/自动填充说明）
 - **桌面版适配**：桌面端无 shell/opener 插件，点击后自动复制链接到剪贴板并提示在系统浏览器中打开（面板内有说明文案）
 
-### v1.0.7 (2026-08-27)
+
+### v1.0.7 (2026-08-27) ✅ 已发布
 
 修复 Windows 桌面版启动 404（需点「刷新」才能进入）复发问题：
 
@@ -155,7 +247,8 @@ Windows 桌面启动 404 问题根治（受控对比实验锁定根因）：同�
 - **修复**：新增 `src/core/tauri-env.js` 统一环境探测（最先加载）——`__TAURI__.core.invoke` 可用则直连，否则回退恒存在的 `__TAURI_INTERNALS__.invoke` 并输出警告日志，结果挂载 `window.LockTauri`；file-store / sw-register / tauri-bridge / tauri-server-bridge 四处消费方全部改为读取 LockTauri；sw-register 桌面分支提前到脚本求值期立即清残留（不再等 load），尽量缩小旧 SW 干扰窗口
 - **升级用户**：安装本版后第一次打开若仍见 404，点一次「刷新」进入即可；此后每次启动恢复正常（残留 SW 已被清除）
 
-### v1.0.6 (2026-08-27)
+
+### v1.0.6 (2026-08-27) ✅ 已发布
 
 Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function」加固：
 
@@ -163,7 +256,8 @@ Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function�
 - **修复**：① file-store 增加 `__TAURI_INTERNALS__` 兜底桥接——`__TAURI__` 缺失时仍以文件存储模式运行并输出警告日志；② 绑定入口、设置面板状态判定升级为双信号检测；③ `bindDirectory()` 在 Tauri 环境硬拒绝并提示「桌面版数据已由本地文件自动保存，无需绑定同步目录」，从源头杜绝误绑
 - **对已有损坏状态**：升级到本版后首次写入会自动解绑失效句柄（Toast 提示一次）并恢复正常保存
 
-### v1.0.5 (2026-08-27)
+
+### v1.0.5 (2026-08-27) ✅ 已发布
 
 修复任何写入操作都报「本地文件同步失败：e.getFileHandle is not a function」的问题：
 
@@ -171,7 +265,8 @@ Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function�
 - **修复**：新增 `ensureUsableDirHandle()` 自愈式获取——检测到句柄无 `getFileHandle` 方法时自动解绑（清除存储句柄与绑定标记）、Toast 提示一次「本地文件同步已停用…可在设置中重新绑定」，此后未绑定状态静默跳过；自动快照浏览器分支与设置面板状态显示同步适配（面板显示「目录句柄失效，请重新绑定」）
 - **影响**：密码数据本身始终保存在 IndexedDB / 桌面本地文件中，完全不受影响；重新在设置中绑定目录即可恢复文件同步
 
-### v1.0.4 (2026-08-27)
+
+### v1.0.4 (2026-08-27) ✅ 已发布
 
 回滚功能优化：「密码历史」升级为「修改历史」——
 
@@ -181,7 +276,8 @@ Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function�
 - **回滚不新增记录**：回滚不是编辑，不再产生新的历史条目
 - 兼容旧版 `{ password, at }` 仅密码记录：仍可展示与回滚（只恢复密码），列表标注「旧版记录 · 仅密码」；每条目仍保留最近 5 版
 
-### v1.0.3 (2026-08-27)
+
+### v1.0.3 (2026-08-27) ✅ 已发布
 
 修复「批量导入」导入备份 JSON 报 `不支持的文件格式` 问题：
 
@@ -189,7 +285,8 @@ Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function�
 - **修复**：「批量导入」弹窗与主窗口拖拽导入（`import-bridge.js`）均改为按加密封套结构识别——文件同时含 `salt + iv + data` 即走主密码解密流程；快照文件的展示时间回退读取 `updatedAt`
 - **影响**：`.vault` 导出、自动快照、同步 JSON 三类加密备份现在均可直接导入；解密逻辑不变（PBKDF2 按文件自带 salt / iterations 派生密钥）
 
-### v1.0.2 (2026-08-25)
+
+### v1.0.2 (2026-08-25) ✅ 已发布
 
 修复 Windows 桌面版首次启动 404（点击刷新后恢复正常）问题：
 
@@ -197,21 +294,8 @@ Windows 桌面端「绑定目录后每次写入报 getFileHandle not a function�
 - **修复**：`sw-register.js` 增加 Tauri 环境检测（`window.__TAURI__`），桌面版跳过 SW 注册；启动时自动注销历史版本残留的 SW 并清空 CacheStorage，升级用户首次运行即完成清理，之后不再出现 404
 - **影响**：浏览器版（file:// / localhost / GitHub Pages）SW 注册与 PWA 更新机制保持不变，仅桌面版行为变更
 
-### 扩展 v1.0.1 (2026-08-25)
 
-- 新增「Tauri 桌面版内嵌本地 HTTP 服务」：Rust tiny_http 仅绑定 127.0.0.1:33555，提供 `/status`、`/credentials`（Bearer 鉴权、按域名查询）、`/pair` 一键配对（6 位 nonce 桌面弹窗确认）等接口；前端解锁后经 `tauri-server-bridge.js` 同步明文条目到 Rust 内存、锁定即清空；桌面版扩展不再依赖失效的页面 postMessage 桥，改为 fetch 本地服务取数，并支持网页版页面桥与桌面版 HTTP 双就绪来源
-- 扩展升级「复杂动态表单支持」：content_scripts 开启 `all_frames` 穿透 iframe（填充消息显式携带 frameId，杜绝多 frame 广播重复填充）；`walkRoots` 递归遍历 open shadow root，支持 Shadow DOM 内部表单；新增多步登录状态机（第一步 `LP_FILL_USERNAME` 只填用户名 → 密码框出现 `LP_PASSWORD_READY` 自动补填，pendingCredential 缓存含 120s 有效期），MutationObserver 增加 attributes 监听覆盖动态 type 切换
-- 新增「自动弹出建议」：按当前 tab URL 域名预筛选推荐条目，命中时右下角气泡展示可点击条目（气泡仅接收剥离密码字段的条目，密码只在 background 内存）+ toolbar 徽标数字；未命中给空态提示；同页 60s 节流、用户关闭/点选后本页不再自动弹、气泡 5s 自动收起、徽标 30s 自动清除；点击建议一键填充当前页面（兼容 iframe 与多步登录），零新增权限
-- 新增文档「扩展使用指南」：`docs/lockpass-扩展使用指南.md` 与 `.html`（含一键配对 / 自动填充全流程截图 guide-01~06），覆盖浏览器版（file:// 双击、localhost dev、GitHub Pages）与桌面版（内嵌 HTTP 通道）使用方式及桌面版打包安装说明
-- 扩展 manifest 版本同步至 1.0.1（主应用版本保持 v1.0.1 不变）
-- 新增「浏览器扩展（v0.1 实验版）」：`extension/` 目录 Manifest V3 扩展——解锁态通信（LockPass 页面 ExtBridge + 会话令牌 + postMessage 协议，主密码不出主应用）、通用登录表单识别与填充（原生 setter + input/change 事件，兼容主流前端框架）、popup 搜索列表、不自动提交、扩展零落盘（无 storage 权限，明文瞬时转发）
-- 新增「自动备份」：可配置提醒间隔（关闭/1/3/7/30 天），解锁时距上次 .vault 导出或快照超期则 Toast 提醒（防刷屏节流）；桌面端（Tauri）与浏览器已绑定目录支持自动加密快照——解锁后检查间隔自动生成带日期时间的完整密文快照到 backups/，保留最近 N 份（默认 5，可配 3~20），Tauri 用清单文件维护、浏览器用目录枚举清理；设置面板新增备份区块（提醒间隔/快照开关/间隔/保留份数/上次备份时间/立即备份），浏览器未绑定目录时按钮引导导出 .vault；.vault 导出成功自动刷新备份时间
-- 移动端体验打磨：新增底部导航（全部/收藏/回收站/添加/标签，回收站徽标，中心凸起添加按钮）；修复移动端无 hover 导致卡片操作按钮不可见的问题（改为常显）；触控目标尺寸对齐（导航项 44px、卡片操作 36px、主按钮 40px+）；扫码流程优化（上传区更大触控面、取景框限高防溢出）；安全区适配补齐（底部导航/详情页/弹窗底栏）
-- 新增「自定义主题」：深色 / 浅色 / 跟随系统（`prefers-color-scheme` 实时响应）三种模式 + 蓝/绿/紫/橙/红/青 6 种强调色；主题与强调色存 localStorage，挂载前同步应用无闪屏；强调色由 CSS 色相变量驱动（accent/dim/glow/hover/焦点边框全跟随）；粒子背景颜色随主题切换重绘；Tauri 桌面版 CSP 下无内联脚本，兼容
-- 新增「密码历史记录与回滚」：编辑条目且密码变更时自动快照旧密码（每条目最多保留最近 5 版，最新在前）；详情面板展示历史版本（时间 + 掩码密码），一键回滚；回滚前自动保存当前密码防误操作。历史随整体 vault 加密，不参与 .vault / CSV 导入导出；彻底删除 / 清空回收站时同步清理无主历史
-- 文档对齐：README / docs/spec.md / docs/tauri.md / AGENTS.md 更新至 Vue 3 + Vite 实际架构（此前仍描述 Vanilla JS 结构与已退役构建脚本）
-
-### v1.0.0 (2026-08-22)
+### v1.0.0 (2026-08-22) ✅ 已发布
 
 PWA 更新机制修复 — 解决「添加到主屏幕」后线上代码更新无法触达用户的问题：
 
@@ -228,3 +312,4 @@ PWA 更新机制修复 — 解决「添加到主屏幕」后线上代码更新�
 - **Bug 修复**：CSV 导入切行不一致（RFC 4180 引号字段内换行）；FileSync 同步失败无反馈；exportVault 迭代次数硬编码；importEncryptedVault 忽略文件自带迭代次数
 
 ---
+

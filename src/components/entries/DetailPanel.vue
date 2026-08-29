@@ -182,7 +182,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       else if (action === 'open-url' && e.url) {
         let u = e.url
         if (!/^https?:\/\//i.test(u)) u = 'https://' + u
-        window.open(u, '_blank', 'noopener,noreferrer')
+        window.Utils.openExternal(u)
       }
       else if (action === 'copy-ssh') copyField(sshCommand.value)
       else if (action === 'copy-mysql') copyField(mysqlCommand.value)
@@ -204,7 +204,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       else if (action === 'open-url' && url) {
         let u = value || ''
         if (!/^https?:\/\//i.test(u)) u = 'https://' + u
-        window.open(u, '_blank', 'noopener,noreferrer')
+        window.Utils.openExternal(u)
       }
       break
     }
@@ -225,7 +225,12 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
         window.Utils.showToast(`已从条目移除标签「${name}」`, 'success')
       }
       if (action === 'rename-here') {
-        const newName = window.prompt?.('将该条目中的「' + name + '」改为：', name)?.trim()
+        const newName = await window.Utils.prompt({
+          title: '重命名字段标签',
+          message: `将该条目中的「${name}」改为：`,
+          value: name,
+          confirmText: '重命名',
+        })?.trim()
         if (!newName || newName === name) return
         if (!e.tags) return
         const idx = e.tags.indexOf(name)

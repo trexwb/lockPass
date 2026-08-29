@@ -1,0 +1,191 @@
+/* ═══════════════════════════════════════════════════════════════════
+   LockPass — UX 深化增强层
+   覆盖：主题切换过渡 / 列表重播编舞 / 空状态入场 / 计数弹跳 /
+        卡片删除离场 / 恢复回弹 / 模态关闭 / 右键菜单 origin 锚点 /
+        全局按钮涟漪 / 键盘焦点可见性
+   所有动效沿用 base.css 令牌（--dur-* / --ease-*），并受
+   prefers-reduced-motion 守护（base.css 已全局提供 media 兜底）。
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 主题 / 强调色切换过渡（useTheme.setMode / setAccent 挂 .theme-switching） ── */
+html.theme-switching body,
+html.theme-switching #app-shell,
+html.theme-switching #sidebar,
+html.theme-switching #header,
+html.theme-switching #detail-panel,
+html.theme-switching .entry-card,
+html.theme-switching .ctx-menu {
+  transition: background-color 0.4s var(--ease-out-quart),
+              color 0.4s var(--ease-out-quart),
+              border-color 0.4s var(--ease-out-quart);
+}
+
+/* ── 2. 列表重播：筛选 / 搜索 / 增删后整表重挂载，重播 list-rise 编舞 ── */
+#entries-list .entry-card {
+  animation: list-rise 0.34s var(--ease-out-quart) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+/* ── 3. 空状态入场 ── */
+#empty-state {
+  animation: empty-fade 0.32s var(--ease-out-quart) both;
+}
+@keyframes empty-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── 4. 计数弹跳（条目数变化时） ── */
+.count-pop {
+  display: inline-block;
+  animation: count-pop 0.32s var(--ease-out-quart) both;
+}
+@keyframes count-pop {
+  0%   { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+/* ── 5. 卡片删除离场（useVault.softDelete / permanentDelete 挂 .leaving） ── */
+.entry-card.leaving {
+  pointer-events: none;
+  animation: card-leave 0.28s var(--ease-in-quart) forwards;
+}
+@keyframes card-leave {
+  to {
+    opacity: 0;
+    transform: scale(0.92) translateY(-6px);
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* ── 6. 恢复回弹（useVault.restoreEntry 给新卡片挂 .just-restored） ── */
+.entry-card.just-restored {
+  animation: restore-pop 0.5s var(--ease-out-quart) both;
+}
+@keyframes restore-pop {
+  0%   { transform: scale(0.9); box-shadow: 0 0 0 2px var(--accent); }
+  60%  { transform: scale(1.02); }
+  100% { transform: scale(1); box-shadow: none; }
+}
+
+/* ── 7. 模态框切换动画（ModalHost <Transition name="modal-swap" mode="out-in">） ── */
+.modal-swap-enter-active {
+  transition: opacity 0.26s var(--ease-out-quart),
+              transform 0.26s var(--ease-out-quart);
+}
+.modal-swap-enter-from {
+  opacity: 0;
+  transform: translateY(14px) scale(0.985);
+}
+.modal-swap-leave-active {
+  transition: opacity 0.18s var(--ease-in-quart),
+              transform 0.18s var(--ease-in-quart);
+}
+.modal-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.99);
+}
+
+/* ── 8. 右键菜单 origin 锚点（AppShell 自管 / useCtxMenu 统一计算） ── */
+.ctx-menu[data-origin='tl'] { transform-origin: top left; }
+.ctx-menu[data-origin='tr'] { transform-origin: top right; }
+.ctx-menu[data-origin='bl'] { transform-origin: bottom left; }
+.ctx-menu[data-origin='br'] { transform-origin: bottom right; }
+
+/* ── 9. 全局按钮涟漪（micro-interactions.js 注入 .ripple-ink） ── */
+.btn,
+.btn-icon,
+.tabbar-add,
+.tabbar-item,
+.restore-btn,
+.star-btn,
+.copy-btn,
+.delete-btn,
+.search-clear-btn,
+.ctx-item {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-ink {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent, #4da3ff) 26%, transparent) 0%,
+    transparent 70%
+  );
+  transform: scale(0);
+  animation: ripple-in 0.42s var(--ease-out-quart) forwards;
+}
+@keyframes ripple-in {
+  to { transform: scale(1); opacity: 0; }
+}
+
+/* ── 10. 键盘焦点可见性（WCAG 2.4.7） ── */
+.entry-card:focus-visible,
+.nav-item:focus-visible,
+.btn:focus-visible,
+.btn-icon:focus-visible,
+.tabbar-item:focus-visible,
+.tabbar-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ctx-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── 11. 详情面板可复制值 hover 微反馈 ── */
+.detail-field .detail-field-value {
+  border-radius: 6px;
+  transition: background-color var(--dur-fast) var(--ease-out-quart);
+}
+.detail-field .detail-field-value:hover {
+  background-color: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+/* ── 12. 移动端底部导航按压反馈增强 ── */
+.tabbar-item,
+.tabbar-add {
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background-color var(--dur-fast) var(--ease-out-quart);
+}
+.tabbar-item:active,
+.tabbar-add:active {
+  transform: scale(0.94);
+}
+
+/* ── 14. 自定义输入弹窗（Utils.prompt，替代系统 prompt） ── */
+.prompt-dialog .prompt-input {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.prompt-dialog .prompt-input::placeholder {
+  color: var(--text-faint);
+}
+.prompt-dialog .prompt-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ── 15. 内容区右键命中提示：可右键区域轻微虚线提示（hover 时） ── */
+.content-toolbar,
+#entries-list {
+  transition: box-shadow var(--dur-micro) var(--ease-out-quart);
+}
