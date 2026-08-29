@@ -11,6 +11,20 @@ import ModalBase from '../common/ModalBase.vue'
 
 const { closeModal, openModal, saveVault, resetLockTimer, lockVault } = useVault()
 
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
+
+/* ── 设置标签页分组 ── */
+const settingsTab = ref('security')
+const SETTINGS_TABS = [
+  { id: 'security', label: '安全' },
+  { id: 'appearance', label: '外观' },
+  { id: 'sync', label: '同步备份' },
+  { id: 'data', label: '数据' },
+  { id: 'extension', label: '扩展' },
+  { id: 'about', label: '关于' },
+]
+
 /* ── 安全设置（本机配置，仅存 localStorage） ── */
 
 const lockTimeout = ref(vaultState.lockTimeoutMs)
@@ -22,6 +36,10 @@ const EXT_GUIDE_URL =
   'https://trexwb.github.io/lockPass/guide.html'
 
 const isDesktopApp = computed(() => !!(window.LockTauri && window.LockTauri.isTauri))
+
+// P3-3 同款平台判定：navigator.platform 已废弃，userAgentData 优先
+const isMac = (navigator.userAgentData && navigator.userAgentData.platform === 'macOS')
+  || /mac/i.test(navigator.platform || '')
 
 function openExternalUrl(url) {
   // 桌面版：Rust 命令 open_url（协议白名单校验）在系统默认浏览器打开；
@@ -382,7 +400,6 @@ async function destroyVault() {
 /* ── 快捷键说明表 ── */
 
 const shortcuts = ref([])
-const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
 onMounted(() => {
   shortcuts.value = buildShortcutDefs()
@@ -404,12 +421,25 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
     <div class="modal-header">
       <h2>设置</h2>
       <button class="btn-icon" @click="closeModal()" tabindex="-1">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+        <span v-html="Icons.close(16)"></span>
       </button>
     </div>
     <div class="modal-body">
+      <!-- 设置标签页导航 -->
+      <div class="settings-tabs" role="tablist" aria-label="设置分类">
+        <button
+          v-for="tab in SETTINGS_TABS"
+          :key="tab.id"
+          class="settings-tab"
+          :class="{ active: settingsTab === tab.id }"
+          role="tab"
+          :aria-selected="settingsTab === tab.id ? 'true' : 'false'"
+          @click="settingsTab = tab.id"
+        >{{ tab.label }}</button>
+      </div>
+
       <!-- 安全 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'security'">
         <div class="settings-group-title">安全</div>
         <div class="settings-row">
           <div>
@@ -438,7 +468,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 外观 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'appearance'">
         <div class="settings-group-title">外观</div>
         <div class="settings-row">
           <div>
@@ -477,7 +507,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 本地文件同步 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'sync'">
         <div class="settings-group-title">本地文件同步</div>
         <div class="settings-row">
           <div>
@@ -492,7 +522,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 备份 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'sync'">
         <div class="settings-group-title">备份</div>
         <div class="settings-row">
           <div>
@@ -555,7 +585,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 浏览器扩展（自动填充） -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'extension'">
         <div class="settings-group-title">浏览器扩展</div>
         <div class="settings-row">
           <div>
@@ -577,7 +607,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 标签管理入口 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'data'">
         <div class="settings-group-title">标签管理</div>
         <div class="settings-row">
           <div>
@@ -589,7 +619,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 数据说明 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'data'">
         <div class="settings-group-title">数据说明</div>
         <div class="data-info-cards">
           <div class="data-info-card">
@@ -635,7 +665,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 数据管理 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'security'">
         <div class="settings-group-title">数据管理</div>
         <div class="settings-row">
           <div>
@@ -675,7 +705,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 快捷键 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'appearance'">
         <div class="settings-group-title">快捷键</div>
         <div v-if="shortcuts.length" class="shortcut-table-wrap">
           <table class="shortcut-table">
@@ -695,7 +725,7 @@ const appVersion = computed(() => window.LockPassVersion ? 'v' + window.LockPass
       </div>
 
       <!-- 关于 -->
-      <div class="settings-group">
+      <div class="settings-group" v-show="settingsTab === 'about'">
         <div class="settings-group-title">关于</div>
         <div class="settings-row">
           <div>

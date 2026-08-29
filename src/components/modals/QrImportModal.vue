@@ -10,10 +10,16 @@ import ModalBase from '../common/ModalBase.vue'
 
 const { saveVault, closeModal, getSession } = useVault()
 
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
+
 const QR_FORMAT = 'LockPass-QR v1'
 
 const step = ref('upload') // 'upload' | 'scan' | 'working'
 const statusMsg = ref('')
+// P3-3 同款平台判定：navigator.platform 已废弃，userAgentData 优先
+const isMac = (navigator.userAgentData && navigator.userAgentData.platform === 'macOS')
+  || /mac/i.test(navigator.platform || '')
 const statusType = ref('')
 const fileName = ref('')
 const entry = ref(null)
@@ -238,6 +244,13 @@ async function autoImport(e) {
   if (e.privateKey) newEntry.privateKey = e.privateKey
 
   vaultState.entries.push(newEntry)
+  if (dup) {
+    // 替换导入：迁移旧条目的密码历史到新条目，避免孤儿明文历史滞留加密存储
+    if (vaultState.history[dup.id]) {
+      vaultState.history[newEntry.id] = vaultState.history[dup.id]
+      delete vaultState.history[dup.id]
+    }
+  }
   await saveVault()
   window.Utils.showToast(dup ? '导入成功（已替换原条目）' : '导入成功', 'success')
 
@@ -386,10 +399,7 @@ onUnmounted(() => {
     <div class="modal-header">
       <h3>二维码添加</h3>
       <button class="btn-icon" @click="closeModal()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <span v-html="Icons.close(16)"></span>
       </button>
     </div>
 

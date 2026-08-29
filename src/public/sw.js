@@ -5,7 +5,9 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 const CACHE_NAME = 'lockpass-__APP_VERSION__';
-const PRECACHE_URLS = ['/', '/index.html'];
+// 相对路径：随 SW 脚本解析到部署子路径（如 GitHub Pages 的 /lockPass/），
+// 避免在子路径部署时请求站点根目录导致预缓存 404 错误页
+const PRECACHE_URLS = ['./', './index.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

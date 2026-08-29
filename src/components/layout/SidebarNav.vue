@@ -22,6 +22,18 @@ function selectFilter(f) {
   vaultState.sidebarOpen = false
 }
 
+/**
+ * 键盘可达（P2-4 修复）：导航项 div 的 Enter/Space 触发与点击等效的筛选切换
+ * @param {KeyboardEvent} e 键盘事件
+ * @param {string} f 目标筛选值
+ */
+function onNavKey(e, f) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    selectFilter(f)
+  }
+}
+
 function onDocClick(e) {
   if (addDropdownOpen.value && !e.target.closest('#add-entry-dropdown')) {
     addDropdownOpen.value = false
@@ -93,8 +105,11 @@ function tagIconSvg(name) {
         <nav id="nav-personal">
           <div
             class="nav-item"
+            role="button"
+            tabindex="0"
             :class="{ active: vaultState.currentFilter === 'all' }"
             @click="selectFilter('all')"
+            @keydown="onNavKey($event, 'all')"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
@@ -105,8 +120,11 @@ function tagIconSvg(name) {
           </div>
           <div
             class="nav-item"
+            role="button"
+            tabindex="0"
             :class="{ active: vaultState.currentFilter === 'favorites' }"
             @click="selectFilter('favorites')"
+            @keydown="onNavKey($event, 'favorites')"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" :fill="vaultState.currentFilter === 'favorites' ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -116,8 +134,11 @@ function tagIconSvg(name) {
           </div>
           <div
             class="nav-item"
+            role="button"
+            tabindex="0"
             :class="{ active: vaultState.currentFilter === 'recycle' }"
             @click="selectFilter('recycle')"
+            @keydown="onNavKey($event, 'recycle')"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
@@ -135,8 +156,11 @@ function tagIconSvg(name) {
             v-for="t in ENTRY_TYPES"
             :key="t.id"
             class="nav-item"
+            role="button"
+            tabindex="0"
             :class="[{ active: vaultState.currentFilter === 'type:' + t.id }, 'type-' + t.id]"
             @click="selectFilter('type:' + t.id)"
+            @keydown="onNavKey($event, 'type:' + t.id)"
           >
             <span class="type-icon" v-html="typeIconSvg(t.id)"></span>
             {{ typeLabels[t.id] }}
@@ -146,7 +170,7 @@ function tagIconSvg(name) {
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-section-title sidebar-title-clickable" id="tags-toggle" title="折叠/展开热门标签" @click="tagSectionOpen = !tagSectionOpen">
+        <div class="sidebar-section-title sidebar-title-clickable" id="tags-toggle" title="折叠/展开热门标签" role="button" tabindex="0" @click="tagSectionOpen = !tagSectionOpen" @keydown.enter.prevent="tagSectionOpen = !tagSectionOpen">
           热门标签
           <svg class="tag-chevron" :style="{ transform: !tagSectionOpen ? 'rotate(-90deg)' : 'rotate(0deg)' }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" />
@@ -157,8 +181,11 @@ function tagIconSvg(name) {
             v-for="tag in topTags"
             :key="tag.name"
             class="nav-item"
+            role="button"
+            tabindex="0"
             :class="{ active: vaultState.currentFilter === tag.name }"
             @click="selectFilter(tag.name)"
+            @keydown="onNavKey($event, tag.name)"
           >
             <span v-html="tagIconSvg(tag.name)"></span>
             {{ tag.name }}

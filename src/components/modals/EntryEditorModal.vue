@@ -6,7 +6,10 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 
-const { getEntryById, saveEntry, closeModal } = useVault()
+const { getEntryById, saveEntry, closeModal, copyToClipboard } = useVault()
+
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
 
 const isEdit = computed(() => !!vaultState.editingEntryId)
 
@@ -22,7 +25,7 @@ const TYPE_FIELD_KEYS = {
   website: ['url', 'username', 'password'],
   server: ['url', 'port', 'username', 'password'],
   database: ['dbType', 'url', 'port', 'dbName', 'username', 'password'],
-  ai: ['password', 'organization', 'url'],
+  ai: ['password', 'url'],
   app: ['appId', 'password', 'privateKey'],
   other: ['username', 'password'],
 }
@@ -129,19 +132,11 @@ function toggleSecret(k) {
   showFields[k] = !showFields[k]
 }
 
-// 复制文本到剪贴板（原版 copyFieldById 等价）
-async function copyText(text) {
+// 复制文本到剪贴板（P2-9 修复：走 useVault 统一安全链路——
+// 成功 Toast 反馈 + 30 秒自动清除，替代原来绕过链路的裸 navigator.clipboard 调用）
+async function copyText(text, btnEl = null) {
   if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch (e) {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    ta.remove()
-  }
+  await copyToClipboard(text, null, btnEl)
 }
 
 /* ── 密码生成面板 ─────────────────────────────── */
@@ -225,7 +220,34 @@ function updateStrength() {
 
 /* ── 保存 ─────────────────────────────────────── */
 
+// 字段校验：返回错误消息或 null
+function validateForm() {
+  if (!title.value.trim()) return '请填写标题'
+  const url = fields.url?.trim() || ''
+  if (url) {
+    // URL 校验：接受 http(s):// 或裸域名/IP
+    const isUrl = /^https?:\/\/.+/i.test(url) || /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]+)?$/i.test(url) || /^(\d{1,3}\.){3}\d{1,3}$/.test(url)
+    if (!isUrl) return '网址格式不正确'
+  }
+  const port = fields.port
+  if (port !== undefined && port !== '' && port != null) {
+    const p = Number(port)
+    if (!Number.isInteger(p) || p < 1 || p > 65535) return '端口必须在 1-65535 范围内'
+  }
+  const username = fields.username?.trim() || ''
+  if (username && username.includes('@')) {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)
+    if (!isEmail) return '邮箱格式不正确'
+  }
+  return null
+}
+
 async function onSave() {
+  const err = validateForm()
+  if (err) {
+    window.Utils.showToast(err, 'error')
+    return
+  }
   const payload = {
     title: title.value,
     type: entryType.value,
@@ -235,6 +257,41 @@ async function onSave() {
   }
   const ok = await saveEntry(payload)
   if (ok) clearDraft()
+}
+
+/* ── 关闭时未保存警告 ─────────────────────────── */
+
+// 记录初始快照，用于判断是否有未保存修改
+let _initialSnapshot = null
+
+function snapshotForm() {
+  return JSON.stringify({
+    title: title.value,
+    entryType: entryType.value,
+    fields: { ...fields },
+    tags: selectedTags.value.slice(),
+    notes: notes.value,
+  })
+}
+
+function hasUnsavedChanges() {
+  if (!_initialSnapshot) return false
+  return snapshotForm() !== _initialSnapshot
+}
+
+async function handleClose() {
+  if (hasUnsavedChanges()) {
+    const ok = await window.Utils.confirm({
+      title: '未保存的修改',
+      message: '当前表单有未保存的修改，确定要关闭吗？',
+      confirmText: '放弃修改',
+      cancelText: '继续编辑',
+      danger: true,
+    })
+    if (!ok) return
+  }
+  clearDraft()
+  closeModal()
 }
 
 /* ── 旧数据兼容加载 ───────────────────────────────
@@ -259,6 +316,17 @@ onMounted(() => {
       }
       selectedTags.value = (e.tags || []).slice()
       notes.value = e.notes || ''
+
+      // 恢复未保存的编辑草稿（v1.0.25：此前编辑模式草稿只写不读）
+      const draft = loadDraft()
+      if (draft) {
+        title.value = draft.title || title.value
+        if (draft.entryType) entryType.value = draft.entryType
+        Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
+        selectedTags.value = (draft.tags || []).slice()
+        if (draft.notes != null) notes.value = draft.notes
+        window.Utils.showToast('已恢复上次未保存的编辑内容', 'info')
+      }
     }
   } else {
     const draft = loadDraft()
@@ -279,20 +347,18 @@ onMounted(() => {
     if (fields.rootPwd === undefined) fields.rootPwd = ''
   }
   updateStrength()
+  _initialSnapshot = snapshotForm()
 })
 
 watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { deep: true })
 </script>
 
 <template>
-  <ModalBase :max-width="'560px'" @close="closeModal()">
+  <ModalBase :max-width="'560px'" @close="handleClose()">
     <div class="modal-header">
       <h3>{{ isEdit ? '编辑密码' : '添加密码' }}</h3>
-      <button class="btn-icon" @click="closeModal()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+      <button class="btn-icon" @click="handleClose()">
+        <span v-html="Icons.close(16)"></span>
       </button>
     </div>
 
@@ -329,10 +395,10 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
           <div class="input-affix">
             <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入或生成密码" autocomplete="off" @input="updateStrength()" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" title="生成密码" @click="toggleGenPanel()">
+              <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="toggleGenPanel()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                 </svg>
@@ -403,7 +469,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
             <div class="input-row-main">
               <input v-model="fields.username" class="form-input" type="text" placeholder="账号" autocomplete="off" />
             </div>
-            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.username)">
+            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.username, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -415,10 +481,10 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
               <div class="input-affix">
                 <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入或生成密码" autocomplete="off" @input="updateStrength()" />
                 <div class="input-affix-btns">
-                  <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                  <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" title="生成密码" @click="toggleGenPanel()">
+                  <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="toggleGenPanel()">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -426,7 +492,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
                 </div>
               </div>
             </div>
-            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password)">
+            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -477,7 +543,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
             <div class="input-row-main">
               <input v-model="fields.rootUser" class="form-input" type="text" placeholder="root" autocomplete="off" />
             </div>
-            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.rootUser)">
+            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.rootUser, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -489,10 +555,10 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
               <div class="input-affix">
                 <input v-model="fields.rootPwd" class="form-input mono" :type="showFields.rootPwd ? 'text' : 'password'" placeholder="root 密码" autocomplete="off" />
                 <div class="input-affix-btns">
-                  <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('rootPwd')">
+                  <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('rootPwd')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.rootPwd ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" title="生成密码" @click="generateFor('rootPwd')">
+                  <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="generateFor('rootPwd')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -500,7 +566,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
                 </div>
               </div>
             </div>
-            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.rootPwd)">
+            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.rootPwd, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -524,7 +590,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
             <div class="input-row-main">
               <input v-model="fields.username" class="form-input" type="text" placeholder="数据库用户名" autocomplete="off" />
             </div>
-            <button class="pw-gen-btn" type="button" title="复制用户名" @click="copyText(fields.username)">
+            <button class="pw-gen-btn" type="button" title="复制用户名" @click="copyText(fields.username, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -536,10 +602,10 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
               <div class="input-affix">
                 <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="数据库密码" autocomplete="off" @input="updateStrength()" />
                 <div class="input-affix-btns">
-                  <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+                  <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" title="生成密码" @click="toggleGenPanel()">
+                  <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="toggleGenPanel()">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -547,7 +613,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
                 </div>
               </div>
             </div>
-            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password)">
+            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -609,7 +675,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
           <div class="input-affix">
             <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入 Token" autocomplete="off" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
             </div>
@@ -628,10 +694,10 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
           <div class="input-affix mono-textarea-wrap">
             <textarea v-model="fields.password" class="form-input mono mono-textarea" rows="3" placeholder="输入公钥" autocomplete="off"></textarea>
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.password)">
+              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.password, $event.currentTarget)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
               </button>
             </div>
@@ -642,10 +708,10 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
           <div class="input-affix mono-textarea-wrap">
             <textarea v-model="fields.privateKey" class="form-input mono mono-textarea" rows="3" placeholder="输入私钥（证书级长度）" autocomplete="off"></textarea>
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('privateKey')">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('privateKey')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.privateKey ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.privateKey)">
+              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.privateKey, $event.currentTarget)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
               </button>
             </div>
@@ -664,7 +730,7 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
           <div class="input-affix">
             <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入凭证值" autocomplete="off" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
             </div>
@@ -718,13 +784,14 @@ watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { d
           v-model="notes"
           class="form-input notes-textarea"
           rows="3"
+          maxlength="256"
           placeholder="支持 Markdown 格式..."
         ></textarea>
       </div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-secondary" @click="closeModal()">取消</button>
+      <button class="btn btn-secondary" @click="handleClose()">取消</button>
       <button id="entry-editor-save" class="btn btn-primary" @click="onSave()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
         保存

@@ -11,6 +11,9 @@ import ModalBase from '../common/ModalBase.vue'
 
 const { saveVault, closeModal } = useVault()
 
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
+
 const fileName = ref('')
 const importType = ref('') // 'csv' | 'vault'
 const importMode = ref('') // 'csv' | 'encrypted-vault' | 'plaintext-vault'
@@ -81,7 +84,19 @@ function previewCSV(text) {
     resetState()
     return
   }
-  const headers = window.Utils.parseCSVLine(lines[0])
+  const headers = window.Utils.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim())
+  // 列头校验：title 和 password 为必填列
+  const missing = []
+  if (!headers.includes('title')) missing.push('title')
+  if (!headers.includes('password')) missing.push('password')
+  if (missing.length) {
+    window.Utils.showToast('CSV 缺少必填列：' + missing.join('、') + '（必须包含 title 和 password 列）', 'error')
+    resetState()
+    return
+  }
+  // 检测已知列头拼写（提示未知列但不阻断）
+  const KNOWN_COLS = ['title', 'username', 'password', 'url', 'entrytype', 'category', 'tags', 'notes', 'rootusername', 'rootpassword', 'appid', 'privatekey', 'port']
+  const unknown = headers.filter(h => h && !KNOWN_COLS.includes(h))
   const count = lines.length - 1
   importMode.value = 'csv'
   previewInfo.value = {
@@ -89,6 +104,7 @@ function previewCSV(text) {
     title: 'CSV 明文文件',
     count: count,
     fields: headers.join(', '),
+    warning: unknown.length ? '未知列将被忽略：' + unknown.join(', ') : null,
   }
 }
 
@@ -385,10 +401,7 @@ async function importPlaintextVault(data) {
     <div class="modal-header">
       <h3>批量导入</h3>
       <button class="btn-icon" @click="closeModal()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <span v-html="Icons.close(16)"></span>
       </button>
     </div>
 
@@ -421,6 +434,7 @@ async function importPlaintextVault(data) {
             <template v-else>包含 {{ previewInfo.count }} 条密码记录 · 导入采用合并模式，与现有数据冲突的条目将作为新数据添加</template>
           </div>
           <div v-if="previewInfo.kind === 'csv'" class="text-warning text-sm mt-2">⚠️ CSV 为明文格式；累加模式；重复条目将逐条询问；点「导入」开始</div>
+          <div v-if="previewInfo.warning" class="text-warning text-sm mt-1">{{ previewInfo.warning }}</div>
           <div v-if="previewInfo.kind === 'plaintext'" class="text-warning text-sm mt-2">⚠️ 此文件包含明文密码，请妥善保管</div>
           <div v-if="previewInfo.kind === 'encrypted'" class="form-group mt-2 mb-0">
             <input v-model="masterPassword" class="form-input" type="password" placeholder="输入主密码解密" @keydown.enter.prevent="confirmImport()" />

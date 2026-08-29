@@ -1,6 +1,6 @@
 <script setup>
 /* LockPass — 主界面外壳（Header + Sidebar + Content + Detail） */
-import { onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { onMounted, onBeforeUnmount, computed, reactive, ref, watch, nextTick } from 'vue'
 import { useVault, vaultState } from '../composables/useVault'
 import HeaderBar from './layout/HeaderBar.vue'
 import SidebarNav from './layout/SidebarNav.vue'
@@ -12,9 +12,16 @@ const Utils = window.Utils
 
 const {
   getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
-  toggleFavorite, copyPassword, softDelete,
+  toggleFavorite, copyPassword, softDelete, permanentDelete,
   setFilter, openEntryModal, computeSidebarStats,
 } = useVault()
+
+// 类型中文名（P3-8 修复：卡片/详情中的类型 title 不再显示英文 id）
+const TYPE_LABELS = { website: '网站', server: '服务器', database: '数据库', ai: 'AI', app: '应用', other: '其他' }
+
+function typeLabelOf(type) {
+  return TYPE_LABELS[type || 'website'] || type || ''
+}
 
 // 底部导航筛选入口（与 SidebarNav 一致的本地包装；useVault 导出名为 setFilter）
 function selectFilter(f) {
@@ -44,14 +51,7 @@ const emptyDesc = computed(() => {
 })
 
 // 原版 ui.js：空列表时给 #content-inner 加 empty-active（margin:0 auto 居中）
-watch(
-  () => filteredEntries.value.length,
-  (len) => {
-    const inner = document.getElementById('content-inner')
-    if (inner) inner.classList.toggle('empty-active', len === 0)
-  },
-  { immediate: true }
-)
+// 复审修复：改为模板 :class 绑定（原为 watch + getElementById 手动切 class 的反模式）
 
 /* ── 卡片渲染辅助（对应原版 buildEntryCard / getCardTypeIcon / getCardSubtitle） ── */
 
@@ -95,30 +95,207 @@ function onCardClick(entry, e) {
   selectEntry(entry.id, e)
 }
 
+/**
+ * 键盘可达（P2-4 修复）：条目卡片 div 的 Enter/Space 等效点击打开详情
+ * Shift+F10 / ContextMenu 键等效右键打开快捷菜单（P1-O6）
+ */
+function onCardKeydown(entry, e) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    selectEntry(entry.id, e)
+  } else if (e.key === 'F10' && e.shiftKey) {
+    e.preventDefault()
+    // 从卡片元素位置计算菜单坐标
+    const rect = e.currentTarget.getBoundingClientRect()
+    onCardContextMenu(entry, {
+      preventDefault() {},
+      stopPropagation() {},
+      clientX: rect.right - 20,
+      clientY: rect.bottom,
+    })
+  } else if (e.key === 'ContextMenu') {
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    onCardContextMenu(entry, {
+      preventDefault() {},
+      stopPropagation() {},
+      clientX: rect.right - 20,
+      clientY: rect.bottom,
+    })
+  }
+}
+
 function onActionsClick(e) {
   e.stopPropagation()
 }
 
-function contentTitle() {
+/* ── 右键快捷菜单（P2-2 修复：兑现 spec §3.8 承诺） ── */
+
+const ctxMenu = reactive({ visible: false, x: 0, y: 0, entry: null })
+
+/** 右键打开快捷菜单；位置做视口边缘钳制，避免菜单溢出屏幕 */
+function onCardContextMenu(entry, e) {
+  e.preventDefault()
+  e.stopPropagation()
+  const MENU_W = 180
+  const MENU_H = 200
+  ctxMenu.x = Math.min(e.clientX, window.innerWidth - MENU_W - 8)
+  ctxMenu.y = Math.min(e.clientY, window.innerHeight - MENU_H - 8)
+  ctxMenu.entry = entry
+  ctxMenu.visible = true
+}
+
+/** 关闭右键菜单 */
+function closeCtxMenu() {
+  ctxMenu.visible = false
+  ctxMenu.entry = null
+}
+
+/* ── 触屏长按呼出（iOS Safari 不派发 contextmenu，长按 500ms 等效右键） ── */
+
+let longPressTimer = null
+const LONG_PRESS_MS = 500
+
+function onCardTouchStart(entry, e) {
+  if (!e.touches || e.touches.length !== 1) return
+  const touch = e.touches[0]
+  const clientX = touch.clientX
+  const clientY = touch.clientY
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    // 合成右键事件对象：仅需要 preventDefault/stopPropagation/clientX/clientY
+    onCardContextMenu(entry, {
+      preventDefault() {},
+      stopPropagation() {},
+      clientX,
+      clientY,
+    })
+  }, LONG_PRESS_MS)
+}
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+/** 菜单项动作统一分发（关闭后执行，避免菜单残留） */
+function onCtxAction(action) {
+  const entry = ctxMenu.entry
+  closeCtxMenu()
+  if (!entry) return
+  if (action === 'edit') openEntryModal(entry.id)
+  else if (action === 'copy') copyPassword(entry.id)
+  else if (action === 'fav') toggleFavorite(entry.id)
+  else if (action === 'delete') softDelete(entry.id)
+  else if (action === 'restore') restoreEntry(entry.id)
+  else if (action === 'purge') permanentDelete(entry.id)
+}
+
+function onDocMouseDown(e) {
+  if (ctxMenu.visible && !e.target.closest('.ctx-menu')) closeCtxMenu()
+}
+
+function onDocScrollOrResize() {
+  if (ctxMenu.visible) closeCtxMenu()
+}
+
+function onDocResize() {
+  onDocScrollOrResize()
+  // P3-5：视口尺寸变化时同步窗口计算依据并重新校准行高（卡片换行高度会变）
+  if (contentEl.value) viewportH.value = contentEl.value.clientHeight || viewportH.value
+  measureRowHeight()
+}
+
+/* P3-1 修复：contentTitle 改 computed，避免每次重渲染重复执行 */
+const contentTitle = computed(() => {
   if (vaultState.currentFilter === 'all') return '全部密码'
   if (vaultState.currentFilter === 'favorites') return '收藏'
   if (vaultState.currentFilter === 'recycle') return '回收站'
   if (vaultState.currentFilter.startsWith('type:')) {
-    const t = vaultState.currentFilter.slice(5)
-    const def = { website: '网站', server: '服务器', database: '数据库', ai: 'AI', app: '应用', other: '其他' }
-    return def[t] || t
+    return typeLabelOf(vaultState.currentFilter.slice(5))
   }
   return `标签：${vaultState.currentFilter}`
+})
+
+/* ── P3-5：条目列表虚拟滚动（窗口化 + spacer，零依赖实现） ──
+   条目数 ≤ VIRTUAL_THRESHOLD 时全量渲染（小列表体验与原来完全一致）；
+   超过阈值后按 #content 滚动位置只渲染可视窗口 ± BUFFER_ROWS 行，
+   窗口外用上下 spacer 撑起高度。行高取首卡实测值 + 8px 下边距。 */
+
+const VIRTUAL_THRESHOLD = 100 // 超过该条数才启用虚拟滚动
+const BUFFER_ROWS = 6         // 可视区上下各多渲染的缓冲行数
+const DEFAULT_ROW_H = 76     // 行高兜底估值（14+38+8 边距等）
+
+const contentEl = ref(null)
+const scrollTop = ref(0)
+const viewportH = ref(600)
+const measuredRowH = ref(DEFAULT_ROW_H)
+
+const virtualActive = computed(() => filteredEntries.value.length > VIRTUAL_THRESHOLD)
+
+const visibleRange = computed(() => {
+  const total = filteredEntries.value.length
+  if (!virtualActive.value) return { start: 0, end: total }
+  const rowH = measuredRowH.value
+  // 起始行按滚动位置推算并做双向钳制（scrollTop 可能大于新列表总高）
+  let start = Math.floor(scrollTop.value / rowH) - BUFFER_ROWS
+  start = Math.max(0, Math.min(start, Math.max(0, total - 1)))
+  const count = Math.ceil(viewportH.value / rowH) + BUFFER_ROWS * 2
+  const end = Math.min(total, start + count)
+  return { start, end }
+})
+
+const visibleEntries = computed(() => filteredEntries.value.slice(visibleRange.value.start, visibleRange.value.end))
+const padTop = computed(() => (virtualActive.value ? visibleRange.value.start * measuredRowH.value : 0))
+const padBottom = computed(() =>
+  virtualActive.value ? (filteredEntries.value.length - visibleRange.value.end) * measuredRowH.value : 0,
+)
+
+/** 滚动同步：记录滚动位置与视口高度（驱动窗口计算） */
+function onContentScroll(e) {
+  scrollTop.value = e.target.scrollTop
+  viewportH.value = e.target.clientHeight
 }
+
+/** 实测行高：取窗口内首卡 offsetHeight + 8px 卡片下边距 */
+async function measureRowHeight() {
+  if (!virtualActive.value || !contentEl.value) return
+  await nextTick()
+  const card = contentEl.value.querySelector('.entry-card')
+  if (card && card.offsetHeight > 0) measuredRowH.value = card.offsetHeight + 8
+}
+
+// 筛选/搜索切换：列表内容整体更换，回到顶部并重新校准行高
+watch(
+  () => [vaultState.currentFilter, vaultState.searchQuery],
+  () => {
+    scrollTop.value = 0
+    if (contentEl.value) contentEl.value.scrollTop = 0
+    measureRowHeight()
+  },
+)
 
 onMounted(() => {
   // 主界面：启动工作区粒子背景（LockParticles.stop 语义 = 停止锁屏、启动工作区）
   if (window.LockParticles) window.LockParticles.stop()
+  // 右键菜单关闭监听：点击他处 / 滚动 / 缩放视口
+  document.addEventListener('mousedown', onDocMouseDown)
+  window.addEventListener('scroll', onDocScrollOrResize, true)
+  window.addEventListener('resize', onDocResize)
+  // P3-5：初始化视口高度与行高（虚拟滚动窗口计算依据）
+  if (contentEl.value) viewportH.value = contentEl.value.clientHeight || 600
+  measureRowHeight()
 })
 
 onBeforeUnmount(() => {
   // 离开主界面（如锁定）：交还锁屏粒子（LockParticles.start 语义 = 启动锁屏、停止工作区）
   if (window.LockParticles) window.LockParticles.start()
+  cancelLongPress()
+  document.removeEventListener('mousedown', onDocMouseDown)
+  window.removeEventListener('scroll', onDocScrollOrResize, true)
+  window.removeEventListener('resize', onDocResize)
 })
 </script>
 
@@ -131,12 +308,12 @@ onBeforeUnmount(() => {
 
       <SidebarNav />
 
-      <main id="content">
+      <main id="content" ref="contentEl" @scroll.passive="onContentScroll">
         <canvas id="workspace-bg" aria-hidden="true"></canvas>
-        <div id="content-inner">
+        <div id="content-inner" :class="{ 'empty-active': !filteredEntries.length }">
           <div class="content-toolbar">
             <div>
-              <h2 id="content-title">{{ contentTitle() }}</h2>
+              <h2 id="content-title">{{ contentTitle }}</h2>
             </div>
             <div class="toolbar-right">
               <span id="entry-count" class="text-muted text-sm">{{ filteredEntries.length }} 项</span>
@@ -147,18 +324,17 @@ onBeforeUnmount(() => {
                 title="清空回收站"
                 @click="emptyRecycleBin()"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
+                <span v-html="Utils?.SvgIcons?.trash(13)"></span>
                 清空回收站
               </button>
             </div>
           </div>
 
           <div id="entries-list">
+            <!-- P3-5 虚拟滚动：窗口外用 spacer 撑高（≤100 条时不启用，spacer 高度为 0） -->
+            <div v-if="padTop" class="vs-spacer" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
             <div
-              v-for="entry in filteredEntries"
+              v-for="entry in visibleEntries"
               :key="entry.id"
               class="entry-card"
               :class="[
@@ -166,10 +342,20 @@ onBeforeUnmount(() => {
                 isRecycleView ? 'recycled' : '',
                 vaultState.selectedEntry === entry.id ? 'selected' : '',
               ]"
+              :data-id="entry.id"
+              role="button"
+              tabindex="0"
+              :aria-label="'查看 ' + entry.title + '（' + typeLabelOf(entry.entryType) + '）'"
               @click="onCardClick(entry, $event)"
+              @keydown="onCardKeydown(entry, $event)"
+              @contextmenu="onCardContextMenu(entry, $event)"
+              @touchstart.passive="onCardTouchStart(entry, $event)"
+              @touchmove.passive="cancelLongPress"
+              @touchend.passive="cancelLongPress"
+              @touchcancel.passive="cancelLongPress"
             >
               <div class="entry-icon">
-                <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(entry.entryType || 'website')" v-html="cardTypeIcon(entry.entryType)"></span>
+                <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(typeLabelOf(entry.entryType))" v-html="cardTypeIcon(entry.entryType)"></span>
               </div>
               <div class="entry-info">
                 <div class="entry-title">{{ entry.title }}</div>
@@ -182,26 +368,27 @@ onBeforeUnmount(() => {
               </div>
               <div class="entry-actions" @click="onActionsClick">
                 <template v-if="isRecycleView">
-                  <button class="restore-btn" title="恢复" @click="restoreEntry(entry.id)">
+                  <button class="restore-btn" title="恢复" aria-label="恢复该条目" @click="restoreEntry(entry.id)">
                     <span v-html="Utils?.SvgIcons?.restore(13)"></span>
                   </button>
-                  <button class="copy-btn" title="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
+                  <button class="copy-btn" title="复制密码" aria-label="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
                     <span v-html="Utils?.SvgIcons?.copy(13)"></span>
                   </button>
                 </template>
                 <template v-else>
-                  <button class="star-btn" :class="{ active: entry.favorite }" title="收藏" @click="toggleFavorite(entry.id)">
+                  <button class="star-btn" :class="{ active: entry.favorite }" title="收藏" aria-label="收藏或取消收藏" @click="toggleFavorite(entry.id)">
                     <span v-html="favIconHtml(entry)"></span>
                   </button>
-                  <button class="copy-btn" title="复制" @click="copyPassword(entry.id, $event.currentTarget)">
+                  <button class="copy-btn" title="复制" aria-label="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
                     <span v-html="Utils?.SvgIcons?.copy(13)"></span>
                   </button>
-                  <button class="delete-btn" title="删除" @click="softDelete(entry.id)">
+                  <button class="delete-btn" title="删除" aria-label="移入回收站" @click="softDelete(entry.id)">
                     <span v-html="Utils?.SvgIcons?.trash(13)"></span>
                   </button>
                 </template>
               </div>
             </div>
+            <div v-if="padBottom" class="vs-spacer" :style="{ height: padBottom + 'px' }" aria-hidden="true"></div>
           </div>
 
           <div v-if="!filteredEntries.length" id="empty-state" class="empty-state">
@@ -213,7 +400,7 @@ onBeforeUnmount(() => {
             </div>
             <h3 id="empty-title">{{ emptyTitle }}</h3>
             <p id="empty-desc">{{ emptyDesc }}</p>
-            <button v-if="vaultState.currentFilter !== 'recycle'" class="btn btn-primary btn-empty" @click="vaultState.activeModal = 'entry'">
+            <button v-if="vaultState.currentFilter !== 'recycle'" class="btn btn-primary btn-empty" @click="openEntryModal()">
               添加第一个密码
             </button>
             <div class="empty-features">
@@ -235,7 +422,7 @@ onBeforeUnmount(() => {
         :class="{ active: vaultState.currentFilter === 'all' }"
         @click="selectFilter('all')"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+        <span v-html="Utils?.SvgIcons?.grid(20)"></span>
         <span>全部</span>
       </button>
       <button
@@ -243,9 +430,10 @@ onBeforeUnmount(() => {
         :class="{ active: vaultState.currentFilter === 'favorites' }"
         @click="selectFilter('favorites')"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+        <span v-html="Utils?.SvgIcons?.starOutline(20)"></span>
         <span>收藏</span>
       </button>
+      <!-- FAB 加号：stroke-width 2.5 的特殊视觉（保留内联，不属于通用图标体系） -->
       <button class="tabbar-add" aria-label="添加密码" @click="openEntryModal()">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
       </button>
@@ -254,13 +442,59 @@ onBeforeUnmount(() => {
         :class="{ active: vaultState.currentFilter === 'recycle' }"
         @click="selectFilter('recycle')"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+        <span v-html="Utils?.SvgIcons?.trash(20)"></span>
         <span>回收站<span v-if="sidebarStats.recycle > 0" class="tabbar-badge">{{ sidebarStats.recycle > 99 ? '99+' : sidebarStats.recycle }}</span></span>
       </button>
-      <button class="tabbar-item" aria-label="标签筛选" @click="vaultState.sidebarOpen = true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
+      <button class="tabbar-item" aria-label="标签筛选" :aria-expanded="vaultState.sidebarOpen ? 'true' : 'false'" @click="vaultState.sidebarOpen = true">
+        <span v-html="Utils?.SvgIcons?.tag(20)"></span>
         <span>标签</span>
       </button>
     </nav>
+
+    <!-- 右键快捷菜单（P2-2 修复：条目卡片右键，编辑/复制/收藏/删除；回收站视图为恢复/彻底删除） -->
+    <Teleport to="body">
+      <div
+        v-if="ctxMenu.visible"
+        class="ctx-menu"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        role="menu"
+        aria-label="条目快捷操作"
+      >
+        <template v-if="isRecycleView">
+          <button class="ctx-item" role="menuitem" @click="onCtxAction('restore')">
+            <span v-html="Utils?.SvgIcons?.restore(14)"></span>
+            恢复
+          </button>
+          <button class="ctx-item" role="menuitem" @click="onCtxAction('copy')">
+            <span v-html="Utils?.SvgIcons?.copy(14)"></span>
+            复制密码
+          </button>
+          <button class="ctx-item ctx-danger" role="menuitem" @click="onCtxAction('purge')">
+            <span v-html="Utils?.SvgIcons?.trash(14)"></span>
+            彻底删除
+          </button>
+        </template>
+        <template v-else>
+          <button class="ctx-item" role="menuitem" @click="onCtxAction('edit')">
+            <span v-html="Utils?.SvgIcons?.edit(14)"></span>
+            编辑
+          </button>
+          <button class="ctx-item" role="menuitem" @click="onCtxAction('copy')">
+            <span v-html="Utils?.SvgIcons?.copy(14)"></span>
+            复制密码
+          </button>
+          <button class="ctx-item" role="menuitem" @click="onCtxAction('fav')">
+            <span v-html="Utils?.SvgIcons?.starOutline(14)"></span>
+            {{ ctxMenu.entry && ctxMenu.entry.favorite ? '取消收藏' : '收藏' }}
+          </button>
+          <button class="ctx-item ctx-danger" role="menuitem" @click="onCtxAction('delete')">
+            <span v-html="Utils?.SvgIcons?.trash(14)"></span>
+            删除
+          </button>
+        </template>
+      </div>
+    </Teleport>
+    <!-- 屏幕阅读器实时通知区域 -->
+    <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ vaultState.srAnnounce }}</div>
   </div>
 </template>

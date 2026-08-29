@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.0.20`
+**当前版本**：`v1.0.25`
 
 ---
 
@@ -103,6 +103,10 @@
 - ✅ 变量命名语义化，禁止 `a`, `b`, `temp` 等无意义命名
 - ✅ 常量使用全大写下划线，如 `DB_NAME`, `DEFAULT_CATEGORIES`
 - ✅ 代码缩进 2 空格，不使用 tab
+- ✅ 用户可见文案统一走 `I18n.t('模块.key')`（`src/core/i18n.js`，window.I18n）；
+  新增 UI 文案禁止硬编码中文字符串；存量文案按页面渐进迁移（锁屏 AuthView 已试点）
+- ✅ 图标统一走 `Utils.SvgIcons`（`src/core/utils.js`）；组件内不再新增内联 `<svg>` 重复图标，
+  仅允许一次性插画（如 36px stroke-1.5 插图）与特殊视觉变体（如 FAB 2.5 描边加号）保留内联
 
 ### 3. 安全规范
 
@@ -156,6 +160,7 @@ LockPass/
 │   │   ├── file-sync.js   # 数据目录绑定 + 文件同步（window.FileSync）
 │   │   ├── generator.js   # 密码生成器（window.PasswordGenerator）
 │   │   ├── utils.js       # 工具函数 + SvgIcons（window.Utils / window.SvgIcons）
+│   │   ├── i18n.js        # 文案语言包（window.I18n，zh-CN；新 UI 文案统一走 I18n.t）
 │   │   ├── related.js     # 关联密码（window.RelatedEntries）
 │   │   ├── import-bridge.js # CSV/.vault 导入解析（window.ImportExport）
 │   │   ├── tauri-bridge.js  # Tauri 桥接（检测 __TAURI__，覆盖下载/剪贴板）
@@ -169,7 +174,7 @@ LockPass/
 │   │   ├── AppShell.vue / ModalHost.vue
 │   │   ├── layout/        # SidebarNav / HeaderBar
 │   │   ├── auth/          # AuthView（创建/解锁/修改主密码）
-│   │   ├── entries/       # DetailPanel（详情面板）
+│   │   ├── entries/       # DetailPanel（详情面板）+ FieldRow / SecretFieldRow（字段行复用组件）
 │   │   ├── modals/        # EntryEditor / Settings / Import / Export / Tags /
 │   │   │                  # QrShare / QrImport / ChangePw
 │   │   └── common/        # ModalBase

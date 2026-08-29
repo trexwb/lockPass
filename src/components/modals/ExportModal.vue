@@ -1,16 +1,29 @@
 <script setup>
 /* LockPass — 导出（.vault 加密备份 / .csv 明文）
-   Vue 3 迁移：对齐旧版 src/js/import-export.js 的导出流程
-   - 加密备份：使用会话密钥加密 {entries, tagDefs, tags}，附 salt/iterations/iv
-   - 明文 CSV：表头与旧版一致，导出前提示明文风险 */
-import { ref } from 'vue'
+    Vue 3 迁移：对齐旧版 src/js/import-export.js 的导出流程
+    - 加密备份：使用会话密钥加密 {entries, tagDefs, tags}，附 salt/iterations/iv
+    - 明文 CSV：表头与旧版一致，导出前提示明文风险
+    - P3-F3：支持按标签筛选导出范围 */
+import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 
 const { closeModal } = useVault()
 
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
+
 const exporting = ref(false)
 const exportProgress = ref('')
+const exportTagFilter = ref('') // 空 = 全部
+
+const availableTags = computed(() => Object.keys(vaultState.tagDefs).sort())
+
+// 按标签筛选后的条目
+const entriesToExport = computed(() => {
+  if (!exportTagFilter.value) return vaultState.entries
+  return vaultState.entries.filter(e => (e.tags || []).includes(exportTagFilter.value))
+})
 
 async function exportEncryptedVault() {
   if (exporting.value) return
@@ -26,7 +39,7 @@ async function exportEncryptedVault() {
 
     const { iv, data } = await window.CryptoUtils.encrypt(
       {
-        entries: vaultState.entries,
+        entries: entriesToExport.value,
         tagDefs: vaultState.tagDefs,
         tags: vaultState.tags,
       },
@@ -47,14 +60,15 @@ async function exportEncryptedVault() {
       tagDefs: vaultState.tagDefs,
     }
 
+    const tagSuffix = exportTagFilter.value ? `-${exportTagFilter.value}` : ''
     window.Utils.downloadFile(
-      `LockPass-备份-${dateStr}.vault`,
+      `LockPass-备份${tagSuffix}-${dateStr}.vault`,
       JSON.stringify(exportData, null, 2),
       'application/json'
     )
     // 记录备份时间：提醒周期从最近一次 .vault 导出/快照起算
     if (window.BackupManager) window.BackupManager.markBackupNow()
-    window.Utils.showToast('密码库已导出', 'success')
+    window.Utils.showToast(`已导出 ${entriesToExport.value.length} 条密码`, 'success')
     closeModal()
   } catch (e) {
     window.Utils.showToast('导出失败：' + (e.message || e), 'error')
@@ -87,7 +101,7 @@ async function exportCSV() {
     ]
     const rows = [headers.join(',')]
 
-    vaultState.entries.forEach(entry => {
+    entriesToExport.value.forEach(entry => {
       const type = entry.entryType || 'website'
       const root = entry.root || {}
       rows.push([
@@ -107,12 +121,13 @@ async function exportCSV() {
     })
 
     const dateStr = window.Utils.formatDateFilename(new Date())
+    const tagSuffix = exportTagFilter.value ? `-${exportTagFilter.value}` : ''
     window.Utils.downloadFile(
-      `LockPass-备份-${dateStr}.csv`,
+      `LockPass-备份${tagSuffix}-${dateStr}.csv`,
       rows.join('\n'),
       'text/csv'
     )
-    window.Utils.showToast('CSV 文件已导出，请妥善保管', 'warning')
+    window.Utils.showToast(`已导出 ${entriesToExport.value.length} 条密码，请妥善保管`, 'warning')
     closeModal()
   } catch (e) {
     window.Utils.showToast('导出失败：' + (e.message || e), 'error')
@@ -128,10 +143,7 @@ async function exportCSV() {
     <div class="modal-header">
       <h3>导出</h3>
       <button class="btn-icon" @click="closeModal()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <span v-html="Icons.close(16)"></span>
       </button>
     </div>
 
@@ -141,6 +153,17 @@ async function exportCSV() {
         <div>{{ exportProgress }}</div>
       </div>
       <div v-else class="export-options">
+        <!-- P3-F3：按标签筛选导出范围 -->
+        <div class="form-group" v-if="availableTags.length">
+          <label class="form-label">导出范围</label>
+          <select class="form-input" v-model="exportTagFilter">
+            <option value="">全部密码（{{ vaultState.entries.length }} 条）</option>
+            <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
+          </select>
+          <div class="text-muted text-sm mt-1" v-if="exportTagFilter">
+            将导出标签「{{ exportTagFilter }}」下的 {{ entriesToExport.length }} 条密码
+          </div>
+        </div>
         <div class="export-option" role="button" tabindex="1" @click="exportEncryptedVault()">
           <div class="export-option-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

@@ -7,12 +7,26 @@ const TOAST_VISIBLE_DURATION = 3000; // 显示时长
 const TOAST_FADE_OUT_DELAY = 300;    // 淡出结束后移除延迟
 
 /**
+ * P3-6 修复：标签颜色白名单校验——仅放行 #RGB / #RRGGBB 十六进制色值。
+ * 导入的恶意 vault 的 tagDefs.color 可能注入任意 CSS/SVG 属性，校验失败回落灰色。
+ * @param {string} color - 待校验的颜色值
+ * @param {string} [fallback] - 校验失败时的回落色
+ * @returns {string} 安全的颜色值
+ */
+function safeTagColor(color, fallback) {
+  if (color && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(color))) return color
+  return fallback || '#8b949e'
+}
+
+/**
  * 获取分类图标 SVG
  * @param {string} iconId - 图标 ID
  * @param {string} [color] - 图标颜色
  * @returns {string} SVG HTML
  */
 function getCategoryIcon(iconId, color) {
+  // P3-6 修复：颜色入 SVG 属性前先过白名单（null 时走 currentColor）
+  color = color ? safeTagColor(color) : null
   const icons = {
     social: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${color || 'currentColor'}" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
     email: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${color || 'currentColor'}" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
@@ -180,8 +194,12 @@ function splitCSVLines(text) {
  * 显示 Toast 消息
  * @param {string} message - 消息内容
  * @param {string} type - 类型: 'success' | 'error' | 'warning'
+ * @param {Object} [options] - 可选配置
+ * @param {Object} [options.action] - 操作按钮
+ * @param {string} options.action.label - 按钮文字
+ * @param {Function} options.action.callback - 点击回调
  */
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', options = {}) {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
@@ -192,15 +210,28 @@ function showToast(message, type = 'success') {
     warning: '<svg class="toast-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
   };
   
-  toast.innerHTML = `${icons[type] || ''}${escHtml(message)}`;
+  toast.innerHTML = `${icons[type] || ''}<span class="toast-msg">${escHtml(message)}</span>`;
+
+  if (options.action) {
+    const actionBtn = document.createElement('button');
+    actionBtn.className = 'toast-action';
+    actionBtn.textContent = options.action.label;
+    actionBtn.addEventListener('click', () => {
+      try { options.action.callback(); } catch (e) {}
+      toast.remove();
+    });
+    toast.appendChild(actionBtn);
+  }
+
   container.appendChild(toast);
   
+  const duration = options.duration || TOAST_VISIBLE_DURATION;
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(20px)';
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => toast.remove(), TOAST_FADE_OUT_DELAY);
-  }, TOAST_VISIBLE_DURATION);
+  }, duration);
 }
 
 /**
@@ -253,9 +284,9 @@ function confirmDialog(options) {
     
     overlay.classList.remove('hidden');
     
-    // 焦点落到确认按钮
-    const okBtn = overlay.querySelector('.confirm-ok');
-    if (okBtn) okBtn.focus();
+    // 焦点策略：危险操作默认焦点落在「取消」，防 Enter 连按误确认破坏性操作
+    const focusTarget = overlay.querySelector(opts.danger ? '.confirm-cancel' : '.confirm-ok');
+    if (focusTarget) focusTarget.focus();
     
     let settled = false;
     const finish = (result) => {
@@ -589,10 +620,12 @@ function getTagDef(tagDefs, name) {
  */
 function renderTagChip(tagDefs, name, removable = false) {
   const def = getTagDef(tagDefs, name);
+  // P3-6 修复：颜色注入 style 属性前过十六进制白名单
+  const chipColor = safeTagColor(def.color);
   const close = removable
     ? `<span class="remove-tag-x" aria-label="移除">×</span>`
     : '';
-  return `<span class="tag-chip" data-tag="${escHtml(name)}" style="--chip-color:${def.color}">${getCategoryIcon(def.icon, def.color)}<span class="tag-chip-name">${escHtml(name)}</span>${close}</span>`;
+  return `<span class="tag-chip" data-tag="${escHtml(name)}" style="--chip-color:${chipColor}">${getCategoryIcon(def.icon, chipColor)}<span class="tag-chip-name">${escHtml(name)}</span>${close}</span>`;
 }
 
 /* ── 共享 SVG 图标注册表 ─────────────────────────────────────── */
@@ -646,6 +679,19 @@ const SvgIcons = {
   check: (s = 12) => _svg(s, '<polyline points="20 6 9 17 4 12"/>'),
   /** 二维码 */
   qrCode: (s = 14) => _svg(s, '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M21 14v3h-3"/>'),
+  /* ── P3-4 收敛新增：以下图标取自组件内联 SVG（消除双体系重复） ── */
+  /** 挂锁 */
+  lock: (s = 14) => _svg(s, '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+  /** 上传 */
+  upload: (s = 14) => _svg(s, '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'),
+  /** 文件夹 */
+  folder: (s = 14) => _svg(s, '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>'),
+  /** 警告三角 */
+  alert: (s = 14) => _svg(s, '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
+  /** 宫格（全部/概览） */
+  grid: (s = 20) => _svg(s, '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'),
+  /** 标签 */
+  tag: (s = 16) => _svg(s, '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>'),
   /** 类型图标（网站/服务器/数据库/AI/应用/其他） */
   typeIcon: (s = 12, type) => {
     const icons = {
@@ -672,6 +718,7 @@ window.Utils = {
   confirm: confirmDialog,
   getCategoryIcon,
   getCategoryColor,
+  safeTagColor,
   safeUrl,
   parseMarkdown,
   getRandomTagAttrs,

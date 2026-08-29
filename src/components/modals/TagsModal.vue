@@ -8,12 +8,17 @@ import ModalBase from '../common/ModalBase.vue'
 
 const { closeModal, saveVault } = useVault()
 
-/* ── 视图状态：list | form ── */
+// P3-4：图标统一走 Utils.SvgIcons
+const Icons = window.Utils.SvgIcons
+
+/* ── 视图状态：list | form | merge ── */
 const view = ref('list')
 const editingName = ref(null) // null=新增，string=编辑
 const formName = ref('')
 const formColor = ref('#58a6ff')
 const formIcon = ref('other')
+const mergeFrom = ref(null)
+const mergeTo = ref('')
 
 const tagDefs = computed(() => vaultState.tagDefs || {})
 const tagCounts = computed(() => {
@@ -128,6 +133,57 @@ async function confirmDeleteTag(name) {
   window.Utils.showToast('标签已删除', 'success')
 }
 
+/* ── 标签合并 ── */
+function openMergeForm(name) {
+  mergeFrom.value = name
+  mergeTo.value = ''
+  view.value = 'merge'
+}
+
+const mergeTargetTags = computed(() => {
+  return sortedTags.value.filter(t => t !== mergeFrom.value)
+})
+
+const mergeAffectedCount = computed(() => tagCounts.value[mergeFrom.value] || 0)
+
+async function confirmMergeTag() {
+  if (!mergeFrom.value || !mergeTo.value) {
+    window.Utils.showToast('请选择合并目标标签', 'error')
+    return
+  }
+  if (mergeFrom.value === mergeTo.value) {
+    window.Utils.showToast('不能合并到自身', 'error')
+    return
+  }
+
+  const confirmed = await window.Utils.confirm({
+    title: '合并标签',
+    message: `将标签「${mergeFrom.value}」合并到「${mergeTo.value}」？所有使用「${mergeFrom.value}」的条目将改为使用「${mergeTo.value}」，标签「${mergeFrom.value}」将被删除。`,
+    confirmText: '合并',
+  })
+  if (!confirmed) return
+
+  // 遍历所有条目，替换源标签为目标标签（去重）
+  vaultState.entries.forEach(entry => {
+    if (entry.tags) {
+      const idx = entry.tags.indexOf(mergeFrom.value)
+      if (idx !== -1) {
+        if (entry.tags.includes(mergeTo.value)) {
+          // 目标标签已存在，移除源标签即可
+          entry.tags.splice(idx, 1)
+        } else {
+          entry.tags[idx] = mergeTo.value
+        }
+      }
+    }
+  })
+
+  delete tagDefs.value[mergeFrom.value]
+  await saveVault()
+  window.Utils.showToast(`标签「${mergeFrom.value}」已合并到「${mergeTo.value}」`, 'success')
+  view.value = 'list'
+}
+
 function tagIconSvg(name) {
   const def = tagDefs.value[name]
   return window.Utils.getCategoryIcon(def ? def.icon : 'other', def ? def.color : '#8b949e')
@@ -145,7 +201,7 @@ function pickerIconSvg(iconId) {
       <div class="modal-header">
         <h2>标签管理</h2>
         <button class="btn-icon" @click="closeModal()" tabindex="-1">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          <span v-html="Icons.close(16)"></span>
         </button>
       </div>
       <div class="modal-body p-0">
@@ -165,6 +221,10 @@ function pickerIconSvg(iconId) {
               <button class="btn btn-ghost btn-sm" @click="openEditForm(name)" title="编辑">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 编辑
+              </button>
+              <button v-if="!(tagDefs[name] && tagDefs[name].isDefault)" class="btn btn-ghost btn-sm" @click="openMergeForm(name)" title="合并到其他标签">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 7h8l-2-2"/><path d="M16 17H8l2 2"/><path d="M3 12h18"/></svg>
+                合并
               </button>
               <button v-if="!(tagDefs[name] && tagDefs[name].isDefault)" class="btn btn-ghost btn-sm btn-danger-ghost" @click="confirmDeleteTag(name)" title="删除">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -186,11 +246,11 @@ function pickerIconSvg(iconId) {
     </template>
 
     <!-- 表单视图（新增/编辑） -->
-    <template v-else>
+    <template v-else-if="view === 'form'">
       <div class="modal-header">
         <h2>{{ editingName ? '编辑标签' : '添加标签' }}</h2>
         <button class="btn-icon" @click="view = 'list'" tabindex="-1">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          <span v-html="Icons.close(16)"></span>
         </button>
       </div>
       <div class="modal-body">
@@ -222,6 +282,37 @@ function pickerIconSvg(iconId) {
       <div class="modal-footer">
         <button class="btn btn-secondary" @click="view = 'list'">取消</button>
         <button class="btn btn-primary" @click="saveTagForm()">保存</button>
+      </div>
+    </template>
+    <!-- 合并视图 -->
+    <template v-else-if="view === 'merge'">
+      <div class="modal-header">
+        <h2>合并标签</h2>
+        <button class="btn-icon" @click="view = 'list'" tabindex="-1">
+          <span v-html="Icons.close(16)"></span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">源标签</label>
+          <div class="merge-source-info">
+            <span class="tag-manage-color-swatch" :style="{ background: tagDefs[mergeFrom]?.color }"></span>
+            <span class="merge-source-name">{{ mergeFrom }}</span>
+            <span class="tag-manage-count">{{ mergeAffectedCount }} 条密码</span>
+          </div>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">合并到 <span class="text-danger">*</span></label>
+          <select v-model="mergeTo" class="form-input">
+            <option value="" disabled>请选择目标标签</option>
+            <option v-for="t in mergeTargetTags" :key="t" :value="t">{{ t }}（{{ tagCounts[t] || 0 }} 条密码）</option>
+          </select>
+          <div class="tag-hint">合并后，源标签将被删除，所有条目将使用目标标签。</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="view = 'list'">取消</button>
+        <button class="btn btn-primary" @click="confirmMergeTag()">合并</button>
       </div>
     </template>
   </ModalBase>

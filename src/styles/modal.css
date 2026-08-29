@@ -67,6 +67,7 @@
     right: 12px;
     left: 12px;
     align-items: flex-end;
+    z-index: 305; /* 高于移动端弹窗遮罩(301)，弹窗内操作反馈可见 */
   }
   #toast-container .toast {
     max-width: 100%;
@@ -91,6 +92,39 @@
 .toast.error .toast-icon { color: var(--danger); }
 .toast.warning { border-color: var(--warning); }
 .toast.warning .toast-icon { color: var(--warning); }
+.toast-msg { flex: 1; }
+.toast-action {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+.toast-action:hover { background: var(--accent-dim); }
+
+/* 复制成功浮动提示（P3-11：useVault 动态插入，位置 left/top 由 JS 内联指定） */
+.copy-float-tip {
+  position: fixed;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 0.6875rem; /* 11px，与原内联样式一致 */
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: var(--z-float-tip);
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
 
 /* Progress bar */
 .progress-bar { width: 100%; height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
@@ -149,7 +183,7 @@
   position: absolute;
   inset: 12%;
   border: 2px solid rgba(255, 255, 255, 0.75);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   pointer-events: none;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
 }

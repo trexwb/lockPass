@@ -12,19 +12,27 @@
 .align-self-end { align-self: flex-end; }
 
 /* ── 间距辅助 ─────────────────────────────────────────────── */
+.mt-1 { margin-top: 4px; }
+.mt-2 { margin-top: 8px; }
 .mb-0 { margin-bottom: 0; }
 .mb-3 { margin-bottom: 12px; }
 .mt-3 { margin-top: 12px; }
 .p-0 { padding: 0; }
 .p-6 { padding: 24px; }
+.py-4 { padding-top: 16px; padding-bottom: 16px; }
+.py-6 { padding-top: 24px; padding-bottom: 24px; }
+.mr-1 { margin-right: 4px; }
+.text-xs { font-size: 0.75rem; }
+.qr-text-box { width: 100%; min-width: 0; }
+.qr-text-box textarea { width: 100%; font-family: ui-monospace, monospace; }
 
 /* ── 尺寸辅助 ─────────────────────────────────────────────── */
 .w-120 { width: 120px; }
 .min-w-auto { min-width: auto; }
 
 /* ── 图标按钮尺寸（覆盖 .btn-icon 默认 32px） ──────────────── */
-.btn-icon.btn-icon-sm { width: 24px; height: 24px; }
-.btn-icon.btn-icon-xs { width: 26px; height: 26px; flex-shrink: 0; }
+.btn-icon.btn-icon-sm { width: 28px; height: 28px; }
+.btn-icon.btn-icon-xs { width: 24px; height: 24px; flex-shrink: 0; }
 
 /* ── 组件级覆盖 ───────────────────────────────────────────── */
 /* 锁屏主密码强度条轨道使用更亮的边框色 */
