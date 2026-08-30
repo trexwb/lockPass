@@ -332,3 +332,118 @@ select.form-input:focus {
   animation: number-pop var(--dur-fast) var(--ease-out-quart);
 }
 
+
+/* ── Custom fields block (upgrade-design.md §1.4) ── */
+.cf-tpl-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cf-tpl-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+.cf-tpl-btn {
+  padding: 3px 10px;
+  font-size: 0.82rem;
+  border-radius: 6px;
+}
+.cf-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cf-add-row .cf-type-select {
+  flex: 0 0 96px;
+}
+.cf-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+.cf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cf-row {
+  border: 1px solid var(--border, rgba(139, 148, 158, 0.25));
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(127, 127, 127, 0.04);
+}
+.cf-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cf-row-head input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.cf-row-ops {
+  display: flex;
+  gap: 2px;
+}
+.btn-icon-sm {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+.btn-icon-sm:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--text-primary);
+}
+.btn-icon-sm:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.cf-remove:hover:not(:disabled) {
+  color: var(--danger, #f85149);
+  background: rgba(248, 81, 73, 0.12);
+}
+.cf-row-main {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cf-row-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+.cf-row-value input {
+  flex: 1;
+  min-width: 0;
+}
+.cf-row-value .pw-gen-btn {
+  flex: 0 0 auto;
+}
+.cf-row-main .cf-type-select {
+  flex: 0 0 96px;
+}
+.cf-sensitive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.cf-sensitive-toggle input {
+  accent-color: var(--accent, #3fb950);
+}

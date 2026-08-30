@@ -5,10 +5,13 @@
 # 做了什么：
 #   1. npm ci 安装依赖
 #   2. node scripts/copy-frontend.mjs（内部执行 npm run vite:build）生成 dist/（外置资源产物，iife 脚本 file:// 可用）
-#   3. 将 extension/ 目录打包为 lockpass-extension-v<版本>.zip 放入 dist/（随站点一起发布）
+#   3. 将 extension/ 目录打包为双版本放入 dist/（随站点一起发布）：
+#      - Chrome/Edge:  lockpass-extension-v<版本>.zip
+#      - Firefox:      lockpass-extension-v<版本>-firefox.xpi
 #   4. 将 dist/ 部署到 GitHub Pages
 # 部署后访问：https://trexwb.github.io/lockPass/
-# 扩展包下载：<同地址>/lockpass-extension-v<版本>.zip（版本号取自 extension/manifest.json）
+# 扩展包下载：<同地址>/lockpass-extension-v<版本>.zip（Chrome/Edge）
+#            <同地址>/lockpass-extension-v<版本>-firefox.xpi（Firefox，about:debugging 临时加载）
 #   （具体地址以仓库 Settings → Pages 显示为准）
 #
 # ⚠️ 首次使用需在仓库 Settings → Pages → Build and deployment →
@@ -58,14 +61,19 @@ jobs:
       - name: 验证 dist 产物
         run: ls -la dist/ && test -f dist/index.html
 
-      # 浏览器扩展打包进站点根目录：解压后即可在 Chrome/Edge「加载已解压的扩展程序」直接使用；
+      # 浏览器扩展打包进站点根目录：Chrome/Edge 解压 zip 后「加载已解压的扩展程序」直接使用；
+      # Firefox 使用 xpi 通过 about:debugging 临时加载（gecko 变体 manifest 由脚本派生：
+      # browser_specific_settings.gecko + background.scripts 声明）。
       # 版本号取自 extension/manifest.json（由 npm run version:set 统一同步）
-      - name: 打包浏览器扩展 zip
+      - name: 打包浏览器扩展（Chrome zip + Firefox xpi）
         run: |
+          npm install -g web-ext
+          node scripts/build-extension.mjs
           EXT_VER=$(node -p "require('./extension/manifest.json').version")
-          (cd extension && zip -r "../dist/lockpass-extension-v${EXT_VER}.zip" . -x '*.DS_Store')
           test -s "dist/lockpass-extension-v${EXT_VER}.zip"
+          test -s "dist/lockpass-extension-v${EXT_VER}-firefox.xpi"
           echo "extension zip: lockpass-extension-v${EXT_VER}.zip"
+          echo "firefox xpi: lockpass-extension-v${EXT_VER}-firefox.xpi"
 
       - name: 上传 Pages 产物
         uses: actions/upload-pages-artifact@v5

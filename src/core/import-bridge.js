@@ -114,6 +114,8 @@
     let skipped = 0
     for (const entry of entries) {
       const e = Object.assign({}, entry)
+      // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份无 customFields，导入时补默认空数组
+      if (!Array.isArray(e.customFields)) e.customFields = []
       if (e.category) {
         const cat = ((e.categories) || []).find(function (c) { return c.id === e.category })
         const name = cat ? cat.name : e.category

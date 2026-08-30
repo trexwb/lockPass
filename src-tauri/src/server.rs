@@ -28,6 +28,19 @@ pub const LOCAL_SERVER_PORT: u16 = 33555;
 /// 待确认配对的超时时间（秒）
 const PAIR_PENDING_TTL_SECS: u64 = 120;
 
+/// 自定义字段 DTO：与前端 customFields 结构对齐（upgrade-design.md §2.2）
+/// 供扩展按 type 匹配 email/phone/otp/url 进行多字段填充
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomFieldDto {
+    pub id: String,
+    pub label: String,
+    pub value: String,
+    pub sensitive: bool,
+    #[serde(rename = "type")]
+    pub field_type: String,
+}
+
 /// 条目 DTO：前端解锁后经 IPC 同步进来，字段与前端条目结构对齐（camelCase）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +53,9 @@ pub struct EntryDto {
     pub entry_type: String,
     /// 由前端解析好的主机名（如 github.com）
     pub domain: String,
+    /// 自定义字段（缺省为空，兼容旧版前端未传该字段）
+    #[serde(default)]
+    pub custom_fields: Vec<CustomFieldDto>,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -5,6 +5,8 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 import { reactive, nextTick } from 'vue'
+// 自定义字段类型枚举（core/templates.js，upgrade-design.md §1.2）
+import { CUSTOM_FIELD_TYPES } from '../core/templates.js'
 
 /* i18n：Toast 在调用时求值（window.I18n 由 core/i18n.js 挂载） */
 const t = (k, p) => window.I18n.t(k, p)
@@ -199,6 +201,8 @@ function migrateVaultData(data) {
       changed = true
     }
     if (!e.entryType) e.entryType = 'website'
+    // 自定义字段扩展（upgrade-design.md §1.3）：旧版条目补默认空数组
+    if (!Array.isArray(e.customFields)) e.customFields = []
     const { category, ...rest } = e
     rest.tags = tags
     ;(rest.tags || []).forEach(t => {
@@ -743,7 +747,9 @@ export function useVault() {
         (e.title || '').toLowerCase().includes(query) ||
         (e.username || '').toLowerCase().includes(query) ||
         (e.url || '').toLowerCase().includes(query) ||
-        (e.tags || []).some(t => t.toLowerCase().includes(query)),
+        (e.tags || []).some(t => t.toLowerCase().includes(query)) ||
+        // 全文搜索索引 customFields[].value（upgrade-design.md §1.3）
+        (e.customFields || []).some(cf => (cf.value || '').toLowerCase().includes(query)),
       )
     }
 
@@ -1244,7 +1250,7 @@ export function useVault() {
   try { window.ExtBridge && window.ExtBridge.setEntriesProvider(() => vaultState.entries) } catch (e) {}
 
   async function saveEntry(payload) {
-    const { title, type, fields, tags, notes } = payload
+    const { title, type, fields, tags, notes, customFields } = payload
     if (!title || !title.trim()) {
       window.Utils.showToast(t('toast.titleRequired'), 'error')
       return false
@@ -1293,6 +1299,18 @@ export function useVault() {
     delete entry.host
     delete entry.baseUrl
     delete entry.apiKey
+
+    // 自定义字段扩展（upgrade-design.md §1.1）：归一化结构、清洗非法 type
+    const CF_TYPES = ['text', 'pin', 'email', 'phone', 'otp', 'url', 'notes']
+    entry.customFields = (Array.isArray(customFields) ? customFields : [])
+      .filter(cf => cf && typeof cf === 'object')
+      .map(cf => ({
+        id: String(cf.id || `cf_${crypto.randomUUID()}`),
+        label: String(cf.label || '').slice(0, 50),
+        value: String(cf.value ?? ''),
+        sensitive: !!cf.sensitive,
+        type: CF_TYPES.includes(cf.type) ? cf.type : 'text',
+      }))
 
     if (vaultState.editingEntryId) {
       const idx = vaultState.entries.findIndex(e => e.id === vaultState.editingEntryId)

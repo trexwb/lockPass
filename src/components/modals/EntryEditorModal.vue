@@ -8,6 +8,7 @@ import ModalBase from '../common/ModalBase.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
+import { CUSTOM_FIELD_TYPES, FIELD_TEMPLATES, createCustomField } from '../../core/templates'
 
 const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal, openPasswordGenerator } = useVault()
 const { t } = useI18n()
@@ -24,6 +25,43 @@ const selectedTags = ref([])
 const notes = ref('')
 const newTag = ref('')
 const showFields = reactive({})
+
+/* ── 自定义字段（upgrade-design.md §1.4：编辑弹窗区块） ── */
+const customFields = ref([])
+const cfType = ref('text')
+const cfLabel = ref('')
+const cfReveal = reactive({})
+const customTplKeys = ['bank', 'email', 'wifi', 'server', 'social', 'custom']
+
+/* ── 自定义字段操作（upgrade-design.md §1.4） ── */
+function applyTemplate(key) {
+  const tpl = FIELD_TEMPLATES[key]
+  if (!tpl) return
+  const items = tpl.fields.map(f => createCustomField(f.label, f.type))
+  customFields.value.push(...items)
+}
+
+function addCustomField() {
+  const label = cfLabel.value.trim()
+  customFields.value.push(createCustomField(label, cfType.value))
+  cfLabel.value = ''
+}
+
+function moveCustomField(i, dir) {
+  const j = i + dir
+  if (i < 0 || j < 0 || j >= customFields.value.length) return
+  const arr = customFields.value
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+}
+
+function removeCustomField(i) {
+  if (i < 0 || i >= customFields.value.length) return
+  customFields.value.splice(i, 1)
+}
+
+function toggleCfReveal(id) {
+  cfReveal[id] = !cfReveal[id]
+}
 
 const TYPE_FIELD_KEYS = {
   website: ['url', 'username', 'password'],
@@ -242,6 +280,8 @@ async function onSave() {
     fields: { ...fields },
     tags: selectedTags.value.slice(),
     notes: notes.value,
+    // 自定义字段扩展（upgrade-design.md §1.1）：深拷贝避免引用 vault 数据
+    customFields: customFields.value.map(cf => ({ ...cf })),
   }
   const ok = await saveEntry(payload)
   if (ok) clearDraft()
@@ -259,6 +299,7 @@ function snapshotForm() {
     fields: { ...fields },
     tags: selectedTags.value.slice(),
     notes: notes.value,
+    customFields: customFields.value.map(cf => ({ ...cf })),
   })
 }
 
@@ -304,6 +345,7 @@ onMounted(() => {
       }
       selectedTags.value = (e.tags || []).slice()
       notes.value = e.notes || ''
+      customFields.value = (e.customFields || []).map(cf => ({ ...cf }))
 
       // 恢复未保存的编辑草稿（v1.0.25：此前编辑模式草稿只写不读）
       const draft = loadDraft()
@@ -313,6 +355,7 @@ onMounted(() => {
         Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
         selectedTags.value = (draft.tags || []).slice()
         if (draft.notes != null) notes.value = draft.notes
+        if (Array.isArray(draft.customFields)) customFields.value = draft.customFields.map(cf => ({ ...cf }))
         window.Utils.showToast(t('editor.toastDraftRestored'), 'info')
       }
     }
@@ -324,6 +367,7 @@ onMounted(() => {
       Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
       selectedTags.value = (draft.tags || []).slice()
       notes.value = draft.notes || ''
+      if (Array.isArray(draft.customFields)) customFields.value = draft.customFields.map(cf => ({ ...cf }))
     }
   }
   // 预置空字段
@@ -338,7 +382,7 @@ onMounted(() => {
   _initialSnapshot = snapshotForm()
 })
 
-watch([title, entryType, fields, selectedTags, notes], () => persistDraft(), { deep: true })
+watch([title, entryType, fields, selectedTags, notes, customFields], () => persistDraft(), { deep: true })
 
 /* ════════════════════════════════════════════════════════════════
    右键菜单（类型 Tab / 字段 / 生成面板 / 标签 / 保存 等）
@@ -938,6 +982,84 @@ const editorCtxItems = computed(() => {
           :placeholder="t('editor.ph.notes')"
           @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__notes', label: t('editor.label.notes'), value: notes }, { w: 240, h: 170 })"
         ></textarea>
+      </div>
+
+      <!-- ══ 自定义字段（upgrade-design.md §1.4） ══ -->
+      <div class="form-group">
+        <label class="form-label">{{ t('editor.custom.title') }}</label>
+        <div class="cf-tpl-row">
+          <span class="cf-tpl-label">{{ t('editor.custom.tpl') }}</span>
+          <button
+            v-for="key in customTplKeys"
+            :key="key"
+            type="button"
+            class="btn btn-secondary btn-sm cf-tpl-btn"
+            :title="t('editor.custom.applyTemplate')"
+            @click="applyTemplate(key)"
+          >{{ t('editor.custom.tpl.' + key) }}</button>
+        </div>
+        <div class="cf-add-row">
+          <select v-model="cfType" class="form-input cf-type-select" :aria-label="t('editor.custom.addHint')">
+            <option v-for="tp in CUSTOM_FIELD_TYPES" :key="tp" :value="tp">{{ t('editor.custom.type.' + tp) }}</option>
+          </select>
+          <input
+            v-model="cfLabel"
+            class="form-input"
+            type="text"
+            :placeholder="t('editor.custom.phLabel')"
+            maxlength="50"
+            autocomplete="off"
+            @keydown.enter.prevent="addCustomField()"
+          />
+          <button type="button" class="btn btn-secondary btn-sm" @click="addCustomField()">{{ t('editor.custom.add') }}</button>
+        </div>
+        <div v-if="customFields.length" class="cf-list">
+          <div v-for="(cf, i) in customFields" :key="cf.id" class="cf-row">
+            <div class="cf-row-head">
+              <input v-model="cf.label" class="form-input" type="text" :placeholder="t('editor.custom.phLabel')" maxlength="50" autocomplete="off" />
+              <div class="cf-row-ops">
+                <button type="button" class="btn-icon btn-icon-sm" :title="t('editor.custom.moveUp')" :aria-label="t('editor.custom.moveUp')" :disabled="i === 0" @click="moveCustomField(i, -1)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15" /></svg>
+                </button>
+                <button type="button" class="btn-icon btn-icon-sm" :title="t('editor.custom.moveDown')" :aria-label="t('editor.custom.moveDown')" :disabled="i === customFields.length - 1" @click="moveCustomField(i, 1)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                </button>
+                <button type="button" class="btn-icon btn-icon-sm cf-remove" :title="t('editor.custom.remove')" :aria-label="t('editor.custom.remove')" @click="removeCustomField(i)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="cf-row-main">
+              <div class="cf-row-value">
+                <input
+                  v-model="cf.value"
+                  class="form-input mono"
+                  :type="cf.sensitive && !cfReveal[cf.id] ? 'password' : 'text'"
+                  :placeholder="t('editor.custom.phValue')"
+                  autocomplete="off"
+                />
+                <button
+                  v-if="cf.sensitive"
+                  type="button"
+                  class="pw-gen-btn"
+                  :title="cfReveal[cf.id] ? t('editor.custom.hide') : t('editor.custom.show')"
+                  :aria-label="cfReveal[cf.id] ? t('editor.custom.ariaHide') : t('editor.custom.ariaShow')"
+                  @click="toggleCfReveal(cf.id)"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="cfReveal[cf.id] ? windowEyeClosed : windowEyeOpen"></svg>
+                </button>
+              </div>
+              <select v-model="cf.type" class="form-input cf-type-select">
+                <option v-for="tp in CUSTOM_FIELD_TYPES" :key="tp" :value="tp">{{ t('editor.custom.type.' + tp) }}</option>
+              </select>
+              <label class="cf-sensitive-toggle">
+                <input type="checkbox" v-model="cf.sensitive" />
+                <span>{{ t('editor.custom.sensitive') }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="tag-hint">{{ t('editor.custom.addHint') }}</div>
       </div>
     </div>
 

@@ -4,7 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>密码保险箱</title>
-  <link rel="manifest" href="./manifest.json" />
+  <script>
+    // file:// 下 manifest 加载会触发 CORS 拦截（'file:' unique origin），
+    // 仅 http/https 部署环境（GitHub Pages / Tauri）才注入 manifest。
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      var m = document.createElement('link')
+      m.rel = 'manifest'
+      m.href = './manifest.json'
+      document.head.appendChild(m)
+    }
+  </script>
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/svg+xml" href="./assets/icons/favicon.svg" />
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png" />

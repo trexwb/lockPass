@@ -1,11 +1,12 @@
 <script setup>
 /* LockPass — 密码详情面板
    v1.0.32：为标题/字段/标签/关联/历史 增加右键快捷菜单 */
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import FieldRow from './FieldRow.vue'
 import SecretFieldRow from './SecretFieldRow.vue'
+import CustomFieldRow from './CustomFieldRow.vue'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
 
@@ -32,6 +33,16 @@ const panelAnimating = computed(() => vaultState.detailAnim === 'collapse' || va
 
 function maskValue(v) {
   return showPw.value ? String(v ?? '') : '••••••••'
+}
+
+/* ── 自定义字段分组（upgrade-design.md §1.4：敏感字段默认掩码、独立揭示） ── */
+
+const customReveal = reactive({})
+const visibleCustomFields = computed(() =>
+  (entry.value?.customFields || []).filter(cf => cf && (String(cf.label ?? '').trim() || String(cf.value ?? '').trim()))
+)
+function toggleCustomReveal(id) {
+  customReveal[id] = !customReveal[id]
 }
 
 function tagStyle(name) {
@@ -213,6 +224,13 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       if (action === 'copy-field') copyField(payload.value || '')
       break
     }
+    case 'custom-field': {
+      const cf = payload.cf
+      if (!cf) break
+      if (action === 'copy-field') copyField(String(cf.value ?? ''))
+      else if (action === 'reveal-once') toggleCustomReveal(cf.id)
+      break
+    }
     case 'tag': {
       const name = payload.name
       if (!name) return
@@ -321,6 +339,13 @@ const detailCtxItems = computed(() => {
       list.push({ key: 'copy-field', label: t('detail.ctx.copyField', { label: label || t('detail.ctx.fieldValue') }), iconHtml: Icons?.copy(14), accent: true, disabled: !value })
       if (secret) list.push({ key: 'reveal-once', label: t('detail.ctx.revealOnce'), iconHtml: Icons?.eye(14) })
       if (url) list.push({ key: 'open-url', label: t('detail.ctx.openUrl'), iconHtml: Icons?.external(14) })
+      return list
+    }
+    case 'custom-field': {
+      const cf = p.cf
+      if (!cf) return []
+      list.push({ key: 'copy-field', label: t('detail.custom.ctxCopy'), iconHtml: Icons?.copy(14), accent: true, disabled: !cf.value })
+      if (cf.sensitive) list.push({ key: 'reveal-once', label: t('detail.custom.ctxReveal'), iconHtml: Icons?.eye(14) })
       return list
     }
     case 'cmd': {
@@ -489,6 +514,21 @@ const detailCtxItems = computed(() => {
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'field', label: t('detail.field.credValue'), value: entry.password, secret: true }, { w: 240, h: 160 })" />
           </template>
         </div>
+
+        <!-- 自定义字段分组（upgrade-design.md §1.4：敏感字段默认掩码、点击揭示） -->
+        <template v-if="visibleCustomFields.length">
+          <div class="detail-section-divider"><span>{{ t('detail.custom.title', { n: visibleCustomFields.length }) }}</span></div>
+          <CustomFieldRow
+            v-for="cf in visibleCustomFields"
+            :key="cf.id"
+            :label="cf.label || t('detail.custom.unnamed')"
+            :value="cf.value"
+            :sensitive="!!cf.sensitive"
+            :show="!!customReveal[cf.id]"
+            @toggle-reveal="toggleCustomReveal(cf.id)"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'custom-field', cf }, { w: 230, h: 140 })"
+          />
+        </template>
 
         <div v-if="entry.tags && entry.tags.length" class="detail-field">
           <div class="detail-field-label">{{ t('detail.field.tags') }}</div>

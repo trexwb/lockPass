@@ -257,6 +257,12 @@ LockPass/
 
 > 若使用本地 `file://` 版 LockPass（双击 dist/index.html），需在扩展详情页开启「允许访问文件网址」。
 
+**方式三：Firefox 安装（Firefox 115+，MV3）**
+
+1. 下载 Firefox 版扩展包：`https://trexwb.github.io/lockPass/lockpass-extension-v<版本>-firefox.xpi`（版本号随主应用；由流水线调用 `scripts/build-extension.mjs` 自动生成，内含 gecko 变体 manifest）
+2. 打开 Firefox → 地址栏输入 `about:debugging` → 左侧「此 Firefox」→「临时加载附加组件」→ 选择下载的 `.xpi`（或解压后选择 `manifest.json`）
+3. 回归验证：解锁 LockPass（HTTP 通道）后，在任意登录页点击扩展图标填充单字段/多字段/iframe/shadow DOM 表单
+
 ### 使用流程
 
 1. 打开并解锁 LockPass（在线版 / localhost 开发版 / file:// 版均可）

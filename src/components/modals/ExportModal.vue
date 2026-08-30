@@ -53,6 +53,9 @@ async function exportEncryptedVault() {
 
     const exportData = {
       version: 1,
+      // 自定义字段扩展（upgrade-design.md §1.3）：.vault 导出追加 schemaVersion:2，
+      // 导入端无该字段视为 v1 旧格式并补 customFields 默认值
+      schemaVersion: 2,
       exportedAt: now.toISOString(),
       format: 'encrypted',
       salt: saltRecord.value,

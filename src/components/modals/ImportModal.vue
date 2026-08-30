@@ -347,6 +347,8 @@ async function importEncryptedVault(data) {
         id: window.CryptoUtils.uuid(),
         createdAt: e.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份补默认空数组
+        customFields: (e.customFields || []),
       })
       added++
     }
@@ -380,6 +382,8 @@ async function importPlaintextVault(data) {
       id: window.CryptoUtils.uuid(),
       createdAt: entry.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      // 自定义字段扩展（upgrade-design.md §1.3）：v1 明文备份补默认空数组
+      customFields: entry.customFields || [],
     })
     added++
   }
