@@ -37,8 +37,6 @@
 /* ── 组件级覆盖 ───────────────────────────────────────────── */
 /* 锁屏主密码强度条轨道使用更亮的边框色 */
 .pw-strength-bar-bg.pw-strength-bg-border { background: var(--border); }
-/* 密码生成器末行：紧凑间距 */
-.pw-gen-row.gap-8 { gap: 8px; }
 
 /* ── 状态容器 ─────────────────────────────────────────────── */
 .spinner-wrap { text-align: center; padding: 32px 0; }

@@ -250,7 +250,7 @@ function handleKeyboard(event, defs) {
     setFilter, openEntryModal, openModal, lockVault, logout,
     toggleFavorite, copyPassword, copyField, editCurrentEntry,
     toggleDetailPassword, softDelete, permanentDelete, restoreEntry,
-    emptyRecycleBin, closeModal, closeDetail,
+    emptyRecycleBin, closeModal, closeDetail, closePasswordGenerator,
   } = useVault()
 
   // ── 上下文收集 ──
@@ -267,6 +267,12 @@ function handleKeyboard(event, defs) {
     // 配对弹窗可见时 Esc 全权交由 PairRequestModal 处理，避免双监听冲突
     if (document.querySelector('.lp-pair-overlay')) return
     if (confirmOpen) return
+    // 密码生成器（独立弹窗，可能叠加在 EntryEditorModal 之上）：Esc 优先关闭它
+    if (vaultState.pwGenVisible) {
+      event.preventDefault()
+      closePasswordGenerator()
+      return
+    }
     if (modalOpen) {
       event.preventDefault()
       closeModal()

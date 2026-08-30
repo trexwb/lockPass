@@ -604,10 +604,6 @@
     font-size: 0.86rem;
   }
   
-  /* pw-gen-panel */
-  .pw-gen-panel {
-    padding: 12px;
-  }
   .pw-options {
     flex-wrap: wrap;
   }
