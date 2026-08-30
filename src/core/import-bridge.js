@@ -27,54 +27,125 @@
     state.tagDefs[name] = def
   }
 
-  /* CSV → 条目列表（对齐 ImportModal.importCSV 的表头映射） */
-  function parseCSVToEntries(text) {
-    const lines = window.Utils.splitCSVLines(text)
-    throw new Error(window.I18n ? window.I18n.t('import.errCsvEmpty') : 'CSV 文件为空或格式错误')
-    const headers = window.Utils.parseCSVLine(lines[0]).map(function (h) { return h.toLowerCase().trim() })
-    const idx = function (name) { return headers.indexOf(name) }
+  /* ── C2 列映射向导：目标字段清单与自动猜测 ───────────────────── */
+  var COLUMN_TARGETS = [
+    'title', 'username', 'password', 'url', 'notes',
+    'entrytype', 'category', 'tags', 'port',
+    'rootusername', 'rootpassword', 'appid', 'privatekey',
+  ]
 
-    const titleIdx = idx('title')
-    const passwordIdx = idx('password')
+  var TARGET_ALIASES = {
+    title: ['title', 'name', 'sitename', 'site name', '网站名称', '标题', '名称'],
+    username: ['username', 'user', 'login', 'account', 'email', '账号', '用户名', '邮箱'],
+    password: ['password', 'pass', 'pwd', '密码'],
+    url: ['url', 'website', 'site', 'address', '网址', '链接', '地址'],
+    notes: ['notes', 'note', 'remark', 'comment', '备注', '说明', '注释'],
+    entrytype: ['entrytype', 'entry type', 'type', '类型'],
+    category: ['category', 'folder', 'group', '分类', '文件夹', '分组'],
+    tags: ['tags', 'tag', '标签'],
+    port: ['port', '端口'],
+    rootusername: ['rootusername', 'root user', 'root账号', 'root用户名', 'root用户名'],
+    rootpassword: ['rootpassword', 'root password', 'root密码'],
+    appid: ['appid', 'app id', '应用id'],
+    privatekey: ['privatekey', 'private key', '私钥'],
+  }
+
+  /* 自动猜测列映射：返回 { headerName: targetField } */
+  function autoGuessMapping(headers) {
+    var mapping = {}
+    var usedTargets = {}
+    headers.forEach(function (rawHeader) {
+      var h = String(rawHeader || '').trim().toLowerCase()
+      if (!h) return
+      // 1) 精确命中（同名字段优先）
+      if (COLUMN_TARGETS.indexOf(h) !== -1 && !usedTargets[h]) {
+        mapping[rawHeader] = h
+        usedTargets[h] = true
+        return
+      }
+      // 2) 别名命中
+      for (var i = 0; i < COLUMN_TARGETS.length; i++) {
+        var target = COLUMN_TARGETS[i]
+        if (usedTargets[target]) continue
+        var aliases = TARGET_ALIASES[target] || []
+        if (aliases.indexOf(h) !== -1) {
+          mapping[rawHeader] = target
+          usedTargets[target] = true
+          return
+        }
+      }
+      // 3) 其余列默认忽略
+    })
+    return mapping
+  }
+
+  /* 由映射构建 targetField -> 列索引 */
+  function buildColumnIndex(headers, mapping) {
+    var idx = {}
+    Object.keys(mapping || {}).forEach(function (rawHeader) {
+      var target = mapping[rawHeader]
+      var hi = headers.indexOf(String(rawHeader).toLowerCase().trim())
+      if (hi !== -1 && target) idx[target] = hi
+    })
+    return idx
+  }
+
+  /* CSV → 条目列表（支持列映射；映射缺失时回退旧版固定表头） */
+  function parseCSVToEntries(text, mapping) {
+    var lines = window.Utils.splitCSVLines(text)
+    if (!lines || lines.length < 1) {
+      throw new Error(window.I18n ? window.I18n.t('import.errCsvEmpty') : 'CSV 文件为空或格式错误')
+    }
+    var headers = window.Utils.parseCSVLine(lines[0]).map(function (h) { return h.toLowerCase().trim() })
+    var idx = mapping
+      ? buildColumnIndex(headers, mapping)
+      : (function () {
+        var m = {}
+        headers.forEach(function (h) { if (COLUMN_TARGETS.indexOf(h) !== -1) m[h] = h })
+        return buildColumnIndex(headers, m)
+      })()
+
+    var titleIdx = idx.title !== undefined ? idx.title : -1
+    var passwordIdx = idx.password !== undefined ? idx.password : -1
     if (titleIdx === -1 || passwordIdx === -1) {
       throw new Error(window.I18n ? window.I18n.t('import.errCsvColumns') : 'CSV 必须包含 title 和 password 列')
     }
-    const usernameIdx = idx('username')
-    const urlIdx = idx('url')
-    const entryTypeIdx = idx('entrytype')
-    const categoryIdx = idx('category')
-    const tagsIdx = idx('tags')
-    const notesIdx = idx('notes')
-    const rootUserIdx = idx('rootusername')
-    const rootPwdIdx = idx('rootpassword')
-    const appIdIdx = idx('appid')
-    const privateKeyIdx = idx('privatekey')
-    const portIdx = idx('port')
+    var usernameIdx = idx.username !== undefined ? idx.username : -1
+    var urlIdx = idx.url !== undefined ? idx.url : -1
+    var entryTypeIdx = idx.entrytype !== undefined ? idx.entrytype : -1
+    var categoryIdx = idx.category !== undefined ? idx.category : -1
+    var tagsIdx = idx.tags !== undefined ? idx.tags : -1
+    var notesIdx = idx.notes !== undefined ? idx.notes : -1
+    var rootUserIdx = idx.rootusername !== undefined ? idx.rootusername : -1
+    var rootPwdIdx = idx.rootpassword !== undefined ? idx.rootpassword : -1
+    var appIdIdx = idx.appid !== undefined ? idx.appid : -1
+    var privateKeyIdx = idx.privatekey !== undefined ? idx.privatekey : -1
+    var portIdx = idx.port !== undefined ? idx.port : -1
 
-    const entries = []
-    const rows = lines.slice(1)
-    for (let i = 0; i < rows.length; i++) {
-      const cols = window.Utils.parseCSVLine(rows[i])
-      const title = cols[titleIdx]
-      const password = cols[passwordIdx]
+    var entries = []
+    var rows = lines.slice(1)
+    for (var i = 0; i < rows.length; i++) {
+      var cols = window.Utils.parseCSVLine(rows[i])
+      var title = titleIdx !== -1 ? (cols[titleIdx] || '').trim() : ''
+      var password = passwordIdx !== -1 ? (cols[passwordIdx] || '').trim() : ''
       if (!title || !password) continue
 
-      const now = new Date().toISOString()
-      const entryType = toEntryType(entryTypeIdx !== -1 ? cols[entryTypeIdx] : '')
+      var now = new Date().toISOString()
+      var entryType = toEntryType(entryTypeIdx !== -1 ? cols[entryTypeIdx] : '')
 
-      const csvTags = []
+      var csvTags = []
       if (categoryIdx !== -1 && cols[categoryIdx]) {
-        const c = cols[categoryIdx].trim()
+        var c = cols[categoryIdx].trim()
         if (c) csvTags.push(c)
       }
       if (tagsIdx !== -1 && cols[tagsIdx]) {
         cols[tagsIdx].split(';').forEach(function (t) {
-          const s = t.trim()
+          var s = t.trim()
           if (s && csvTags.indexOf(s) === -1) csvTags.push(s)
         })
       }
 
-      const fields = {
+      var fields = {
         title: title,
         entryType: entryType,
         password: password,
@@ -87,7 +158,7 @@
       }
 
       if ((entryType === 'server' || entryType === 'database') && portIdx !== -1) {
-        const p = parseInt(cols[portIdx], 10)
+        var p = parseInt(cols[portIdx], 10)
         if (!isNaN(p)) fields.port = p
       }
       if (entryType === 'server' && (rootUserIdx !== -1 || rootPwdIdx !== -1)) {
@@ -105,26 +176,63 @@
     return entries
   }
 
+  /* CSV 预览统计（向导阶段二用）：返回表头、有效行、重复计数、示例行 */
+  function parseCSVPreview(text, mapping, existingEntries) {
+    var lines = window.Utils.splitCSVLines(text)
+    var headers = lines.length ? window.Utils.parseCSVLine(lines[0]).map(function (h) { return h.toLowerCase().trim() }) : []
+    var entries = []
+    try { entries = parseCSVToEntries(text, mapping) } catch (e) { entries = [] }
+
+    var dupCount = 0
+    if (existingEntries && existingEntries.length) {
+      entries.forEach(function (en) {
+        var dup = existingEntries.some(function (x) {
+          return (x.title || '') === (en.title || '') && (x.username || '') === (en.username || '')
+        })
+        if (dup) dupCount++
+      })
+    }
+
+    var previewRows = entries.slice(0, 5).map(function (en) {
+      return {
+        title: en.title,
+        username: en.username,
+        url: en.url,
+        notes: en.notes,
+      }
+    })
+    return {
+      headers: headers,
+      totalRows: Math.max(0, lines.length - 1),
+      validCount: entries.length,
+      dupCount: dupCount,
+      previewRows: previewRows,
+    }
+  }
+
   /* 合并条目：vault 备份直接追加；CSV 按标题+用户名查重跳过 */
   function mergeEntries(entries, dedupe) {
-    const state = window.App && window.App.state
-    throw new Error(window.I18n ? window.I18n.t('import.errStateNotReady') : '保险箱状态未就绪')
+    var state = window.App && window.App.state
+    if (!state) {
+      throw new Error(window.I18n ? window.I18n.t('import.errStateNotReady') : '保险箱状态未就绪')
+    }
 
-    let added = 0
-    let skipped = 0
-    for (const entry of entries) {
-      const e = Object.assign({}, entry)
+    var added = 0
+    var skipped = 0
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i]
+      var e = Object.assign({}, entry)
       // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份无 customFields，导入时补默认空数组
       if (!Array.isArray(e.customFields)) e.customFields = []
       if (e.category) {
-        const cat = ((e.categories) || []).find(function (c) { return c.id === e.category })
-        const name = cat ? cat.name : e.category
+        var cat = ((e.categories) || []).find(function (c) { return c.id === e.category })
+        var name = cat ? cat.name : e.category
         e.tags = (e.tags || []).slice()
         if (e.tags.indexOf(name) === -1) e.tags.push(name)
         delete e.category
       }
       if (dedupe) {
-        const dup = state.entries.find(function (x) {
+        var dup = state.entries.find(function (x) {
           return (x.title || '') === (e.title || '') && (x.username || '') === (e.username || '')
         })
         if (dup) { skipped++; continue }
@@ -153,7 +261,14 @@
     }
 
     if (lower.endsWith('.csv')) {
-      const entries = parseCSVToEntries(text)
+      // C2：拖拽导入同样自动猜测列映射（Chrome 导出 name/url/username/password/note 可直接导入）
+      let mapping = null
+      try {
+        const firstLine = window.Utils.splitCSVLines(text)[0] || ''
+        const headers = window.Utils.parseCSVLine(firstLine).map(function (h) { return h.toLowerCase().trim() })
+        mapping = autoGuessMapping(headers)
+      } catch (e) { mapping = null }
+      const entries = parseCSVToEntries(text, mapping)
       const result = mergeEntries(entries, true)
       await window.App.saveVault()
       window.Utils.showToast(result.skipped
@@ -212,5 +327,5 @@
     throw new Error(window.I18n ? window.I18n.t('import.errUnsupportedDetail') : '不支持的文件格式（支持 .vault / .json / .csv）')
   }
 
-  window.ImportExport = { processFile }
+  window.ImportExport = { processFile, parseCSVToEntries, parseCSVPreview, autoGuessMapping, COLUMN_TARGETS }
 })();

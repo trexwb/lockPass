@@ -97,6 +97,21 @@ function esc(value) {
   return window.Utils ? window.Utils.escHtml(value) : String(value ?? '')
 }
 
+/* B5 搜索增强：标题/副标题命中片段高亮（SearchUtil.highlightField 内置转义防 XSS） */
+function highlightTitle(entry) {
+  const q = vaultState.searchQuery.trim()
+  if (!q || !window.SearchUtil) return esc(entry.title || '')
+  return window.SearchUtil.highlightField(entry.title || '', q)
+}
+
+function highlightSubtitle(entry) {
+  const sub = cardSubtitle(entry)
+  if (!sub) return ''
+  const q = vaultState.searchQuery.trim()
+  if (!q || !window.SearchUtil) return esc(sub)
+  return window.SearchUtil.highlightField(sub, q)
+}
+
 function onCardClick(entry, e) {
   selectEntry(entry.id, e)
 }
@@ -312,6 +327,7 @@ async function onEntryCtxAction(action) {
 }
 
 let longPressTimer = null
+let longPressTarget = null
 const LONG_PRESS_MS = 500
 
 function onCardTouchStart(entry, e) {
@@ -319,8 +335,18 @@ function onCardTouchStart(entry, e) {
   const touch = e.touches[0]
   const clientX = touch.clientX
   const clientY = touch.clientY
+  longPressTarget = e.currentTarget
+  longPressTarget.classList.add('long-pressing')
+  // 轻触反馈：提示用户长按已开始
+  if (navigator.vibrate) navigator.vibrate(10)
   longPressTimer = setTimeout(() => {
     longPressTimer = null
+    // 长按触发：清除视觉状态 + 较强震动
+    if (longPressTarget) {
+      longPressTarget.classList.remove('long-pressing')
+      longPressTarget = null
+    }
+    if (navigator.vibrate) navigator.vibrate(30)
     // 合成右键事件对象：仅需要 preventDefault/stopPropagation/clientX/clientY
     onCardContextMenu(entry, {
       preventDefault() {},
@@ -335,6 +361,10 @@ function cancelLongPress() {
   if (longPressTimer) {
     clearTimeout(longPressTimer)
     longPressTimer = null
+  }
+  if (longPressTarget) {
+    longPressTarget.classList.remove('long-pressing')
+    longPressTarget = null
   }
 }
 
@@ -511,9 +541,9 @@ onBeforeUnmount(() => {
                 <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(typeLabelOf(entry.entryType))" v-html="cardTypeIcon(entry.entryType)"></span>
               </div>
               <div class="entry-info">
-                <div class="entry-title">{{ entry.title }}</div>
+                <div class="entry-title" v-html="highlightTitle(entry)"></div>
                 <div class="entry-meta">
-                  <span v-if="cardSubtitle(entry)" class="entry-subtitle">{{ cardSubtitle(entry) }}</span>
+                  <span v-if="cardSubtitle(entry)" class="entry-subtitle" v-html="highlightSubtitle(entry)"></span>
                   <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" v-html="tagChipHtml(tag)"></span>
                   <span v-if="(entry.tags || []).length > 3" class="entry-tag-more">+{{ entry.tags.length - 3 }}</span>
                   <span class="entry-date">{{ formatCardDate(entry) }}</span>

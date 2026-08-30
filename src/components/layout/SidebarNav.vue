@@ -5,6 +5,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 import { useCtxMenu } from '../../composables/useCtxMenu'
+import { useSwipeClose } from '../../composables/useSwipeClose'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
 
@@ -21,6 +22,19 @@ const tagSectionOpen = ref((() => { try { return localStorage.getItem('lockpass_
 
 const stats = computed(() => computeSidebarStats())
 const topTags = computed(() => getTopTags(8))
+
+// 左滑关闭手势（侧边栏在左侧，手指左滑 → translateX 跟随 → 超阈值关闭）
+// 仅移动端抽屉模式（≤1024px）且面板已打开时启用
+const { dragOffset, isDragging, onTouchStart, onTouchMove, onTouchEnd } = useSwipeClose({
+  direction: 'left',
+  threshold: 80,
+  onClose: () => { vaultState.sidebarOpen = false },
+  isEnabled: () => window.matchMedia('(max-width: 1024px)').matches && vaultState.sidebarOpen,
+})
+const sidebarStyle = computed(() => {
+  if (!isDragging.value || !dragOffset.value) return null
+  return { transform: `translateX(${dragOffset.value}px)`, transition: 'none' }
+})
 
 const typeLabels = {
   website: 'entry.type.website', server: 'entry.type.server', database: 'entry.type.database', ai: 'entry.type.ai', app: 'entry.type.app', other: 'entry.type.other',
@@ -377,7 +391,16 @@ async function handleLogout(action) {
 </script>
 
 <template>
-  <aside id="sidebar" :class="{ open: vaultState.sidebarOpen }">
+  <aside
+    id="sidebar"
+    :class="{ open: vaultState.sidebarOpen, swiping: isDragging }"
+    :style="sidebarStyle"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend.passive="onTouchEnd"
+    @touchcancel.passive="onTouchEnd"
+  >
+    <div class="swipe-hint" aria-hidden="true"></div>
     <div class="sidebar-scroll">
       <div class="sidebar-section">
         <div class="btn-dropdown" id="add-entry-dropdown">

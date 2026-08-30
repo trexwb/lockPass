@@ -325,6 +325,8 @@
   border-radius: var(--radius-xs);
   transition: var(--transition);
   display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .toggle-pw:hover { color: var(--text-primary); }
 
@@ -368,12 +370,39 @@
     transform: translateX(-100%);
     transition: transform 0.3s ease, visibility 0s linear 0.3s;
     visibility: hidden;
+    /* 允许垂直滚动但捕获水平手势（swipe-to-close） */
+    touch-action: pan-y;
   }
   #sidebar.open {
     transform: translateX(0);
     visibility: visible;
     transition: transform 0.3s ease;
   }
+  /* 拖拽态：内联 style 控制 transform，CSS 仅补视觉反馈 */
+  #sidebar.swiping {
+    box-shadow: 16px 0 48px rgba(0, 0, 0, 0.55);
+    user-select: none;
+  }
+  /* 滑动暗示：右侧细条 */
+  #sidebar .swipe-hint {
+    display: none;
+  }
+  #sidebar.open .swipe-hint {
+    display: block;
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 36px;
+    border-radius: 2px;
+    background: var(--text-tertiary);
+    opacity: 0.35;
+    z-index: 1;
+    animation: swipe-hint-pulse 2.4s var(--ease-out-quart) infinite;
+    pointer-events: none;
+  }
+  #sidebar.swiping .swipe-hint { opacity: 0; }
   
   /* 遮罩层：与横幅同层（盖住内容与横幅，保持抽屉模式视觉统一） */
 #sidebar-overlay {
@@ -499,6 +528,7 @@
   .detail-footer .btn {
     flex: 1;
     min-width: 100px;
+    min-height: 44px;
   }
   
   /* Empty state - 移动端 */
