@@ -84,8 +84,8 @@
       try {
         window.Utils.showToast(
           last === 0
-            ? '您还没有备份过，建议尽快导出 .vault 加密备份'
-            : `距上次备份已超过 ${interval} 天，建议导出 .vault 备份`,
+            ? window.I18n.t('backup.remindNever')
+            : window.I18n.t('backup.remindOverdue', { n: interval }),
           'warning',
         )
       } catch (e) {}
@@ -98,7 +98,7 @@
       if (last > 0 && (Date.now() - last) / DAY_MS < this.snapshotIntervalDays()) return
       const r = await this.createSnapshot()
       if (r.ok) {
-        try { window.Utils.showToast('已自动备份快照', 'success') } catch (e) {}
+        try { window.Utils.showToast(window.I18n.t('backup.snapshotDone'), 'success') } catch (e) {}
       }
       // 自动流程失败一律静默（permission/unbound/error 均不打扰；
       // 快照可用性由设置面板状态与手动「立即备份」反馈呈现）

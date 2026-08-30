@@ -30,14 +30,14 @@
   /* CSV → 条目列表（对齐 ImportModal.importCSV 的表头映射） */
   function parseCSVToEntries(text) {
     const lines = window.Utils.splitCSVLines(text)
-    if (lines.length < 2) throw new Error('CSV 文件为空或格式错误')
+    throw new Error(window.I18n ? window.I18n.t('import.errCsvEmpty') : 'CSV 文件为空或格式错误')
     const headers = window.Utils.parseCSVLine(lines[0]).map(function (h) { return h.toLowerCase().trim() })
     const idx = function (name) { return headers.indexOf(name) }
 
     const titleIdx = idx('title')
     const passwordIdx = idx('password')
     if (titleIdx === -1 || passwordIdx === -1) {
-      throw new Error('CSV 必须包含 title 和 password 列')
+      throw new Error(window.I18n ? window.I18n.t('import.errCsvColumns') : 'CSV 必须包含 title 和 password 列')
     }
     const usernameIdx = idx('username')
     const urlIdx = idx('url')
@@ -108,7 +108,7 @@
   /* 合并条目：vault 备份直接追加；CSV 按标题+用户名查重跳过 */
   function mergeEntries(entries, dedupe) {
     const state = window.App && window.App.state
-    if (!state) throw new Error('保险箱状态未就绪')
+    throw new Error(window.I18n ? window.I18n.t('import.errStateNotReady') : '保险箱状态未就绪')
 
     let added = 0
     let skipped = 0
@@ -147,14 +147,16 @@
     const text = await fileLike.text()
     const state = window.App && window.App.state
     if (!state || !state.isUnlocked || !state.cryptoKey) {
-      throw new Error('请先解锁保险箱再拖入文件')
+      throw new Error(window.I18n ? window.I18n.t('import.errLocked') : '请先解锁保险箱再拖入文件')
     }
 
     if (lower.endsWith('.csv')) {
       const entries = parseCSVToEntries(text)
       const result = mergeEntries(entries, true)
       await window.App.saveVault()
-      window.Utils.showToast('CSV 导入完成：新增 ' + result.added + ' 条' + (result.skipped ? '、跳过重复 ' + result.skipped + ' 条' : ''), 'success')
+      window.Utils.showToast(result.skipped
+        ? window.I18n.t('import.csvDoneSkipped', { added: result.added, skipped: result.skipped })
+        : window.I18n.t('import.csvDone', { added: result.added }), 'success')
       return result
     }
 
@@ -163,7 +165,7 @@
       try {
         data = JSON.parse(text)
       } catch (e) {
-        throw new Error('文件格式错误，不是有效的 JSON 备份')
+        throw new Error(window.I18n ? window.I18n.t('import.errJsonInvalid') : '文件格式错误，不是有效的 JSON 备份')
       }
       // 加密封套识别：兼容 .vault 导出（format:'encrypted'）与
       // 自动快照/同步文件（format:'LockPass-file-sync'），按结构判断
@@ -174,7 +176,7 @@
           decrypted = await window.CryptoUtils.decrypt(data.data, data.iv, state.cryptoKey)
         } catch (e) { /* 解密失败走下方提示 */ }
         if (!decrypted || !decrypted.entries) {
-          throw new Error('无法解密该备份（可能来自不同主密码），请在「批量导入」中输入主密码手动导入')
+          throw new Error(window.I18n ? window.I18n.t('import.errDecrypt') : '无法解密该备份（可能来自不同主密码），请在「批量导入」中输入主密码手动导入')
         }
         const entries = (decrypted.entries || []).map(function (e) {
           return Object.assign({}, e, { categories: decrypted.categories })
@@ -187,7 +189,7 @@
           Object.keys(decrypted.tagDefs).forEach(function (n) { mergeTagDef(n, decrypted.tagDefs[n]) })
         }
         await window.App.saveVault()
-        window.Utils.showToast('备份导入完成：新增 ' + result.added + ' 条', 'success')
+        window.Utils.showToast(window.I18n.t('import.backupDone', { added: result.added }), 'success')
         return result
       }
       if (data.entries) {
@@ -199,13 +201,13 @@
           Object.keys(data.tagDefs).forEach(function (n) { mergeTagDef(n, data.tagDefs[n]) })
         }
         await window.App.saveVault()
-        window.Utils.showToast('明文备份导入完成：新增 ' + result.added + ' 条', 'success')
+        window.Utils.showToast(window.I18n.t('import.plainBackupDone', { added: result.added }), 'success')
         return result
       }
-      throw new Error('不支持的文件格式')
+      throw new Error(window.I18n ? window.I18n.t('import.errUnsupported') : '不支持的文件格式')
     }
 
-    throw new Error('不支持的文件格式（支持 .vault / .json / .csv）')
+    throw new Error(window.I18n ? window.I18n.t('import.errUnsupportedDetail') : '不支持的文件格式（支持 .vault / .json / .csv）')
   }
 
   window.ImportExport = { processFile }

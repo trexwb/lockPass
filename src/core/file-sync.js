@@ -10,6 +10,9 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 const FILE_SYNC_NAME = 'LockPass-vault.json';
+
+/* i18n：Toast 在调用时求值（window.I18n 由 core/i18n.js 挂载） */
+const t = (k, p) => window.I18n.t(k, p);
 const LS_SYNC_BOUND = 'lp_sync_bound'; // 标记曾绑定过（用于 UI 引导提示）
 
 const FileSync = {
@@ -47,7 +50,7 @@ const FileSync = {
     try { localStorage.removeItem(LS_SYNC_BOUND); } catch (e) {}
     this.lastSyncError = null;
     try {
-      Utils.showToast('本地文件同步已停用：目录句柄无效（可能是引擎升级或迁移导致），可在设置中重新绑定', 'warning');
+      Utils.showToast(t('sync.stoppedInvalidHandle'), 'warning');
     } catch (e) {}
     return null;
   },
@@ -107,7 +110,7 @@ const FileSync = {
     } catch (e) {
       console.error('[FileSync] 同步失败:', e);
       this.lastSyncError = e;
-      try { Utils.showToast('本地文件同步失败：' + (e.message || e), 'error'); } catch (_) {}
+      try { Utils.showToast(t('sync.syncFailed', { msg: e.message || e }), 'error'); } catch (_) {}
       return { ok: false, reason: 'error', error: e };
     }
   },
@@ -133,10 +136,10 @@ const FileSync = {
     // 桌面版数据由应用本地文件管理，目录同步是浏览器版专属能力；
     // 硬拒绝以防句柄经 JSON 落盘退化为空壳后每次写入都报错
     if ((window.FileStore && window.FileStore.isTauri) || window.__TAURI_INTERNALS__) {
-      throw new Error('桌面版数据已由本地文件自动保存，无需绑定同步目录');
+      throw new Error(window.I18n ? window.I18n.t('sync.desktopNoBind') : '桌面版数据已由本地文件自动保存，无需绑定同步目录');
     }
     if (!this.isSupported()) {
-      throw new Error('当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开');
+      throw new Error(window.I18n.t('sync.errNoFsApi'));
     }
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
 
@@ -153,12 +156,10 @@ const FileSync = {
       // IndexedDB 已有数据（可能是刚创建的空库）：让用户明确选择，防止误覆盖旧同步文件
       // 使用项目自定义确认弹窗（替代系统 confirm，桌面/手机/Pad 表现一致）
       const useFile = await Utils.confirm({
-        title: '目录中已有同步文件',
-        message: '所选目录中已有 LockPass-vault.json 同步文件。\n\n' +
-          '点击「用文件恢复」：将该文件内容同步到本地数据（当前本地数据将被覆盖）；\n' +
-          '点击「保留当前数据」：保留当前本地数据（目录文件将被当前数据覆盖）。',
-        confirmText: '用文件恢复',
-        cancelText: '保留当前数据'
+        title: t('sync.existingTitle'),
+        message: t('sync.existingMsg'),
+        confirmText: t('sync.restoreFile'),
+        cancelText: t('sync.keepData')
       });
       if (useFile) {
         const payload = await this.restoreFromDirectory(handle);
@@ -202,7 +203,7 @@ const FileSync = {
     try {
       fileHandle = await dirHandle.getFileHandle(FILE_SYNC_NAME);
     } catch (e) {
-      throw new Error('没有找到 vault.json，请确认选择的是正确的数据目录');
+      throw new Error(window.I18n.t('sync.errNoVault'));
     }
     const file = await fileHandle.getFile();
     const text = await file.text();
@@ -210,10 +211,10 @@ const FileSync = {
     try {
       payload = JSON.parse(text);
     } catch (e) {
-      throw new Error('vault.json 解析失败，文件可能已损坏');
+      throw new Error(window.I18n.t('sync.errParseFailed'));
     }
     if (!payload.salt || !payload.iv || !payload.data) {
-      throw new Error('vault.json 格式不正确，不是有效的 LockPass 同步文件');
+      throw new Error(window.I18n.t('sync.errBadFormat'));
     }
     // 写入 IndexedDB
     await this.restorePayload(payload);

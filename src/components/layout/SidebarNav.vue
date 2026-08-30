@@ -6,7 +6,9 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
+import { useI18n } from '../../composables/useI18n'
 
+const { t } = useI18n()
 const Icons = window.Utils?.SvgIcons
 
 const {
@@ -21,7 +23,7 @@ const stats = computed(() => computeSidebarStats())
 const topTags = computed(() => getTopTags(8))
 
 const typeLabels = {
-  website: '网站', server: '服务器', database: '数据库', ai: 'AI', app: '应用', other: '其他',
+  website: 'entry.type.website', server: 'entry.type.server', database: 'entry.type.database', ai: 'entry.type.ai', app: 'entry.type.app', other: 'entry.type.other',
 }
 
 function selectFilter(f) {
@@ -96,57 +98,57 @@ const navCtxItems = computed(() => {
   switch (p.kind) {
     case 'personal': {
       const f = p.filter
-      list.push({ key: 'jump', label: '切换到该分组', iconHtml: Icons?.grid(14), accent: true })
+      list.push({ key: 'jump', label: t('side.ctxJumpGroup'), iconHtml: Icons?.grid(14), accent: true })
       if (f === 'favorites') {
-        list.push({ key: 'clear-fav', label: '清空全部收藏（保留条目）', iconHtml: Icons?.starOutline(14) })
+        list.push({ key: 'clear-fav', label: t('side.ctxClearFav'), iconHtml: Icons?.starOutline(14) })
       }
       list.push({ divider: true })
-      list.push({ key: 'new-entry', label: '在该分组下新建条目', iconHtml: Icons?.edit(14) })
+      list.push({ key: 'new-entry', label: t('side.ctxNewInGroup'), iconHtml: Icons?.edit(14) })
       return list
     }
     case 'recycle': {
       const n = stats.value.recycle || 0
-      list.push({ key: 'jump', label: '切换到回收站', iconHtml: Icons?.trash(14), accent: true })
-      list.push({ key: 'empty', label: n ? `清空回收站（${n} 项）` : '清空回收站', iconHtml: Icons?.trash(14), danger: !!n, disabled: !n })
+      list.push({ key: 'jump', label: t('side.ctxJumpTrash'), iconHtml: Icons?.trash(14), accent: true })
+      list.push({ key: 'empty', label: n ? t('side.ctxEmptyTrashN', { n }) : t('side.ctxEmptyTrash'), iconHtml: Icons?.trash(14), danger: !!n, disabled: !n })
       return list
     }
     case 'type': {
-      const t = p.typeId
-      list.push({ key: 'jump', label: `仅显示「${typeLabels[t] || t}」类型`, iconHtml: typeIconSvg(t, 14), accent: true })
-      list.push({ key: 'new-entry', label: `新建「${typeLabels[t] || t}」类型条目`, iconHtml: Icons?.edit(14) })
+      const typeId = p.typeId
+      list.push({ key: 'jump', label: t('side.ctxJumpType', { type: t(typeLabels[typeId] || typeId) }), iconHtml: typeIconSvg(typeId, 14), accent: true })
+      list.push({ key: 'new-entry', label: t('side.ctxNewType', { type: t(typeLabels[typeId] || typeId) }), iconHtml: Icons?.edit(14) })
       return list
     }
     case 'tag': {
       const name = p.name
       const isDefault = !!vaultState.tagDefs?.[name]?.isDefault
-      list.push({ key: 'jump', label: `筛选标签：${name}`, iconHtml: tagIconSvg(name), accent: true })
-      list.push({ key: 'rename', label: '重命名标签', iconHtml: Icons?.edit(14), disabled: isDefault, title: isDefault ? '系统默认标签不允许重命名' : '' })
-      list.push({ key: 'open-tags', label: '修改颜色 / 图标', iconHtml: Icons?.palette(14) })
-      list.push({ key: 'dup-tag', label: '复制标签（快速建新）', iconHtml: Icons?.copy(14) })
+      list.push({ key: 'jump', label: t('side.ctxFilterTag', { tag: name }), iconHtml: tagIconSvg(name), accent: true })
+      list.push({ key: 'rename', label: t('side.ctxRenameTag'), iconHtml: Icons?.edit(14), disabled: isDefault, title: isDefault ? t('side.tipDefaultTag') : '' })
+      list.push({ key: 'open-tags', label: t('side.ctxEditTagStyle'), iconHtml: Icons?.palette(14) })
+      list.push({ key: 'dup-tag', label: t('side.ctxDupTag'), iconHtml: Icons?.copy(14) })
       list.push({ divider: true })
-      list.push({ key: 'strip', label: '从所有条目移除该标签', iconHtml: Icons?.refresh(14), disabled: isDefault })
-      list.push({ key: 'merge', label: '合并到另一标签…', iconHtml: Icons?.merge(14), disabled: isDefault })
-      list.push({ key: 'delete', label: '删除该标签（连同从条目移除）', iconHtml: Icons?.trash(14), danger: true, disabled: isDefault })
+      list.push({ key: 'strip', label: t('side.ctxStrip'), iconHtml: Icons?.refresh(14), disabled: isDefault })
+      list.push({ key: 'merge', label: t('side.ctxMerge'), iconHtml: Icons?.merge(14), disabled: isDefault })
+      list.push({ key: 'delete', label: t('side.ctxDeleteTag'), iconHtml: Icons?.trash(14), danger: true, disabled: isDefault })
       return list
     }
     case 'add': {
-      list.push({ key: 'new', label: '新建密码', iconHtml: Icons?.key(14), accent: true })
-      list.push({ key: 'qr-import', label: '二维码添加', iconHtml: Icons?.qr(14) })
-      list.push({ key: 'import', label: '批量导入 (.vault/.csv)', iconHtml: Icons?.upload(14) })
+      list.push({ key: 'new', label: t('side.newPassword'), iconHtml: Icons?.key(14), accent: true })
+      list.push({ key: 'qr-import', label: t('qrimport.add'), iconHtml: Icons?.qr(14) })
+      list.push({ key: 'import', label: t('import.batchVault'), iconHtml: Icons?.upload(14) })
       return list
     }
     case 'logout': {
-      list.push({ key: 'lock', label: '立即锁定（不清会话）', iconHtml: Icons?.lock(14) })
-      list.push({ key: 'logout', label: '退出登录', iconHtml: Icons?.logoutIcon(14), danger: true })
+      list.push({ key: 'lock', label: t('header.ctxLockKeepSession'), iconHtml: Icons?.lock(14) })
+      list.push({ key: 'logout', label: t('side.ctxLogout'), iconHtml: Icons?.logoutIcon(14), danger: true })
       return list
     }
     case 'tag-manage': {
       const custom = Object.keys(vaultState.tagDefs || {}).filter(n => !vaultState.tagDefs[n]?.isDefault)
-      list.push({ key: 'open', label: '打开标签管理', iconHtml: Icons?.palette(14), accent: true })
-      list.push({ key: 'new-tag', label: '新建标签', iconHtml: Icons?.tag(14) })
+      list.push({ key: 'open', label: t('side.ctxOpenMgr'), iconHtml: Icons?.palette(14), accent: true })
+      list.push({ key: 'new-tag', label: t('side.ctxNewTag'), iconHtml: Icons?.tag(14) })
       list.push({ divider: true })
-      list.push({ key: 'expand', label: '展开标签区', iconHtml: Icons?.refresh(14), disabled: tagSectionOpen.value })
-      list.push({ key: 'clear-custom', label: `删除全部自定义标签（${custom.length} 个）`, iconHtml: Icons?.trash(14), danger: true, disabled: !custom.length })
+      list.push({ key: 'expand', label: t('side.ctxExpand'), iconHtml: Icons?.refresh(14), disabled: tagSectionOpen.value })
+      list.push({ key: 'clear-custom', label: t('side.ctxClearCustom', { n: custom.length }), iconHtml: Icons?.trash(14), danger: true, disabled: !custom.length })
       return list
     }
   }
@@ -164,15 +166,15 @@ async function handlePersonal(action, filter) {
     const n = stats.value.favorites || 0
     if (!n) return
     const ok = await window.Utils.confirm({
-      title: '清空全部收藏？',
-      message: `将对 ${n} 条收藏条目取消星标，条目本身保留，该操作不可撤销，是否继续？`,
-      confirmText: '全部取消收藏',
-      cancelText: '取消',
+      title: t('side.confirmClearFavTitle'),
+      message: t('side.confirmClearFavMsg', { n }),
+      confirmText: t('side.confirmClearFavOk'),
+      cancelText: t('confirm.default.cancel'),
     })
     if (!ok) return
     vaultState.entries.forEach(e => { if (e.favorite) e.favorite = false })
     await saveVault()
-    window.Utils.showToast(`已清空收藏（${n} 条）`, 'success')
+    window.Utils.showToast(t('side.toastClearedFav', { n }), 'success')
   }
 }
 
@@ -187,7 +189,7 @@ async function handleType(action, typeId) {
       if (!cur.fields) cur.fields = {}
       sessionStorage.setItem('lockpass_draft_new', JSON.stringify(cur))
     } catch (_e) {}
-    window.Utils.showToast(`已预选类型：${typeLabels[typeId] || typeId}（可在编辑器更改）`, 'info')
+    window.Utils.showToast(t('side.toastTypePreselected', { label: t(typeLabels[typeId] || typeId) }), 'info')
   }
 }
 
@@ -198,14 +200,14 @@ async function handleTag(action, name) {
     const def = vaultState.tagDefs[name]
     if (!def || def.isDefault) return
     const newName = await window.Utils.prompt({
-      title: '重命名标签',
-      message: `将标签「${name}」改名为：`,
+      title: t('side.confirmRenameTitle'),
+      message: t('side.confirmRenameMsg', { name }),
       value: name,
-      confirmText: '重命名',
+      confirmText: t('detail.renameConfirm'),
     })?.trim()
     if (!newName || newName === name) return
     if (vaultState.tagDefs[newName]) {
-      window.Utils.showToast('已存在同名标签，请改用「合并到另一标签」', 'error')
+      window.Utils.showToast(t('side.toastRenameDup'), 'error')
       return
     }
     vaultState.tagDefs[newName] = { ...def }
@@ -223,21 +225,21 @@ async function handleTag(action, name) {
     // 同步当前筛选名
     if (vaultState.currentFilter === name) vaultState.currentFilter = newName
     await saveVault()
-    window.Utils.showToast(`已重命名「${name}」→「${newName}」`, 'success')
+    window.Utils.showToast(t('side.toastRenamed', { name, newName }), 'success')
     return
   }
   if (action === 'dup-tag') {
     const def = vaultState.tagDefs[name] || {}
     let idx = 1
-    let cand = `${name} 副本`
-    while (vaultState.tagDefs[cand]) { idx++; cand = `${name} 副本 ${idx}` }
+    let cand = `${name} ${t('side.dupSuffix')}`
+    while (vaultState.tagDefs[cand]) { idx++; cand = `${name} ${t('side.dupSuffix')} ${idx}` }
     vaultState.tagDefs[cand] = {
       color: def.color || window.Utils.getRandomTagAttrs(vaultState.tagDefs).color,
       icon: def.icon || 'other',
       isDefault: false,
     }
     await saveVault()
-    window.Utils.showToast(`已新增标签：${cand}`, 'success')
+    window.Utils.showToast(t('side.toastTagCreated', { name: cand }), 'success')
     return
   }
   if (action === 'strip' || action === 'delete') {
@@ -245,12 +247,12 @@ async function handleTag(action, name) {
     if (!def || def.isDefault) return
     const count = (stats.value.byTag || {})[name] || 0
     const msg = action === 'strip'
-      ? `将从所有 ${count} 条条目中移除「${name}」标签，标签本身保留。`
-      : `将删除「${name}」标签，并从全部 ${count} 条条目中移除。`
+      ? t('side.confirmStripMsg', { name, count })
+      : t('side.confirmDeleteMsg', { name, count })
     const ok = await window.Utils.confirm({
-      title: action === 'strip' ? '移除该标签？' : '删除该标签？',
-      message: msg + '\n该操作不可撤销，是否继续？',
-      confirmText: action === 'strip' ? '确认移除' : '确认删除',
+      title: action === 'strip' ? t('side.confirmStripTitle') : t('side.confirmDeleteTitle'),
+      message: msg + '\n' + t('side.confirmUnreversible'),
+      confirmText: action === 'strip' ? t('side.confirmStripOk') : t('side.confirmDeleteOk'),
       danger: true,
     })
     if (!ok) return
@@ -263,22 +265,22 @@ async function handleTag(action, name) {
     if (action === 'delete') delete vaultState.tagDefs[name]
     if (vaultState.currentFilter === name) vaultState.currentFilter = 'all'
     await saveVault()
-    window.Utils.showToast(action === 'strip' ? '已从条目移除该标签' : '已删除该标签', 'success')
+    window.Utils.showToast(action === 'strip' ? t('side.toastStripped') : t('side.toastDeleted'), 'success')
     return
   }
   if (action === 'merge') {
     const def = vaultState.tagDefs[name]
     if (!def || def.isDefault) return
     const others = Object.keys(vaultState.tagDefs).filter(n => n !== name)
-    if (!others.length) { window.Utils.showToast('没有可合并的目标标签', 'warning'); return }
+    if (!others.length) { window.Utils.showToast(t('side.toastNoMergeTarget'), 'warning'); return }
     const target = await window.Utils.prompt({
-      title: '合并标签',
-      message: '将「' + name + '」合并到目标标签（现有条目同时拥有的会去重）：\n\n可选：' + others.join('、'),
+      title: t('side.confirmMergeTitle'),
+      message: t('side.confirmMergeMsg', { name, list: others.join('、') }),
       value: others[0],
-      confirmText: '合并',
+      confirmText: t('side.confirmMergeOk'),
     })?.trim()
     if (!target || target === name) return
-    if (!vaultState.tagDefs[target]) { window.Utils.showToast('目标标签不存在', 'error'); return }
+    if (!vaultState.tagDefs[target]) { window.Utils.showToast(t('side.toastMergeTargetMissing'), 'error'); return }
     const mergeOne = (list) => list.forEach(e => {
       if (!e.tags) return
       if (!e.tags.includes(name)) return
@@ -290,7 +292,7 @@ async function handleTag(action, name) {
     delete vaultState.tagDefs[name]
     if (vaultState.currentFilter === name) vaultState.currentFilter = target
     await saveVault()
-    window.Utils.showToast(`已将「${name}」合并到「${target}」`, 'success')
+    window.Utils.showToast(t('side.toastMerged', { name, target }), 'success')
   }
 }
 
@@ -303,9 +305,9 @@ async function handleRecycle(action) {
     const n = stats.value.recycle || 0
     if (!n) return
     const ok = await window.Utils.confirm({
-      title: '清空回收站？',
-      message: `将永久删除 ${n} 项密码且不可恢复，是否继续？`,
-      confirmText: '清空',
+      title: t('side.confirmEmptyTrashTitle'),
+      message: t('side.confirmEmptyTrashMsg', { n }),
+      confirmText: t('side.confirmEmptyTrashOk'),
       danger: true,
     })
     if (!ok) return
@@ -320,7 +322,7 @@ async function handleRecycle(action) {
     }
     await saveVault()
     if (vaultState.currentFilter === 'recycle') setFilter('all')
-    window.Utils.showToast('回收站已清空', 'success')
+    window.Utils.showToast(t('side.toastTrashEmptied'), 'success')
   }
 }
 
@@ -336,7 +338,7 @@ async function handleTagManage(action) {
   if (action === 'open') { openModal('tags'); return }
   if (action === 'new-tag') {
     openModal('tags')
-    window.Utils.showToast('在标签管理中点击「新建标签」即可添加', 'info')
+    window.Utils.showToast(t('side.toastTagMgrHint'), 'info')
     return
   }
   if (action === 'expand') { tagSectionOpen.value = true; return }
@@ -344,9 +346,9 @@ async function handleTagManage(action) {
     const custom = Object.keys(vaultState.tagDefs || {}).filter(n => !vaultState.tagDefs[n]?.isDefault)
     if (!custom.length) return
     const ok = await window.Utils.confirm({
-      title: '删除全部自定义标签？',
-      message: `将删除 ${custom.length} 个自定义标签（${custom.join('、')}），并从所有条目中移除；系统默认标签保留。该操作不可撤销，是否继续？`,
-      confirmText: '全部删除',
+      title: t('side.confirmClearCustomTitle'),
+      message: t('side.confirmClearCustomMsg', { n: custom.length, list: custom.join('、') }),
+      confirmText: t('side.confirmClearCustomOk'),
       danger: true,
     })
     if (!ok) return
@@ -360,7 +362,7 @@ async function handleTagManage(action) {
     custom.forEach(n => delete vaultState.tagDefs[n])
     if (vaultState.currentFilter && customSet.has(vaultState.currentFilter)) vaultState.currentFilter = 'all'
     await saveVault()
-    window.Utils.showToast(`已删除 ${custom.length} 个自定义标签`, 'success')
+    window.Utils.showToast(t('side.toastCustomTagsDeleted', { n: custom.length }), 'success')
   }
 }
 
@@ -388,9 +390,9 @@ async function handleLogout(action) {
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            添加密码
+            {{ t('side.addPassword') }}
           </button>
-          <button class="btn btn-primary btn-dropdown-toggle" aria-label="更多添加方式" title="更多添加方式"
+          <button class="btn btn-primary btn-dropdown-toggle" :aria-label="t('side.moreAdd')" :title="t('side.moreAdd')"
             @click="addDropdownOpen = !addDropdownOpen"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'add' }, { w: 230, h: 160 })"
           >
@@ -404,20 +406,20 @@ async function handleLogout(action) {
                 <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
                 <path d="M14 14h3v3h-3z" /><path d="M21 14v3h-3" />
               </svg>
-              二维码添加
+              {{ t('qrimport.add') }}
             </button>
             <button @click="openModal('import'); addDropdownOpen = false">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              批量导入
+              {{ t('import.batch') }}
             </button>
           </div>
         </div>
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-section-title">个人</div>
+        <div class="sidebar-section-title">{{ t('side.sectionPersonal') }}</div>
         <nav id="nav-personal">
           <div
             class="nav-item"
@@ -432,7 +434,7 @@ async function handleLogout(action) {
               <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
               <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
-            全部密码
+            {{ t('side.allPasswords') }}
             <span class="count">{{ stats.total }}</span>
           </div>
           <div
@@ -447,7 +449,7 @@ async function handleLogout(action) {
             <svg width="15" height="15" viewBox="0 0 24 24" :fill="vaultState.currentFilter === 'favorites' ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
-            收藏
+            {{ t('side.favorites') }}
             <span class="count">{{ stats.favorites }}</span>
           </div>
           <div
@@ -462,29 +464,29 @@ async function handleLogout(action) {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
             </svg>
-            回收站
+            {{ t('side.trash') }}
             <span class="count">{{ stats.recycle }}</span>
           </div>
         </nav>
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-section-title">类型筛选</div>
+        <div class="sidebar-section-title">{{ t('side.sectionTypes') }}</div>
         <nav id="nav-types" class="nav-types">
           <div
-            v-for="t in ENTRY_TYPES"
-            :key="t.id"
+            v-for="type in ENTRY_TYPES"
+            :key="type.id"
             class="nav-item"
             role="button"
             tabindex="0"
-            :class="[{ active: vaultState.currentFilter === 'type:' + t.id }, 'type-' + t.id]"
-            @click="selectFilter('type:' + t.id)"
-            @keydown="onNavKey($event, 'type:' + t.id)"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'type', typeId: t.id }, { w: 260, h: 150 })"
+            :class="[{ active: vaultState.currentFilter === 'type:' + type.id }, 'type-' + type.id]"
+            @click="selectFilter('type:' + type.id)"
+            @keydown="onNavKey($event, 'type:' + type.id)"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'type', typeId: type.id }, { w: 260, h: 150 })"
           >
-            <span class="type-icon" v-html="typeIconSvg(t.id)"></span>
-            {{ typeLabels[t.id] }}
-            <span class="count">{{ stats.byType[t.id] || 0 }}</span>
+            <span class="type-icon" v-html="typeIconSvg(type.id)"></span>
+            {{ t(typeLabels[type.id]) }}
+            <span class="count">{{ stats.byType[type.id] || 0 }}</span>
           </div>
         </nav>
       </div>
@@ -493,13 +495,13 @@ async function handleLogout(action) {
         <div
           class="sidebar-section-title sidebar-title-clickable"
           id="tags-toggle"
-          title="折叠/展开热门标签"
+          :title="t('side.hotTagsCollapse')"
           role="button" tabindex="0"
           @click="tagSectionOpen = !tagSectionOpen"
           @keydown.enter.prevent="tagSectionOpen = !tagSectionOpen"
           @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag-manage' }, { w: 250, h: 190 })"
         >
-          热门标签
+          {{ t('side.hotTags') }}
           <svg class="tag-chevron" :style="{ transform: !tagSectionOpen ? 'rotate(-90deg)' : 'rotate(0deg)' }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" />
           </svg>
@@ -535,11 +537,11 @@ async function handleLogout(action) {
           <polyline points="16 17 21 12 16 7" />
           <line x1="21" y1="12" x2="9" y2="12" />
         </svg>
-        退出
+        {{ t('side.quit') }}
       </button>
     </div>
 
     <!-- 侧边栏右键菜单（统一挂 body 避免侧边栏 overflow 裁切） -->
-    <CtxMenu :menu="ctxMenu" :items="navCtxItems" aria-label="侧边栏快捷操作" @action="onCtxAction" />
+    <CtxMenu :menu="ctxMenu" :items="navCtxItems" :aria-label="t('ctx.ariaLabel')" @action="onCtxAction" />
   </aside>
 </template>

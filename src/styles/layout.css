@@ -80,6 +80,13 @@
   justify-content: center;
   transition: color var(--transition), background var(--transition);
 }
+/* 触控热区：视觉约 24px，命中区扩至 40px（absolute 自身即定位上下文） */
+#header .header-search .search-clear-btn::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: var(--radius-sm);
+}
 #header .header-search .search-clear-btn:hover {
   color: var(--text-primary);
   background: var(--bg-secondary);

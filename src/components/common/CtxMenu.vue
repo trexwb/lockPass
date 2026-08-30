@@ -10,7 +10,7 @@ import { computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 const props = defineProps({
   menu: { type: Object, required: true },
   items: { type: Array, default: () => [] },
-  ariaLabel: { type: String, default: '快捷操作' },
+  ariaLabel: { type: String, default: () => window.I18n.t('ctx.ariaLabel') },
   // 菜单展开锚点象限（tl/tr/bl/br），控制 transform-origin 入场动效；
   // 未显式传入时回退 useCtxMenu 计算的 menu.origin
   origin: { type: String, default: '' },

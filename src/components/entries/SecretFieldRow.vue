@@ -9,6 +9,7 @@
  * 复制均走统一剪贴板安全链路（成功提示 + 30 秒自动清除）
  */
 import { useVault } from '../../composables/useVault'
+import { useI18n } from '../../composables/useI18n'
 
 const props = defineProps({
   label: { type: String, required: true },
@@ -19,6 +20,7 @@ const props = defineProps({
 })
 
 const { copyField, copyPassword, toggleDetailPassword } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons（消除与图标库的重复定义）
 const Icons = window.Utils.SvgIcons
@@ -40,14 +42,14 @@ function onCopy(e) {
       <span class="ml-auto"></span>
       <button
         class="btn-icon btn-icon-sm"
-        :title="show ? '隐藏' : '显示'"
-        :aria-label="show ? '隐藏密码' : '显示密码'"
+        :title="show ? t('detail.field.hide') : t('detail.field.show')"
+        :aria-label="show ? t('detail.field.ariaHidePw') : t('detail.field.ariaShowPw')"
         @click="toggleDetailPassword()"
       >
         <span v-if="show" v-html="Icons.eyeClosed(12)"></span>
         <span v-else v-html="Icons.eyeOpen(12)"></span>
       </button>
-      <button class="btn-icon btn-icon-sm" title="复制" aria-label="复制" @click="onCopy($event)">
+      <button class="btn-icon btn-icon-sm" :title="t('detail.field.copy')" :aria-label="t('detail.field.copy')" @click="onCopy($event)">
         <span v-html="Icons.copy(14)"></span>
       </button>
     </div>

@@ -55,10 +55,10 @@ function toggleShowPw() {
 /* 忘记主密码：管理预期并引导恢复/销毁路径（离线加密无找回可能） */
 function showForgotPassword() {
   window.Utils.confirm({
-    title: '无法找回主密码',
-    message: 'LockPass 采用离线加密设计，主密码本身无法找回。\n\n• 如曾绑定数据目录：可从目录中的加密备份恢复\n• 如保存过 .vault 备份文件：可在「创建」界面选择「从本地备份恢复」\n• 否则只能销毁当前保险箱并重新创建（所有数据将被清空）',
-    confirmText: '我知道了',
-    cancelText: '关闭',
+    title: window.I18n.t('auth.forgot.title'),
+    message: window.I18n.t('auth.forgot.message'),
+    confirmText: window.I18n.t('auth.forgot.ok'),
+    cancelText: window.I18n.t('common.close'),
   })
 }
 
@@ -142,8 +142,8 @@ onMounted(() => {
   if (!window.isSecureContext) {
     blocked.value = true
     vaultState.lockError = window.location.protocol === 'file:'
-      ? '本地文件环境（file://）加密功能受限。建议使用本地 HTTP 服务器（python -m http.server）以获得最佳体验，或双击 index.html 直接运行。'
-      : '当前通过 http 访问，浏览器禁用了加密功能（Web Crypto）。请改用 https 访问，或本地双击 index.html 使用。'
+      ? t('lock.envFile')
+      : t('lock.envHttp')
     return
   }
   // D11 修复：创建模式防浏览器密码管理器异步自动填充（对齐原版 main.js init），
@@ -201,7 +201,7 @@ onBeforeUnmount(() => {
             tabindex="1"
             @input="updateStrength"
           />
-          <button class="toggle-pw" type="button" title="显示/隐藏" tabindex="-1" @click="toggleShowPw">
+          <button class="toggle-pw" type="button" :title="t('lock.toggleShow')" tabindex="-1" @click="toggleShowPw">
             <span v-if="!showPw" v-html="Icons.eyeOpen(16)"></span>
             <span v-else v-html="Icons.eyeClosed(16)"></span>
           </button>
@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
           type="button"
           tabindex="3"
           @click="showForgotPassword"
-        >忘记主密码？</button>
+        >{{ t('auth.forgot.title') }}</button>
 
         <!-- 首次使用：从本地备份 / 绑定数据目录恢复（与原生 main.js 行为一致，按钮位于 form 内且无分隔线） -->
         <input

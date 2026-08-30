@@ -30,8 +30,8 @@
         options: {
           defaultPath: filename,
           filters: isCsv
-            ? [{ name: 'CSV 明文备份', extensions: ['csv'] }]
-            : [{ name: 'LockPass 加密备份', extensions: ['vault'] }]
+            ? [{ name: window.I18n.t('dialog.filterCsv'), extensions: ['csv'] }]
+            : [{ name: window.I18n.t('dialog.filterVault'), extensions: ['vault'] }]
         }
       });
       if (!savePath) return false; // 用户取消
@@ -43,7 +43,7 @@
     } catch (e) {
       console.error('[LockPass/Tauri] 导出失败:', e);
       if (typeof Utils !== 'undefined' && Utils.showToast) {
-        Utils.showToast('导出失败：' + (e && e.message ? e.message : e), 'error');
+        Utils.showToast(window.I18n.t('toast.exportFailed', { msg: (e && e.message ? e.message : e) }), 'error');
       }
       return false;
     }
@@ -146,7 +146,7 @@
       invoke('open_url', { url: a.href }).catch(function (err) {
         console.error('[LockPass/Tauri] 打开外部链接失败:', err);
         if (typeof Utils !== 'undefined' && Utils.showToast) {
-          Utils.showToast('打开链接失败：' + (err && err.message ? err.message : err), 'error');
+          Utils.showToast(window.I18n.t('toast.openLinkFailed', { msg: (err && err.message ? err.message : err) }), 'error');
         }
       });
     });

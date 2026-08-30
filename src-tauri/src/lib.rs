@@ -48,7 +48,20 @@ fn safe_join(root: &Path, relative: &str) -> Result<PathBuf, String> {
     Ok(out)
 }
 
-/// 写入文件（自动创建父目录）
+/// 原子写入：先写同目录临时文件并刷盘，再 rename 替换。
+/// 避免崩溃/断电时留下半截 vault.json（密码管理器的数据完整性底线）。
+fn atomic_write(path: &Path, contents: &str) -> Result<(), String> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    {
+        let mut f = fs::File::create(&tmp).map_err(|e| format!("创建临时文件失败: {e}"))?;
+        f.write_all(contents.as_bytes()).map_err(|e| format!("写入临时文件失败: {e}"))?;
+        f.sync_all().map_err(|e| format!("刷盘失败: {e}"))?;
+    }
+    fs::rename(&tmp, path).map_err(|e| format!("原子替换失败: {e}"))
+}
+
+/// 写入文件（自动创建父目录；原子替换防半截写入）
 #[tauri::command]
 fn file_store_write(
     app: tauri::AppHandle,
@@ -60,7 +73,7 @@ fn file_store_write(
     if let Some(parent) = full.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
     }
-    fs::write(&full, contents).map_err(|e| format!("写入文件失败: {e}"))
+    atomic_write(&full, &contents)
 }
 
 /// 读取文件（不存在时返回 Err）

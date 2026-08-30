@@ -137,32 +137,26 @@ fn now_secs() -> u64 {
 }
 
 /// 生成随机 token（32 字节十六进制）
+/// CSPRNG（getrandom / OS 随机源）：token 是扩展鉴权凭据，
+/// 不可用时间种子 xorshift 之类的可预测序列替代。
 fn generate_token() -> String {
-    let mut seed = now_secs()
-        ^ (SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0) as u64);
     let mut buf = [0u8; 32];
-    for b in buf.iter_mut() {
-        // 简易 xorshift，足够应付配对随机性要求
-        seed ^= seed << 13;
-        seed ^= seed >> 7;
-        seed ^= seed << 17;
-        *b = (seed & 0xff) as u8;
-    }
+    getrandom::getrandom(&mut buf).expect("OS 随机源不可用");
     buf.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 /// 生成 6 位数字 nonce，方便用户在弹窗中肉眼比对
+/// 同样使用 CSPRNG：nonce 虽为肉眼比对设计，仍不应可被预计算
 fn generate_nonce() -> String {
-    let mut state = now_secs() ^ 0x9E37_79B9_7F4A_7C15;
+    let mut buf = [0u8; 4];
+    getrandom::getrandom(&mut buf).expect("OS 随机源不可用");
+    let mut state = u32::from_le_bytes(buf);
     let mut out = String::with_capacity(6);
     for _ in 0..6 {
+        out.push(char::from(b'0' + (state % 10) as u8));
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;
-        out.push(char::from(b'0' + (state % 10) as u8));
     }
     out
 }
@@ -189,7 +183,10 @@ fn domain_matches(request_domain: &str, entry_domain: &str) -> bool {
     if rd == ed {
         return true;
     }
-    rd.ends_with(&format!(".{}", ed))
+    // 子域匹配：rd 以 "." + ed 结尾（避免热路径内 format! 分配）
+    rd.len() > ed.len()
+        && rd.ends_with(&ed)
+        && rd.as_bytes()[rd.len() - ed.len() - 1] == b'.'
 }
 
 fn json_response<T: Serialize>(
@@ -214,15 +211,35 @@ fn text_response(status: u16, text: &str) -> tiny_http::Response<std::io::Cursor
         )
 }
 
-/// 启动本地 HTTP 服务（阻塞线程，常驻后台）
+/// 本地服务的并发 worker 数（tiny_http 官方多线程模式：
+/// Arc<Server> + N 线程各自 recv；单个慢请求不再阻塞其他请求）
+const SERVER_WORKERS: usize = 4;
+
+/// POST body 上限（当前接口均无 body 需求，上限防内存滥用）
+const MAX_BODY_BYTES: u64 = 64 * 1024;
+
+/// 启动本地 HTTP 服务（常驻后台，多线程接收）
 pub fn spawn_local_server(app: AppHandle, state: ServerState) -> Result<(), String> {
     let addr = format!("127.0.0.1:{}", LOCAL_SERVER_PORT);
-    let server = tiny_http::Server::http(&addr).map_err(|e| format!("本地服务启动失败 {}: {}", addr, e))?;
+    let server = std::sync::Arc::new(
+        tiny_http::Server::http(&addr).map_err(|e| format!("本地服务启动失败 {}: {}", addr, e))?,
+    );
     let inner = state.clone_inner();
     let app_for_thread = app.clone();
 
-    std::thread::spawn(move || {
-        for mut request in server.incoming_requests() {
+    for worker in 0..SERVER_WORKERS {
+        let server = server.clone();
+        let inner = inner.clone();
+        let app_for_thread = app_for_thread.clone();
+        std::thread::spawn(move || loop {
+            let mut request = match server.recv() {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("[LockPass/server] worker {worker} 接收请求失败: {e}");
+                    continue;
+                }
+            };
+
             let method = request.method().clone();
             let url = request.url().to_string();
             let (path, query) = match url.split_once('?') {
@@ -240,11 +257,27 @@ pub fn spawn_local_server(app: AppHandle, state: ServerState) -> Result<(), Stri
                 })
                 .collect();
 
-            // 读取 body（POST 用，目前 /pair 与 /pair/cancel 不需要 body）
-            let _body = {
-                let mut b = String::new();
-                let _ = request.as_reader().read_to_string(&mut b);
-                b
+            // body：仅 POST 排空（当前接口不消费 body），带上限防内存滥用；
+            // trait object 上不可用 Read::take（Sized 约束），手动分块排空
+            let _drained = if method == tiny_http::Method::Post {
+                let reader = request.as_reader();
+                let mut buf = [0u8; 8192];
+                let mut total = 0usize;
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            total += n;
+                            if total > MAX_BODY_BYTES as usize {
+                                break; // 超限：停止排空（连接随后关闭）
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                total
+            } else {
+                0
             };
 
             // 提取 Authorization: Bearer <token>（/credentials 鉴权用）
@@ -257,8 +290,8 @@ pub fn spawn_local_server(app: AppHandle, state: ServerState) -> Result<(), Stri
 
             let response = route(&app_for_thread, &inner, method, &path, &query_params, &auth_header);
             let _ = request.respond(response);
-        }
-    });
+        });
+    }
 
     let _ = app.emit("lockpass:server-started", LOCAL_SERVER_PORT);
     Ok(())

@@ -6,15 +6,18 @@
 
 import { reactive, nextTick } from 'vue'
 
+/* i18n：Toast 在调用时求值（window.I18n 由 core/i18n.js 挂载） */
+const t = (k, p) => window.I18n.t(k, p)
+
 /* ── 常量定义（与原生版一致） ─────────────────────────────── */
 
 export const ENTRY_TYPES = [
-  { id: 'website', label: '网站', icon: 'globe' },
-  { id: 'server', label: '服务器', icon: 'server' },
-  { id: 'database', label: '数据库', icon: 'database' },
-  { id: 'ai', label: 'AI', icon: 'ai' },
-  { id: 'app', label: '应用', icon: 'app' },
-  { id: 'other', label: '其他', icon: 'other' },
+  { id: 'website', label: '网站', labelKey: 'entry.type.website', icon: 'globe' },
+  { id: 'server', label: '服务器', labelKey: 'entry.type.server', icon: 'server' },
+  { id: 'database', label: '数据库', labelKey: 'entry.type.database', icon: 'database' },
+  { id: 'ai', label: 'AI', labelKey: 'entry.type.ai', icon: 'ai' },
+  { id: 'app', label: '应用', labelKey: 'entry.type.app', icon: 'app' },
+  { id: 'other', label: '其他', labelKey: 'entry.type.other', icon: 'other' },
 ]
 
 export const DEFAULT_TAGS = [
@@ -269,7 +272,7 @@ export function useVault() {
 
   async function unlockVault(password) {
     const saltRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'salt')
-    if (!saltRecord) throw new Error('未找到保险箱数据')
+    if (!saltRecord) throw new Error(t('vault.err.noVault'))
 
     const salt = window.CryptoUtils.base64ToArrayBuffer(saltRecord.value)
     const iterRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'iterations')
@@ -277,13 +280,13 @@ export function useVault() {
     const key = await window.CryptoUtils.deriveKey(password, new Uint8Array(salt), iterations)
 
     const vaultRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_VAULT, 'main')
-    if (!vaultRecord) throw new Error('未找到加密数据')
+    if (!vaultRecord) throw new Error(t('vault.err.noEntries'))
 
     try {
       const decrypted = await window.CryptoUtils.decrypt(vaultRecord.data, vaultRecord.iv, key)
       return { key, data: decrypted }
     } catch (e) {
-      throw new Error('密码错误')
+      throw new Error(t('vault.err.wrongPw'))
     }
   }
 
@@ -331,7 +334,7 @@ export function useVault() {
           .then(() => doSave())
           .catch((e) => {
             console.error('保存失败:', e)
-            window.Utils.showToast('保存失败：' + (e.message || '未知错误'), 'error')
+            window.Utils.showToast(t('toast.saveFailed', { msg: e.message || t('toast.unknownError') }), 'error')
           })
         // 本次写入（以及被合并的旧请求）完成后统一 resolve
         saveChain.then(flushSaveResolvers)
@@ -344,7 +347,7 @@ export function useVault() {
   async function handleUnlock(password) {
     if (vaultState.lockBusy) return
     if (!password) {
-      vaultState.lockError = '请输入主密码'
+      vaultState.lockError = t('vault.lock.pwEmpty')
       return
     }
     vaultState.lockBusy = true
@@ -357,13 +360,13 @@ export function useVault() {
       if (!status.initialized) {
         if (status.hasBindingHistory) {
           const proceed = await window.Utils.confirm({
-            title: '检测到曾绑定的数据目录',
+            title: t('vault.restore.title'),
             message:
-              '检测到您曾绑定过本地数据目录，但当前浏览器本地数据为空。\n\n' +
-              '点击「从绑定目录恢复」：尝试从绑定目录恢复数据（目录中需存在 LockPass-vault.json 同步文件）；\n' +
-              '点击「继续创建」：创建全新保险箱（原有同步文件将无法自动找回）。',
-            confirmText: '从绑定目录恢复',
-            cancelText: '继续创建',
+              t('vault.restore.msg1') +
+              t('vault.restore.msg2') +
+              t('vault.restore.msg3'),
+            confirmText: t('vault.restore.btnRestore'),
+            cancelText: t('vault.restore.btnCreate'),
           })
           if (proceed) {
             // D1 修复：对齐原版 restoreFromBoundDirectory → 从目录恢复数据，
@@ -373,7 +376,7 @@ export function useVault() {
             try { handle = await window.FileSync.getDirHandle() } catch (e) {}
             if (!handle) {
               if (!window.FileSync.isSupported()) {
-                vaultState.lockError = '当前浏览器不支持文件系统访问 API，请使用 Chrome / Edge 打开'
+                vaultState.lockError = t('vault.lock.noFs')
                 vaultState.lockBusy = false
                 return
               }
@@ -381,7 +384,7 @@ export function useVault() {
             }
             const restored = await window.FileSync.restoreFromDirectory(handle)
             if (!restored) {
-              vaultState.lockError = '未能从绑定目录恢复：目录中缺少 LockPass-vault.json，请点击「绑定已有数据目录」重新选择'
+              vaultState.lockError = t('vault.restore.failedNoFile')
               vaultState.lockBusy = false
               return
             }
@@ -395,7 +398,7 @@ export function useVault() {
         }
         // D3 修复：创建模式校验主密码长度（对齐原版 password.length < 8 报错）
         if (password.length < 8) {
-          vaultState.lockError = '主密码至少需要 8 位'
+          vaultState.lockError = t('vault.lock.pwTooShort')
           vaultState.lockBusy = false
           return
         }
@@ -444,7 +447,7 @@ export function useVault() {
     } catch (e) {
       // 用户取消目录选择（showDirectoryPicker AbortError）：静默停留当前界面（对齐原版）
       if (e && e.name === 'AbortError') return
-      vaultState.lockError = e.message || '解锁失败'
+      vaultState.lockError = e.message || t('vault.lock.unlockFailed')
     } finally {
       vaultState.lockBusy = false
     }
@@ -500,15 +503,15 @@ export function useVault() {
       banner.setAttribute('role', 'alert')
 
       const text = unsupported
-        ? '当前浏览器不支持本地文件同步，请使用 Chrome / Edge 打开本页面后绑定数据目录'
-        : '建议绑定数据目录：绑定后每次修改密码库会自动写入加密的 LockPass-vault.json 文件，即使浏览器清空缓存，数据也不会丢失'
+        ? t('vault.sync.noFs')
+        : t('vault.sync.hint')
 
       banner.innerHTML =
         '<div class="lp-bind-banner-inner">' +
           '<span class="lp-bind-banner-text">' + window.Utils.escHtml(text) + '</span>' +
           '<span class="lp-bind-banner-actions">' +
-            (unsupported ? '' : '<button class="btn btn-primary btn-sm" id="lp-bind-banner-bind">立即绑定</button>') +
-            '<button class="btn btn-secondary btn-sm" id="lp-bind-banner-dismiss">暂不</button>' +
+            (unsupported ? '' : '<button class="btn btn-primary btn-sm" id="lp-bind-banner-bind">' + t('vault.sync.btnBind') + '</button>') +
+            '<button class="btn btn-secondary btn-sm" id="lp-bind-banner-dismiss">' + t('vault.sync.btnDismiss') + '</button>' +
           '</span>' +
         '</div>'
 
@@ -523,13 +526,13 @@ export function useVault() {
               // 从绑定目录恢复数据：回到锁屏等待解锁（与 SettingsModal.lockVaultAndNotice 对齐）
               lockVault()
               vaultState.initialized = true
-              window.Utils.showToast('已从本地文件恢复数据，输入主密码解锁', 'success')
+              window.Utils.showToast(t('toast.restoredFromFile'), 'success')
             } else if (out.result && out.result.ok) {
-              window.Utils.showToast('已绑定本地目录，数据将自动同步', 'success')
+              window.Utils.showToast(t('toast.dirBoundAutoSync'), 'success')
             } else if (out.result && out.result.reason === 'empty') {
-              window.Utils.showToast('目录已绑定，创建保险箱后将自动同步', 'success')
+              window.Utils.showToast(t('toast.dirBoundCreateFirst'), 'success')
             } else {
-              window.Utils.showToast('目录已绑定，但同步未完成', 'warning')
+              window.Utils.showToast(t('toast.dirBoundSyncIncomplete'), 'warning')
             }
             // 仅当确认已保存目录句柄（绑定成功）才移除横幅并刷新状态；用户取消/失败时保留横幅
             const bound = await window.FileSync.getDirHandle()
@@ -570,10 +573,10 @@ export function useVault() {
       // R5 修复：恢复成功即置为已初始化，界面从「创建模式」切换为「输入主密码解锁」
       vaultState.initialized = true
       // R4 修复：恢复成功后不再调用 afterUnlock（仍处于锁屏态），引导用户输入主密码解锁
-      window.Utils.showToast('已恢复备份数据，请输入主密码解锁', 'info')
+      window.Utils.showToast(t('toast.restoredFromBackup'), 'info')
     } catch (e) {
       console.error('恢复失败:', e)
-      vaultState.lockError = '恢复失败：' + (e.message || '文件格式不正确或数据损坏')
+      vaultState.lockError = t('vault.restore.failedBad') + (e.message || t('vault.restore.badFormat'))
     }
   }
 
@@ -582,7 +585,7 @@ export function useVault() {
       vaultState.lockError = ''
       // Tauri 桌面版数据由本地文件管理，目录同步是浏览器版专属能力
       if ((window.FileStore && window.FileStore.isTauri) || window.__TAURI_INTERNALS__) {
-        vaultState.lockError = '桌面版数据已由本地文件自动保存，无需绑定同步目录'
+        vaultState.lockError = t('vault.restore.desktopAuto')
         return
       }
       if (!window.FileSync.isSupported()) {
@@ -592,17 +595,17 @@ export function useVault() {
       const dir = await window.showDirectoryPicker({ mode: 'readwrite' })
       const restored = await window.FileSync.restoreFromDirectory(dir)
       if (!restored) {
-        vaultState.lockError = '目录中未找到 LockPass-vault.json，未执行恢复'
+        vaultState.lockError = t('vault.restore.noVaultFile')
         return
       }
       // R5 修复：恢复成功即置为已初始化，界面从「创建模式」切换为「输入主密码解锁」
       vaultState.initialized = true
       // R4 修复：恢复成功后不再调用 afterUnlock（仍处于锁屏态），引导用户输入主密码解锁
-      window.Utils.showToast('已恢复备份数据，请输入主密码解锁', 'info')
+      window.Utils.showToast(t('toast.restoredFromBackup'), 'info')
     } catch (e) {
       console.error('绑定目录恢复失败:', e)
       if (e && e.name === 'AbortError') return // 用户取消选择
-      vaultState.lockError = '绑定目录恢复失败：' + (e.message || '未知错误')
+      vaultState.lockError = t('vault.restore.bindFailed') + (e.message || t('vault.restore.unknown'))
     }
   }
 
@@ -681,7 +684,7 @@ export function useVault() {
       clearTimeout(vaultState.lockTimer)
       vaultState.lockTimer = null
     }
-    window.Utils.showToast('已退出登录', 'success')
+    window.Utils.showToast(t('toast.loggedOut'), 'success')
   }
 
   /* ── 自动锁定 ───────────────────────────────── */
@@ -845,10 +848,10 @@ export function useVault() {
     await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
     // 撤销 Toast：5 秒内可一键恢复，无需导航到回收站
-    window.Utils.showToast('已移入回收站', 'success', {
+    window.Utils.showToast(t('toast.movedToTrash'), 'success', {
       duration: 5000,
       action: {
-        label: '撤销',
+        label: t('toast.undo'),
         callback: () => { restoreEntry(id) },
       },
     })
@@ -864,14 +867,14 @@ export function useVault() {
 
     await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
-    window.Utils.showToast('已恢复', 'success')
+    window.Utils.showToast(t('toast.restored'), 'success')
   }
 
   async function permanentDelete(id) {
     const confirmed = await window.Utils.confirm({
-      title: '彻底删除',
-      message: '此操作不可撤销，密码将被永久删除。',
-      confirmText: '彻底删除',
+      title: t('vault.confirm.permanentDelete.title'),
+      message: t('vault.confirm.permanentDelete.msg'),
+      confirmText: t('vault.confirm.permanentDelete.ok'),
       danger: true,
     })
     if (!confirmed) return
@@ -891,18 +894,18 @@ export function useVault() {
     }
     await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
-    window.Utils.showToast('已彻底删除', 'success')
+    window.Utils.showToast(t('toast.permanentlyDeleted'), 'success')
   }
 
   async function emptyRecycleBin() {
     if (!vaultState.deleted.length) {
-      window.Utils.showToast('回收站已经是空的', 'info')
+      window.Utils.showToast(t('toast.trashAlreadyEmpty'), 'info')
       return
     }
     const confirmed = await window.Utils.confirm({
-      title: '清空回收站',
-      message: '将永久删除回收站中的 ' + vaultState.deleted.length + ' 项密码，此操作不可撤销。',
-      confirmText: '清空',
+      title: t('vault.confirm.emptyTrash.title'),
+      message: t('vault.confirm.emptyTrash.msg', { count: vaultState.deleted.length }),
+      confirmText: t('vault.confirm.emptyTrash.ok'),
       danger: true,
     })
     if (!confirmed) return
@@ -919,7 +922,7 @@ export function useVault() {
     }
     await saveVault()
     if (vaultState.currentFilter === 'recycle') closeDetail()
-    window.Utils.showToast('回收站已清空', 'success')
+    window.Utils.showToast(t('toast.trashEmptied'), 'success')
   }
 
   /* ── 剪贴板 ────────────────────────────────── */
@@ -966,11 +969,11 @@ export function useVault() {
     }
     if (!clipboardOk) {
       console.error('[clipboard] 复制失败:', writeError)
-      window.Utils.showToast('复制失败：' + (writeError || '未知错误'), 'error')
+      window.Utils.showToast(t('toast.copyFailed', { msg: writeError || t('toast.unknownError') }), 'error')
       return false
     }
     // srAnnounce 供屏幕阅读器播报（CopyCountdownPill 的 aria-label 同步覆盖）
-    vaultState.srAnnounce = '已复制到剪贴板'
+    vaultState.srAnnounce = t('vault.copyAnnounce')
 
     // ── 复制成功倒计时胶囊（响应式状态驱动，替代 DOM 操控） ──
     // 先清理旧的倒计时
@@ -1066,7 +1069,7 @@ export function useVault() {
         vaultState.showPasswordMap[id] = false
         delete _pwHideTimers[id]
       }, PW_AUTO_HIDE_MS)
-      window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
+      window.Utils.showToast(t('toast.revealedTemp', { sec: PW_AUTO_HIDE_MS / 1000 }), 'info')
     } else {
       // 手动隐藏时清除计时器
       if (_pwHideTimers[id]) { clearTimeout(_pwHideTimers[id]); delete _pwHideTimers[id] }
@@ -1085,7 +1088,7 @@ export function useVault() {
       vaultState.showPasswordMap[id] = false
       delete _pwHideTimers[id]
     }, PW_AUTO_HIDE_MS)
-    window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
+    window.Utils.showToast(t('toast.revealedTemp', { sec: PW_AUTO_HIDE_MS / 1000 }), 'info')
   }
 
   /* ── 模态框 ────────────────────────────────── */
@@ -1119,9 +1122,9 @@ export function useVault() {
   /* 参与历史记录/回滚的内容字段（favorite / showPassword 等状态位不入史） */
   const HISTORY_FIELDS = ['title', 'entryType', 'username', 'password', 'url', 'port', 'notes', 'tags', 'root', 'appId', 'privateKey']
   const HISTORY_FIELD_LABELS = {
-    title: '标题', entryType: '类型', username: '用户名', password: '密码',
-    url: '网址/地址', port: '端口', notes: '备注', tags: '标签',
-    root: 'Root 账号', appId: 'App ID', privateKey: '私钥',
+    title: t('vault.hist.title'), entryType: t('vault.hist.entryType'), username: t('vault.hist.username'), password: t('vault.hist.password'),
+    url: t('vault.hist.url'), port: t('vault.hist.port'), notes: t('vault.hist.notes'), tags: t('vault.hist.tags'),
+    root: t('vault.hist.root'), appId: t('vault.hist.appId'), privateKey: t('vault.hist.privateKey'),
   }
 
   function histEq(a, b) {
@@ -1180,21 +1183,21 @@ export function useVault() {
     const list = vaultState.history[id] || []
     const snap = list.find(s => s.at === at)
     if (!entry || !snap) {
-      window.Utils.showToast('历史记录不存在或已过期', 'error')
+      window.Utils.showToast(t('toast.historyNotFound'), 'error')
       return false
     }
     const target = snap.snap || { password: snap.password } // 旧版记录仅含密码
     if (!snapDiffers(entry, snap)) {
-      window.Utils.showToast('当前数据已是该版本', 'info')
+      window.Utils.showToast(t('toast.alreadyAtVersion'), 'info')
       return false
     }
     // 确认弹窗防误操作：回滚覆盖当前数据且不留存当前副本
-    const fieldText = snap.snap ? (describeHistoryFields(snap.fields) || '全部字段') : '密码'
+    const fieldText = snap.snap ? (describeHistoryFields(snap.fields) || t('vault.hist.allFields')) : t('vault.hist.password')
     const ok = await window.Utils.confirm({
-      title: '确认回滚',
-      message: `将把该条目恢复到所选历史版本（覆盖：${fieldText}）。\n当前数据将被覆盖且不会保存副本，该条历史执行后删除，是否继续？`,
-      confirmText: '回滚',
-      cancelText: '取消',
+      title: t('vault.confirm.rollback.title'),
+      message: t('vault.confirm.rollback.msg', { fields: fieldText }),
+      confirmText: t('vault.confirm.rollback.ok'),
+      cancelText: t('confirm.default.cancel'),
       danger: true,
     })
     if (!ok) return false
@@ -1209,7 +1212,7 @@ export function useVault() {
     else delete vaultState.history[id]
     vaultState.history = { ...vaultState.history }
     await saveVault()
-    window.Utils.showToast('已回滚到历史版本', 'success')
+    window.Utils.showToast(t('toast.rolledBack'), 'success')
     return true
   }
 
@@ -1219,24 +1222,24 @@ export function useVault() {
   async function saveEntry(payload) {
     const { title, type, fields, tags, notes } = payload
     if (!title || !title.trim()) {
-      window.Utils.showToast('请输入标题', 'error')
+      window.Utils.showToast(t('toast.titleRequired'), 'error')
       return false
     }
     const passwordField = fields.password
     // D10 修复：对齐原版——app 类型可不填密码（只需 App ID），其余类型按需必填
     if (type === 'website' || type === 'server' || type === 'database') {
       if (!passwordField) {
-        window.Utils.showToast('请输入密码', 'error')
+        window.Utils.showToast(t('toast.passwordRequired'), 'error')
         return false
       }
     } else if (type === 'ai') {
       if (!passwordField) {
-        window.Utils.showToast('请输入 Token', 'error')
+        window.Utils.showToast(t('toast.tokenRequired'), 'error')
         return false
       }
     } else if (type === 'other') {
       if (!passwordField) {
-        window.Utils.showToast('请输入凭证值', 'error')
+        window.Utils.showToast(t('toast.credentialRequired'), 'error')
         return false
       }
     }
@@ -1272,7 +1275,7 @@ export function useVault() {
       if (idx === -1) {
         // P2-1 修复：条目已被删除（如另一视图移入回收站）时不再静默丢弃修改并假报「已保存」。
         // 保持编辑器打开，让用户有机会手动复制未保存的修改；可到回收站恢复该条目后再保存。
-        window.Utils.showToast('该条目已被删除，修改无法保存。请先到回收站恢复该条目（编辑器保持打开以便复制内容）', 'error')
+        window.Utils.showToast(t('toast.entryDeletedCannotSave'), 'error')
         return false
       }
       const oldEntry = vaultState.entries[idx]
@@ -1288,7 +1291,7 @@ export function useVault() {
 
     await saveVault()
     closeModal()
-    window.Utils.showToast('已保存', 'success')
+    window.Utils.showToast(t('toast.saved'), 'success')
     return true
   }
 

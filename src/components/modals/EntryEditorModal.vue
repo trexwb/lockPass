@@ -7,8 +7,10 @@ import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -150,7 +152,7 @@ function toggleSecret(k) {
   showFields[k] = !showFields[k]
   if (showFields[k]) {
     _scheduleAutoHide(k)
-    window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
+    window.Utils.showToast(t('editor.toastRevealed'), 'info')
   }
 }
 
@@ -190,7 +192,7 @@ function genPasswordNow() {
 const genStrength = computed(() => {
   if (!genPreview.value) return { label: '', pct: 0, color: '' }
   const info = window.PasswordGenerator.calcStrength(genPreview.value)
-  return { label: `${info.label} · ${info.entropy.toFixed(0)} 位熵`, pct: info.pct, color: info.color }
+  return { label: `${info.label} · ${t('editor.strength.entropy', { bits: info.entropy.toFixed(0) })}`, pct: info.pct, color: info.color }
 })
 
 function toggleGenPanel() {
@@ -237,7 +239,7 @@ function updateStrength() {
   }
   try {
     const info = window.PasswordGenerator.calcStrength(pw)
-    strength.value = { label: `${info.label} · ${info.entropy.toFixed(0)} 位熵`, pct: info.pct, color: info.color }
+    strength.value = { label: `${info.label} · ${t('editor.strength.entropy', { bits: info.entropy.toFixed(0) })}`, pct: info.pct, color: info.color }
   } catch (e) {
     strength.value = { label: '', pct: 0, color: '' }
   }
@@ -247,22 +249,22 @@ function updateStrength() {
 
 // 字段校验：返回错误消息或 null
 function validateForm() {
-  if (!title.value.trim()) return '请填写标题'
+  if (!title.value.trim()) return t('editor.errTitleRequired')
   const url = fields.url?.trim() || ''
   if (url) {
     // URL 校验：接受 http(s):// 或裸域名/IP
     const isUrl = /^https?:\/\/.+/i.test(url) || /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]+)?$/i.test(url) || /^(\d{1,3}\.){3}\d{1,3}$/.test(url)
-    if (!isUrl) return '网址格式不正确'
+    if (!isUrl) return t('editor.errUrlFormat')
   }
   const port = fields.port
   if (port !== undefined && port !== '' && port != null) {
     const p = Number(port)
-    if (!Number.isInteger(p) || p < 1 || p > 65535) return '端口必须在 1-65535 范围内'
+    if (!Number.isInteger(p) || p < 1 || p > 65535) return t('editor.errPortRange')
   }
   const username = fields.username?.trim() || ''
   if (username && username.includes('@')) {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)
-    if (!isEmail) return '邮箱格式不正确'
+    if (!isEmail) return t('editor.errEmailFormat')
   }
   return null
 }
@@ -307,10 +309,10 @@ function hasUnsavedChanges() {
 async function handleClose() {
   if (hasUnsavedChanges()) {
     const ok = await window.Utils.confirm({
-      title: '未保存的修改',
-      message: '当前表单有未保存的修改，确定要关闭吗？',
-      confirmText: '放弃修改',
-      cancelText: '继续编辑',
+      title: t('editor.confirmUnsavedTitle'),
+      message: t('editor.confirmUnsavedMsg'),
+      confirmText: t('editor.confirmDiscard'),
+      cancelText: t('editor.confirmKeepEditing'),
       danger: true,
     })
     if (!ok) return
@@ -350,7 +352,7 @@ onMounted(() => {
         Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
         selectedTags.value = (draft.tags || []).slice()
         if (draft.notes != null) notes.value = draft.notes
-        window.Utils.showToast('已恢复上次未保存的编辑内容', 'info')
+        window.Utils.showToast(t('editor.toastDraftRestored'), 'info')
       }
     }
   } else {
@@ -402,7 +404,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
             else if (fieldKey === '__newTag') newTag.value = t
             else fields[fieldKey] = t
           }
-        } catch (_e) { window.Utils.showToast?.('剪贴板读取失败，请手动粘贴', 'warning') }
+        } catch (_e) { window.Utils.showToast?.(t('editor.toastPasteFail'), 'warning') }
       } else if (action === 'clear-field' && fieldKey) {
         if (fieldKey === '__title') title.value = ''
         else if (fieldKey === '__notes') notes.value = ''
@@ -461,7 +463,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
         if (action === 'save-close') await onSave()
         else if (action === 'clear-draft') {
           clearDraft()
-          window.Utils.showToast?.('已清空本次草稿', 'info')
+          window.Utils.showToast?.(t('editor.toastDraftCleared'), 'info')
         }
       } else if (payload.target === 'cancel') {
         if (action === 'close-discard') await handleClose()
@@ -479,58 +481,58 @@ const editorCtxItems = computed(() => {
   const I = Icons || window.Utils.SvgIcons
   switch (p?.kind) {
     case 'type-tab': {
-      const t = ENTRY_TYPES.find(x => x.id === p.type)
-      list.push({ key: 'switch', label: '切换到 ' + (t?.label || p.type), iconHtml: I?.changeType?.(14) || I?.settings(14), accent: true })
+      const te = ENTRY_TYPES.find(x => x.id === p.type)
+      list.push({ key: 'switch', label: t('editor.ctxSwitchTo', { type: te ? t(te.labelKey) : p.type }), iconHtml: I?.changeType?.(14) || I?.settings(14), accent: true })
       return list
     }
     case 'form-input': {
-      const label = p.label || '输入框'
-      if (p.value) list.push({ key: 'copy-value', label: '复制当前 ' + label, iconHtml: I?.copy?.(14), accent: true })
-      list.push({ key: 'paste-value', label: '从剪贴板粘贴到此处', iconHtml: I?.share?.(14) })
-      list.push({ key: 'clear-field', label: '清空此字段', iconHtml: I?.close?.(14), danger: true })
+      const label = p.label || t('editor.ctx.inputFallback')
+      if (p.value) list.push({ key: 'copy-value', label: t('editor.ctx.copyCurrent', { label }), iconHtml: I?.copy?.(14), accent: true })
+      list.push({ key: 'paste-value', label: t('editor.ctx.pasteHere'), iconHtml: I?.share?.(14) })
+      list.push({ key: 'clear-field', label: t('editor.ctx.clearField'), iconHtml: I?.close?.(14), danger: true })
       return list
     }
     case 'pw-input': {
-      const label = p.label ? `（${p.label}）` : ''
-      list.push({ key: 'toggle', label: '显示 / 隐藏切换' + label, iconHtml: I?.eye?.(14), accent: true })
-      list.push({ key: 'generate-here', label: '一键生成随机密码', iconHtml: I?.refresh?.(14) || I?.share?.(14) })
+      const label = p.label ? t('editor.ctx.parenWrap', { label: p.label }) : ''
+      list.push({ key: 'toggle', label: t('editor.ctx.toggleShowHide', { label }), iconHtml: I?.eye?.(14), accent: true })
+      list.push({ key: 'generate-here', label: t('editor.ctx.genHere'), iconHtml: I?.refresh?.(14) || I?.share?.(14) })
       const val = fields[p.fieldKey || 'password']
-      if (val) list.push({ key: 'copy-value', label: '复制当前值', iconHtml: I?.copy?.(14) })
-      list.push({ key: 'clear-field', label: '清空此字段', iconHtml: I?.close?.(14), danger: true })
+      if (val) list.push({ key: 'copy-value', label: t('editor.ctx.copyValue'), iconHtml: I?.copy?.(14) })
+      list.push({ key: 'clear-field', label: t('editor.ctx.clearField'), iconHtml: I?.close?.(14), danger: true })
       return list
     }
     case 'gen-preview': {
       const val = genPreview.value
-      list.push({ key: 'use', label: '使用此密码到主字段', iconHtml: I?.edit?.(14), accent: true, disabled: !val })
-      list.push({ key: 'regen', label: '重新生成', iconHtml: I?.refresh?.(14) || I?.share?.(14) })
-      if (val) list.push({ key: 'copy-preview', label: '复制预览密码', iconHtml: I?.copy?.(14) })
+      list.push({ key: 'use', label: t('editor.ctx.useThisPw'), iconHtml: I?.edit?.(14), accent: true, disabled: !val })
+      list.push({ key: 'regen', label: t('editor.ctx.regen'), iconHtml: I?.refresh?.(14) || I?.share?.(14) })
+      if (val) list.push({ key: 'copy-preview', label: t('editor.ctx.copyPreview'), iconHtml: I?.copy?.(14) })
       return list
     }
     case 'gen-charset': {
-      const labels = { upper: '大写字母', lower: '小写字母', number: '数字', symbol: '符号', noAmbig: '排除歧义字符' }
+      const labels = { upper: t('editor.charset.upper'), lower: t('editor.charset.lower'), number: t('editor.charset.number'), symbol: t('editor.charset.symbol'), noAmbig: t('editor.charset.noAmbig') }
       const label = labels[p.cs] || p.cs
-      list.push({ key: 'toggle', label: '切换：' + label, iconHtml: I?.edit?.(14), accent: true })
+      list.push({ key: 'toggle', label: t('editor.ctx.toggleCharset', { label }), iconHtml: I?.edit?.(14), accent: true })
       return list
     }
     case 'tag-chip': {
-      list.push({ key: 'toggle-off', label: '从选中移除该标签', iconHtml: I?.close?.(14), accent: true })
-      list.push({ key: 'copy-name', label: '复制标签名：' + p.name, iconHtml: I?.copy?.(14) })
-      list.push({ key: 'manage', label: '打开标签管理器', iconHtml: I?.palette?.(14) })
+      list.push({ key: 'toggle-off', label: t('editor.ctx.removeSelectedTag'), iconHtml: I?.close?.(14), accent: true })
+      list.push({ key: 'copy-name', label: t('editor.ctx.copyTagName', { name: p.name }), iconHtml: I?.copy?.(14) })
+      list.push({ key: 'manage', label: t('editor.ctx.openTagManager'), iconHtml: I?.palette?.(14) })
       return list
     }
     case 'tag-option': {
-      list.push({ key: 'add', label: '快速添加到本条：' + p.name, iconHtml: I?.edit?.(14), accent: true })
-      list.push({ key: 'copy-name', label: '复制标签名', iconHtml: I?.copy?.(14) })
-      list.push({ key: 'manage', label: '打开标签管理器', iconHtml: I?.palette?.(14) })
+      list.push({ key: 'add', label: t('editor.ctx.quickAddTag', { name: p.name }), iconHtml: I?.edit?.(14), accent: true })
+      list.push({ key: 'copy-name', label: t('editor.ctx.copyTagNameOnly'), iconHtml: I?.copy?.(14) })
+      list.push({ key: 'manage', label: t('editor.ctx.openTagManager'), iconHtml: I?.palette?.(14) })
       return list
     }
     case 'footer-btn': {
       if (p.target === 'save') {
-        list.push({ key: 'save-close', label: '保存并关闭（与按钮一致）', iconHtml: I?.edit?.(14), accent: true })
-        list.push({ key: 'clear-draft', label: '清空当前编辑草稿', iconHtml: I?.trash?.(14) })
+        list.push({ key: 'save-close', label: t('editor.ctx.saveAndClose'), iconHtml: I?.edit?.(14), accent: true })
+        list.push({ key: 'clear-draft', label: t('editor.ctx.clearDraft'), iconHtml: I?.trash?.(14) })
       } else {
-        list.push({ key: 'close-discard', label: '放弃修改并关闭', iconHtml: I?.close?.(14), accent: true })
-        list.push({ key: 'keep-draft', label: '直接关闭（保留草稿）', iconHtml: I?.copy?.(14) })
+        list.push({ key: 'close-discard', label: t('editor.ctx.discardClose'), iconHtml: I?.close?.(14), accent: true })
+        list.push({ key: 'keep-draft', label: t('editor.ctx.keepDraftClose'), iconHtml: I?.copy?.(14) })
       }
       return list
     }
@@ -542,7 +544,7 @@ const editorCtxItems = computed(() => {
 <template>
   <ModalBase :max-width="'560px'" @close="handleClose()">
     <div class="modal-header">
-      <h3>{{ isEdit ? '编辑密码' : '添加密码' }}</h3>
+      <h3>{{ isEdit ? t('editor.titleEdit') : t('editor.titleAdd') }}</h3>
       <button class="btn-icon" @click="handleClose()">
         <span v-html="Icons.close(16)"></span>
       </button>
@@ -552,59 +554,59 @@ const editorCtxItems = computed(() => {
       <!-- 类型切换（与原版 type-tabs 一致） -->
       <div class="type-tabs">
         <button
-          v-for="t in ENTRY_TYPES"
-          :key="t.id"
+          v-for="ty in ENTRY_TYPES"
+          :key="ty.id"
           class="type-tab"
-          :class="{ active: entryType === t.id }"
+          :class="{ active: entryType === ty.id }"
           type="button"
-          :title="t.label + '（右键快速切换）'"
-          @click="entryType = t.id"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'type-tab', type: t.id }, { w: 220, h: 100 })"
+          :title="t('editor.tipTypeTab', { type: t(ty.labelKey) })"
+          @click="entryType = ty.id"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'type-tab', type: ty.id }, { w: 220, h: 100 })"
         >
-          <span class="type-tab-icon" v-html="typeIconSvg(t.id)"></span>
-          <span>{{ t.label }}</span>
+          <span class="type-tab-icon" v-html="typeIconSvg(ty.id)"></span>
+          <span>{{ t(ty.labelKey) }}</span>
         </button>
       </div>
 
       <!-- 标题 -->
       <div class="form-group">
-        <label class="form-label">标题 <span class="text-danger">*</span></label>
+        <label class="form-label">{{ t('editor.label.title') }} <span class="text-danger">*</span></label>
         <input
           v-model="title"
           class="form-input"
           type="text"
-          placeholder="例如：Gmail / 阿里云 ECS"
+          :placeholder="t('editor.ph.title')"
           maxlength="100"
           autocomplete="off"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__title', label: '标题', value: title }, { w: 240, h: 170 })"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__title', label: t('editor.label.title'), value: title }, { w: 240, h: 170 })"
         />
       </div>
 
       <!-- ══ website ══ -->
       <template v-if="entryType === 'website'">
         <div class="form-group">
-          <label class="form-label">用户名</label>
+          <label class="form-label">{{ t('editor.label.username') }}</label>
           <input
             v-model="fields.username"
             class="form-input"
             type="text"
             placeholder="username@example.com"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: '用户名', value: fields.username }, { w: 240, h: 170 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.username'), value: fields.username }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
-          <label class="form-label">密码 <span class="text-danger">*</span></label>
+          <label class="form-label">{{ t('editor.label.password') }} <span class="text-danger">*</span></label>
           <div
             class="input-affix"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
           >
-            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入或生成密码" autocomplete="off" @input="updateStrength()" />
+            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.password')" autocomplete="off" @input="updateStrength()" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="toggleGenPanel()">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="toggleGenPanel()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                 </svg>
@@ -620,17 +622,17 @@ const editorCtxItems = computed(() => {
           <div v-if="genPanelOpen" class="pw-gen-panel">
             <div
               class="pw-gen-preview"
-              title="右键：使用 / 重新生成 / 复制"
+              :title="t('editor.tipGenPreviewCtx')"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-preview' }, { w: 260, h: 200 })"
             >
-              <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
-              <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+              <span class="pw-gen-preview-text mono">{{ genPreview || t('editor.clickToGen') }}</span>
+              <button class="btn-icon btn-icon-xs" type="button" :title="t('editor.ctx.regen')" @click="genPasswordNow()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
               </button>
             </div>
             <div class="pw-gen-controls">
               <div class="pw-gen-row">
-                <label>长度</label>
+                <label>{{ t('editor.genLength') }}</label>
                 <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
                 <span>{{ genOptions.length }}</span>
               </div>
@@ -638,25 +640,25 @@ const editorCtxItems = computed(() => {
                 <label
                   class="charset-label"
                   @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'upper' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
+                ><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.upper') }} (A-Z)</label>
                 <label
                   class="charset-label"
                   @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'lower' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
+                ><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.lower') }} (a-z)</label>
                 <label
                   class="charset-label"
                   @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'number' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
+                ><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.number') }} (0-9)</label>
                 <label
                   class="charset-label"
                   @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'symbol' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+                ><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.symbol') }} (!@#$…)</label>
               </div>
               <div class="pw-gen-row gap-8 mt-1">
                 <label
                   class="charset-label min-w-auto"
                   @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'noAmbig' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+                ><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.noAmbig') }}</label>
               </div>
               <div>
                 <div class="pw-strength-bar-bg">
@@ -666,20 +668,20 @@ const editorCtxItems = computed(() => {
               </div>
               <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                使用此密码
+                {{ t('editor.useThisPw') }}
               </button>
             </div>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">网址</label>
+          <label class="form-label">{{ t('editor.label.websiteUrl') }}</label>
           <input
             v-model="fields.url"
             class="form-input"
             type="url"
             placeholder="https://example.com"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: '网址', value: fields.url }, { w: 240, h: 170 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.websiteUrl'), value: fields.url }, { w: 240, h: 170 })"
           />
         </div>
       </template>
@@ -687,62 +689,62 @@ const editorCtxItems = computed(() => {
       <!-- ══ server ══ -->
       <template v-else-if="entryType === 'server'">
         <div class="form-group">
-          <label class="form-label">连接地址</label>
+          <label class="form-label">{{ t('editor.label.host') }}</label>
           <div class="input-row">
             <div class="input-row-main">
               <input
                 v-model="fields.url"
                 class="form-input mono"
                 type="text"
-                placeholder="示例：ssh -p 22 user@1.2.3.4"
+                :placeholder="t('editor.ph.host')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: '连接地址', value: fields.url }, { w: 240, h: 170 })"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.host'), value: fields.url }, { w: 240, h: 170 })"
               />
             </div>
             <input
               v-model="fields.port"
               class="form-input mono input-port"
               type="number"
-              placeholder="端口"
+              :placeholder="t('editor.label.port')"
               min="1"
               max="65535"
               autocomplete="off"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: '端口', value: fields.port }, { w: 240, h: 170 })"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: t('editor.label.port'), value: fields.port }, { w: 240, h: 170 })"
             />
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">登录账号</label>
+          <label class="form-label">{{ t('editor.label.loginAccount') }}</label>
           <div class="input-row">
             <div class="input-row-main">
               <input
                 v-model="fields.username"
                 class="form-input"
                 type="text"
-                placeholder="账号"
+                :placeholder="t('editor.ph.account')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: '登录账号', value: fields.username }, { w: 240, h: 170 })"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.loginAccount'), value: fields.username }, { w: 240, h: 170 })"
               />
             </div>
-            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.username, $event.currentTarget)">
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyAccount')" @click="copyText(fields.username, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">登录密码</label>
+          <label class="form-label">{{ t('editor.label.loginPassword') }}</label>
           <div class="input-row">
             <div
               class="input-row-main"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
             >
               <div class="input-affix">
-                <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入或生成密码" autocomplete="off" @input="updateStrength()" />
+                <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.password')" autocomplete="off" @input="updateStrength()" />
                 <div class="input-affix-btns">
-                  <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="toggleGenPanel()">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="toggleGenPanel()">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -750,7 +752,7 @@ const editorCtxItems = computed(() => {
                 </div>
               </div>
             </div>
-            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password, $event.currentTarget)">
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyPw')" @click="copyText(fields.password, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -763,28 +765,28 @@ const editorCtxItems = computed(() => {
           <div v-if="genPanelOpen" class="pw-gen-panel">
             <div
               class="pw-gen-preview"
-              title="右键：使用 / 重新生成 / 复制"
+              :title="t('editor.tipGenPreviewCtx')"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-preview' }, { w: 260, h: 200 })"
             >
-              <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
-              <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+              <span class="pw-gen-preview-text mono">{{ genPreview || t('editor.clickToGen') }}</span>
+              <button class="btn-icon btn-icon-xs" type="button" :title="t('editor.ctx.regen')" @click="genPasswordNow()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
               </button>
             </div>
             <div class="pw-gen-controls">
               <div class="pw-gen-row">
-                <label>长度</label>
+                <label>{{ t('editor.genLength') }}</label>
                 <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
                 <span>{{ genOptions.length }}</span>
               </div>
               <div class="pw-gen-charsets">
-                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
-                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
-                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
-                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.upper') }} (A-Z)</label>
+                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.lower') }} (a-z)</label>
+                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.number') }} (0-9)</label>
+                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.symbol') }} (!@#$…)</label>
               </div>
               <div class="pw-gen-row gap-8 mt-1">
-                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.noAmbig') }}</label>
               </div>
               <div>
                 <div class="pw-strength-bar-bg">
@@ -794,13 +796,13 @@ const editorCtxItems = computed(() => {
               </div>
               <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                使用此密码
+                {{ t('editor.useThisPw') }}
               </button>
             </div>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">root 账号</label>
+          <label class="form-label">{{ t('editor.label.rootUser') }}</label>
           <div class="input-row">
             <div class="input-row-main">
               <input
@@ -809,28 +811,28 @@ const editorCtxItems = computed(() => {
                 type="text"
                 placeholder="root"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'rootUser', label: 'root 账号', value: fields.rootUser }, { w: 240, h: 170 })"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'rootUser', label: t('editor.label.rootUser'), value: fields.rootUser }, { w: 240, h: 170 })"
               />
             </div>
-            <button class="pw-gen-btn" type="button" title="复制账号" @click="copyText(fields.rootUser, $event.currentTarget)">
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyAccount')" @click="copyText(fields.rootUser, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">root 密码</label>
+          <label class="form-label">{{ t('editor.label.rootPwd') }}</label>
           <div class="input-row">
             <div
               class="input-row-main"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'rootPwd' }, { w: 260, h: 220 })"
             >
               <div class="input-affix">
-                <input v-model="fields.rootPwd" class="form-input mono" :type="showFields.rootPwd ? 'text' : 'password'" placeholder="root 密码" autocomplete="off" />
+                <input v-model="fields.rootPwd" class="form-input mono" :type="showFields.rootPwd ? 'text' : 'password'" :placeholder="t('editor.label.rootPwd')" autocomplete="off" />
                 <div class="input-affix-btns">
-                  <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('rootPwd')">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('rootPwd')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.rootPwd ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="generateFor('rootPwd')">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="generateFor('rootPwd')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -838,7 +840,7 @@ const editorCtxItems = computed(() => {
                 </div>
               </div>
             </div>
-            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.rootPwd, $event.currentTarget)">
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyPw')" @click="copyText(fields.rootPwd, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -848,62 +850,62 @@ const editorCtxItems = computed(() => {
       <!-- ══ database ══ -->
       <template v-else-if="entryType === 'database'">
         <div class="form-group">
-          <label class="form-label">数据库地址</label>
+          <label class="form-label">{{ t('editor.label.dbHost') }}</label>
           <div class="input-row">
             <div class="input-row-main">
               <input
                 v-model="fields.url"
                 class="form-input mono"
                 type="text"
-                placeholder="示例：localhost 或 10.0.0.100"
+                :placeholder="t('editor.ph.dbHost')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: '数据库地址', value: fields.url }, { w: 240, h: 170 })"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.dbHost'), value: fields.url }, { w: 240, h: 170 })"
               />
             </div>
             <input
               v-model="fields.port"
               class="form-input mono input-port"
               type="number"
-              placeholder="端口"
+              :placeholder="t('editor.label.port')"
               min="1"
               max="65535"
               autocomplete="off"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: '端口', value: fields.port }, { w: 240, h: 170 })"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: t('editor.label.port'), value: fields.port }, { w: 240, h: 170 })"
             />
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">用户名</label>
+          <label class="form-label">{{ t('editor.label.username') }}</label>
           <div class="input-row">
             <div class="input-row-main">
               <input
                 v-model="fields.username"
                 class="form-input"
                 type="text"
-                placeholder="数据库用户名"
+                :placeholder="t('editor.ph.dbUsername')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: '用户名', value: fields.username }, { w: 240, h: 170 })"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.username'), value: fields.username }, { w: 240, h: 170 })"
               />
             </div>
-            <button class="pw-gen-btn" type="button" title="复制用户名" @click="copyText(fields.username, $event.currentTarget)">
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyUsername')" @click="copyText(fields.username, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">密码</label>
+          <label class="form-label">{{ t('editor.label.password') }}</label>
           <div class="input-row">
             <div
               class="input-row-main"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
             >
               <div class="input-affix">
-                <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="数据库密码" autocomplete="off" @input="updateStrength()" />
+                <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.dbPassword')" autocomplete="off" @input="updateStrength()" />
                 <div class="input-affix-btns">
-                  <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" title="生成密码" aria-label="生成密码" @click="toggleGenPanel()">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="toggleGenPanel()">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -911,7 +913,7 @@ const editorCtxItems = computed(() => {
                 </div>
               </div>
             </div>
-            <button class="pw-gen-btn" type="button" title="复制密码" @click="copyText(fields.password, $event.currentTarget)">
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyPw')" @click="copyText(fields.password, $event.currentTarget)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
@@ -924,28 +926,28 @@ const editorCtxItems = computed(() => {
           <div v-if="genPanelOpen" class="pw-gen-panel">
             <div
               class="pw-gen-preview"
-              title="右键：使用 / 重新生成 / 复制"
+              :title="t('editor.tipGenPreviewCtx')"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-preview' }, { w: 260, h: 200 })"
             >
-              <span class="pw-gen-preview-text mono">{{ genPreview || '点击生成' }}</span>
-              <button class="btn-icon btn-icon-xs" type="button" title="重新生成" @click="genPasswordNow()">
+              <span class="pw-gen-preview-text mono">{{ genPreview || t('editor.clickToGen') }}</span>
+              <button class="btn-icon btn-icon-xs" type="button" :title="t('editor.ctx.regen')" @click="genPasswordNow()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
               </button>
             </div>
             <div class="pw-gen-controls">
               <div class="pw-gen-row">
-                <label>长度</label>
+                <label>{{ t('editor.genLength') }}</label>
                 <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
                 <span>{{ genOptions.length }}</span>
               </div>
               <div class="pw-gen-charsets">
-                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> 大写字母 (A-Z)</label>
-                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> 小写字母 (a-z)</label>
-                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> 数字 (0-9)</label>
-                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> 符号 (!@#$…)</label>
+                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.upper') }} (A-Z)</label>
+                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.lower') }} (a-z)</label>
+                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.number') }} (0-9)</label>
+                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.symbol') }} (!@#$…)</label>
               </div>
               <div class="pw-gen-row gap-8 mt-1">
-                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> 排除歧义字符</label>
+                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.noAmbig') }}</label>
               </div>
               <div>
                 <div class="pw-strength-bar-bg">
@@ -955,7 +957,7 @@ const editorCtxItems = computed(() => {
               </div>
               <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                使用此密码
+                {{ t('editor.useThisPw') }}
               </button>
             </div>
           </div>
@@ -965,25 +967,25 @@ const editorCtxItems = computed(() => {
       <!-- ══ ai ══ -->
       <template v-else-if="entryType === 'ai'">
         <div class="form-group">
-          <label class="form-label">服务名称</label>
+          <label class="form-label">{{ t('editor.label.serviceName') }}</label>
           <input
             v-model="fields.username"
             class="form-input"
             type="text"
-            placeholder="示例：DeepSeek / OpenAI / 通义千问 / Kimi"
+            :placeholder="t('editor.ph.serviceName')"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: '服务名称', value: fields.username }, { w: 240, h: 170 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.serviceName'), value: fields.username }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
-          <label class="form-label">API 地址</label>
+          <label class="form-label">{{ t('editor.label.apiHost') }}</label>
           <input
             v-model="fields.url"
             class="form-input"
             type="url"
             placeholder="https://api.deepseek.com / https://api.openai.com"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: 'API 地址', value: fields.url }, { w: 240, h: 170 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.apiHost'), value: fields.url }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
@@ -992,9 +994,9 @@ const editorCtxItems = computed(() => {
             class="input-affix"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
           >
-            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入 Token" autocomplete="off" />
+            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.token')" autocomplete="off" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
             </div>
@@ -1010,40 +1012,40 @@ const editorCtxItems = computed(() => {
             v-model="fields.appId"
             class="form-input mono"
             type="text"
-            placeholder="示例：2019031163548107"
+            :placeholder="t('editor.ph.appId')"
             autocomplete="off"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'appId', label: 'App ID', value: fields.appId }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
-          <label class="form-label">公钥</label>
+          <label class="form-label">{{ t('editor.label.publicKey') }}</label>
           <div
             class="input-affix mono-textarea-wrap"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: '公钥' }, { w: 260, h: 220 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: t('editor.label.publicKey') }, { w: 260, h: 220 })"
           >
-            <textarea v-model="fields.password" class="form-input mono mono-textarea" rows="3" placeholder="输入公钥" autocomplete="off"></textarea>
+            <textarea v-model="fields.password" class="form-input mono mono-textarea" rows="3" :placeholder="t('editor.ph.publicKey')" autocomplete="off"></textarea>
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.password, $event.currentTarget)">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipCopy')" @click="copyText(fields.password, $event.currentTarget)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
               </button>
             </div>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">私钥</label>
+          <label class="form-label">{{ t('editor.label.privateKey') }}</label>
           <div
             class="input-affix mono-textarea-wrap"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'privateKey', label: '私钥' }, { w: 260, h: 220 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'privateKey', label: t('editor.label.privateKey') }, { w: 260, h: 220 })"
           >
-            <textarea v-model="fields.privateKey" class="form-input mono mono-textarea" rows="3" placeholder="输入私钥（证书级长度）" autocomplete="off"></textarea>
+            <textarea v-model="fields.privateKey" class="form-input mono mono-textarea" rows="3" :placeholder="t('editor.ph.privateKey')" autocomplete="off"></textarea>
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('privateKey')">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('privateKey')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.privateKey ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" title="复制" @click="copyText(fields.privateKey, $event.currentTarget)">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipCopy')" @click="copyText(fields.privateKey, $event.currentTarget)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
               </button>
             </div>
@@ -1054,25 +1056,25 @@ const editorCtxItems = computed(() => {
       <!-- ══ other ══ -->
       <template v-else>
         <div class="form-group">
-          <label class="form-label">凭证名称</label>
+          <label class="form-label">{{ t('editor.label.credName') }}</label>
           <input
             v-model="fields.username"
             class="form-input"
             type="text"
-            placeholder="示例：API 密钥 / 许可证 / 证书 / 授权码"
+            :placeholder="t('editor.ph.credName')"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: '凭证名称', value: fields.username }, { w: 240, h: 170 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.credName'), value: fields.username }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
-          <label class="form-label">凭证值 <span class="text-danger">*</span></label>
+          <label class="form-label">{{ t('editor.label.credValue') }} <span class="text-danger">*</span></label>
           <div
             class="input-affix"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: '凭证值' }, { w: 260, h: 220 })"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: t('editor.label.credValue') }, { w: 260, h: 220 })"
           >
-            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" placeholder="输入凭证值" autocomplete="off" />
+            <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.credValue')" autocomplete="off" />
             <div class="input-affix-btns">
-              <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="toggleSecret('password')">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
             </div>
@@ -1082,7 +1084,7 @@ const editorCtxItems = computed(() => {
 
       <!-- 标签 -->
       <div class="form-group">
-        <label class="form-label">标签</label>
+        <label class="form-label">{{ t('editor.label.tags') }}</label>
         <div class="tag-selector" id="tag-selector">
           <span
             v-for="name in selectedTags"
@@ -1100,9 +1102,9 @@ const editorCtxItems = computed(() => {
               v-model="newTag"
               type="text"
               id="e-tag-input"
-              placeholder="输入标签后按 Enter"
+              :placeholder="t('editor.ph.tagInput')"
               @keydown.enter.prevent="addNewTag()"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__newTag', label: '标签输入', value: newTag }, { w: 240, h: 170 })"
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__newTag', label: t('editor.label.tagInput'), value: newTag }, { w: 240, h: 170 })"
             />
           </div>
           <div v-if="availableTags.length" class="tag-suggestions">
@@ -1119,19 +1121,19 @@ const editorCtxItems = computed(() => {
             </button>
           </div>
         </div>
-        <div class="tag-hint">点击推荐标签或输入后按 Enter 添加；可在「设置 → 标签管理」中增删改颜色与图标</div>
+        <div class="tag-hint">{{ t('editor.tagHint') }}</div>
       </div>
 
       <!-- 备注 -->
       <div class="form-group">
-        <label class="form-label">备注 <span class="text-muted text-sm">(支持 Markdown)</span></label>
+        <label class="form-label">{{ t('editor.label.notes') }} <span class="text-muted text-sm">{{ t('editor.markdownHint') }}</span></label>
         <textarea
           v-model="notes"
           class="form-input notes-textarea"
           rows="3"
           maxlength="256"
-          placeholder="支持 Markdown 格式..."
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__notes', label: '备注', value: notes }, { w: 240, h: 170 })"
+          :placeholder="t('editor.ph.notes')"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__notes', label: t('editor.label.notes'), value: notes }, { w: 240, h: 170 })"
         ></textarea>
       </div>
     </div>
@@ -1141,7 +1143,7 @@ const editorCtxItems = computed(() => {
         class="btn btn-secondary"
         @click="handleClose()"
         @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'footer-btn', target: 'cancel' }, { w: 200, h: 100 })"
-      >取消</button>
+      >{{ t('editor.btnCancel') }}</button>
       <button
         id="entry-editor-save"
         class="btn btn-primary"
@@ -1149,7 +1151,7 @@ const editorCtxItems = computed(() => {
         @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'footer-btn', target: 'save' }, { w: 200, h: 100 })"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-        保存
+        {{ t('editor.btnSave') }}
       </button>
     </div>
   </ModalBase>

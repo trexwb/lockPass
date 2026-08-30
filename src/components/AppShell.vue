@@ -6,10 +6,12 @@ import HeaderBar from './layout/HeaderBar.vue'
 import SidebarNav from './layout/SidebarNav.vue'
 import DetailPanel from './entries/DetailPanel.vue'
 import CopyCountdownPill from './common/CopyCountdownPill.vue'
+import { useI18n } from '../composables/useI18n'
 import CtxMenu from './common/CtxMenu.vue'
 
 // 模板中直接引用 window 会被 Vue 编译为 _ctx.window（undefined）而抛错，
 // 故在 setup 作用域暴露 Utils，模板统一使用 Utils.xxx
+const { t } = useI18n()
 const Utils = window.Utils
 const Icons = window.Utils?.SvgIcons
 
@@ -21,10 +23,10 @@ const {
 } = useVault()
 
 // 类型中文名（P3-8 修复：卡片/详情中的类型 title 不再显示英文 id）
-const TYPE_LABELS = { website: '网站', server: '服务器', database: '数据库', ai: 'AI', app: '应用', other: '其他' }
+const TYPE_LABELS = { website: 'entry.type.website', server: 'entry.type.server', database: 'entry.type.database', ai: 'entry.type.ai', app: 'entry.type.app', other: 'entry.type.other' }
 
 function typeLabelOf(type) {
-  return TYPE_LABELS[type || 'website'] || type || ''
+  return t(TYPE_LABELS[type || 'website'] || type || '')
 }
 
 // 底部导航筛选入口（与 SidebarNav 一致的本地包装；useVault 导出名为 setFilter）
@@ -40,18 +42,18 @@ const sidebarStats = computed(() => computeSidebarStats())
 /* ── 空状态（对应原版 ui.js renderEntries 的文案分支） ── */
 
 const emptyTitle = computed(() => {
-  if (vaultState.currentFilter === 'recycle') return '回收站为空'
-  if (vaultState.searchQuery && vaultState.searchQuery.trim()) return '没有找到匹配项'
-  if (vaultState.currentFilter === 'favorites') return '暂无收藏'
-  return '还没有密码'
+  if (vaultState.currentFilter === 'recycle') return t('empty.title.recycle')
+  if (vaultState.searchQuery && vaultState.searchQuery.trim()) return t('empty.title.search')
+  if (vaultState.currentFilter === 'favorites') return t('empty.favorites')
+  return t('empty.noPasswords')
 })
 
 const emptyDesc = computed(() => {
-  if (vaultState.currentFilter === 'recycle') return '删除的密码会暂时保存在这里，可恢复或彻底删除'
+  if (vaultState.currentFilter === 'recycle') return t('empty.desc.recycle')
   const q = (vaultState.searchQuery || '').trim()
-  if (q) return `没有找到包含「${q}」的密码`
-  if (vaultState.currentFilter === 'favorites') return '点击密码卡片的星标收藏常用密码'
-  return '点击上方「添加密码」开始构建您的密码库'
+  if (q) return t('empty.desc.search', { q })
+  if (vaultState.currentFilter === 'favorites') return t('empty.desc.favorites')
+  return t('empty.desc.none')
 })
 
 // 原版 ui.js：空列表时给 #content-inner 加 empty-active（margin:0 auto 居中）
@@ -87,7 +89,7 @@ function tagChipHtml(name) {
 }
 
 function formatCardDate(entry) {
-  if (isRecycleView.value) return '已删除'
+  if (isRecycleView.value) return t('detail.deletedAt')
   return window.Utils ? window.Utils.formatDate(entry.updatedAt || entry.createdAt) : ''
 }
 
@@ -201,37 +203,37 @@ const entryCtxItems = computed(() => {
 
   if (isRecycle) {
     list.push(
-      { key: 'restore', label: '恢复', iconHtml: Icons?.restore(14), accent: true },
-      { key: 'copy', label: '复制密码', iconHtml: Icons?.copy(14) },
+      { key: 'restore', label: t('detail.ctx.restore'), iconHtml: Icons?.restore(14), accent: true },
+      { key: 'copy', label: t('detail.ctx.copyPw'), iconHtml: Icons?.copy(14) },
     )
-    if (e.username) list.push({ key: 'copy-user', label: '复制用户名', iconHtml: Icons?.user(14) })
-    if (e.url) list.push({ key: 'copy-url', label: '复制地址', iconHtml: Icons?.link(14) })
+    if (e.username) list.push({ key: 'copy-user', label: t('detail.ctx.copyUser'), iconHtml: Icons?.user(14) })
+    if (e.url) list.push({ key: 'copy-url', label: t('detail.ctx.copyUrl'), iconHtml: Icons?.link(14) })
     list.push({ divider: true })
-    list.push({ key: 'purge', label: '彻底删除', iconHtml: Icons?.trash(14), danger: true })
+    list.push({ key: 'purge', label: t('detail.ctx.purge'), iconHtml: Icons?.trash(14), danger: true })
     return list
   }
 
-  list.push({ key: 'edit', label: '编辑', iconHtml: Icons?.edit(14), shortcut: '↵' })
-  list.push({ key: 'duplicate', label: '复制条目（新建）', iconHtml: Icons?.copy(14) })
-  list.push({ key: 'fav', label: e.favorite ? '取消收藏' : '收藏', iconHtml: e.favorite ? Icons?.starFilled(14) : Icons?.starOutline(14), accent: !!e.favorite })
+  list.push({ key: 'edit', label: t('ctx.edit'), iconHtml: Icons?.edit(14), shortcut: '↵' })
+  list.push({ key: 'duplicate', label: t('detail.ctx.duplicate'), iconHtml: Icons?.copy(14) })
+  list.push({ key: 'fav', label: e.favorite ? t('detail.ctx.unfav') : t('detail.ctx.fav'), iconHtml: e.favorite ? Icons?.starFilled(14) : Icons?.starOutline(14), accent: !!e.favorite })
   list.push({ divider: true })
 
-  list.push({ key: 'copy', label: e.entryType === 'app' ? '复制 App ID' : '复制密码', iconHtml: Icons?.copy(14), shortcut: '⌘C' })
-  if (e.username) list.push({ key: 'copy-user', label: '复制用户名', iconHtml: Icons?.user(14) })
+  list.push({ key: 'copy', label: e.entryType === 'app' ? t('detail.ctx.copyAppId') : t('detail.ctx.copyPw'), iconHtml: Icons?.copy(14), shortcut: '⌘C' })
+  if (e.username) list.push({ key: 'copy-user', label: t('detail.ctx.copyUser'), iconHtml: Icons?.user(14) })
   if (e.url) {
-    list.push({ key: 'copy-url', label: '复制地址', iconHtml: Icons?.link(14) })
-    list.push({ key: 'open-url', label: '在浏览器打开', iconHtml: Icons?.external(14) })
+    list.push({ key: 'copy-url', label: t('detail.ctx.copyUrl'), iconHtml: Icons?.link(14) })
+    list.push({ key: 'open-url', label: t('detail.ctx.openUrl'), iconHtml: Icons?.external(14) })
   }
   if (e.entryType === 'server' && e.url && e.username) {
-    list.push({ key: 'copy-ssh', label: '复制 SSH 命令', iconHtml: Icons?.terminal(14) })
+    list.push({ key: 'copy-ssh', label: t('detail.ctx.copySsh'), iconHtml: Icons?.terminal(14) })
   }
   if (e.entryType === 'database' && e.url && e.username) {
-    list.push({ key: 'copy-mysql', label: '复制 MySQL 命令', iconHtml: Icons?.terminal(14) })
+    list.push({ key: 'copy-mysql', label: t('detail.ctx.copyMysql'), iconHtml: Icons?.terminal(14) })
   }
   list.push({ divider: true })
-  list.push({ key: 'qr-share', label: '分享为二维码', iconHtml: Icons?.qr(14) })
+  list.push({ key: 'qr-share', label: t('detail.ctx.qrShare'), iconHtml: Icons?.qr(14) })
   list.push({ divider: true })
-  list.push({ key: 'delete', label: '删除（移入回收站）', iconHtml: Icons?.trash(14), danger: true })
+  list.push({ key: 'delete', label: t('detail.ctx.softDelete'), iconHtml: Icons?.trash(14), danger: true })
   return list
 })
 
@@ -249,7 +251,7 @@ async function onEntryCtxAction(action) {
       // 先写 sessionStorage 草稿，再打开编辑器（onMounted 会立即读取）
       try {
         sessionStorage.setItem('lockpass_draft_new', JSON.stringify({
-          title: e.title ? e.title + ' 副本' : '未命名 副本',
+          title: e.title ? e.title + ' ' + t('detail.copySuffix') : t('detail.untitled') + ' ' + t('detail.copySuffix'),
           entryType: e.entryType || 'website',
           tags: e.tags || [],
           notes: e.notes || '',
@@ -263,7 +265,7 @@ async function onEntryCtxAction(action) {
         }))
       } catch (_err) { /* 草稿写入失败不阻断打开编辑器 */ }
       openEntryModal(null)
-      window.Utils.showToast('已复制为新条目草稿（字段自动预填）', 'info')
+      window.Utils.showToast(t('toast.duplicateDraft'), 'info')
     }
     else if (action === 'fav') toggleFavorite(id)
     else if (action === 'copy') copyPassword(id)
@@ -342,13 +344,13 @@ function onDocResize() {
 
 /* P3-1 修复：contentTitle 改 computed，避免每次重渲染重复执行 */
 const contentTitle = computed(() => {
-  if (vaultState.currentFilter === 'all') return '全部密码'
-  if (vaultState.currentFilter === 'favorites') return '收藏'
-  if (vaultState.currentFilter === 'recycle') return '回收站'
+  if (vaultState.currentFilter === 'all') return t('side.allPasswords')
+  if (vaultState.currentFilter === 'favorites') return t('side.favorites')
+  if (vaultState.currentFilter === 'recycle') return t('side.trash')
   if (vaultState.currentFilter.startsWith('type:')) {
     return typeLabelOf(vaultState.currentFilter.slice(5))
   }
-  return `标签：${vaultState.currentFilter}`
+  return t('side.filterTagLabel', { tag: vaultState.currentFilter })
 })
 
 /* ── P3-5：条目列表虚拟滚动（窗口化 + spacer，零依赖实现） ──
@@ -457,11 +459,11 @@ onBeforeUnmount(() => {
                 v-if="vaultState.currentFilter === 'recycle' && filteredEntries.length"
                 id="empty-recycle-btn"
                 class="btn btn-ghost btn-sm"
-                title="清空回收站"
+                :title="t('side.ctxEmptyTrash')"
                 @click="emptyRecycleBin()"
               >
                 <span v-html="Utils?.SvgIcons?.trash(13)"></span>
-                清空回收站
+                {{ t('side.ctxEmptyTrash') }}
               </button>
             </div>
           </div>
@@ -482,7 +484,7 @@ onBeforeUnmount(() => {
               :style="{ '--i': Math.min(idx, 8) }"
               role="button"
               tabindex="0"
-              :aria-label="'查看 ' + entry.title + '（' + typeLabelOf(entry.entryType) + '）'"
+              :aria-label="t('detail.viewAria', { title: entry.title, type: typeLabelOf(entry.entryType) })"
               @click="onCardClick(entry, $event)"
               @keydown="onCardKeydown(entry, $event)"
               @contextmenu="onCardContextMenu(entry, $event)"
@@ -505,21 +507,21 @@ onBeforeUnmount(() => {
               </div>
               <div class="entry-actions" @click="onActionsClick">
                 <template v-if="isRecycleView">
-                  <button class="restore-btn" title="恢复" aria-label="恢复该条目" @click="restoreEntry(entry.id)">
+                  <button class="restore-btn" :title="t('detail.footer.restore')" :aria-label="t('card.ariaRestore')" @click="restoreEntry(entry.id)">
                     <span v-html="Utils?.SvgIcons?.restore(13)"></span>
                   </button>
-                  <button class="copy-btn" title="复制密码" aria-label="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
+                  <button class="copy-btn" :title="t('detail.ctx.copyPw')" :aria-label="t('detail.ctx.copyPw')" @click="copyPassword(entry.id, $event.currentTarget)">
                     <span v-html="Utils?.SvgIcons?.copy(13)"></span>
                   </button>
                 </template>
                 <template v-else>
-                  <button class="star-btn" :class="{ active: entry.favorite }" :data-id="entry.id" title="收藏" aria-label="收藏或取消收藏" @click="toggleFavorite(entry.id)">
+                  <button class="star-btn" :class="{ active: entry.favorite }" :data-id="entry.id" :title="t('detail.fav')" :aria-label="t('card.ariaFav')" @click="toggleFavorite(entry.id)">
                     <span v-html="favIconHtml(entry)"></span>
                   </button>
-                  <button class="copy-btn" title="复制" aria-label="复制密码" @click="copyPassword(entry.id, $event.currentTarget)">
+                  <button class="copy-btn" :title="t('detail.field.copy')" :aria-label="t('detail.ctx.copyPw')" @click="copyPassword(entry.id, $event.currentTarget)">
                     <span v-html="Utils?.SvgIcons?.copy(13)"></span>
                   </button>
-                  <button class="delete-btn" title="删除" aria-label="移入回收站" @click="softDelete(entry.id)">
+                  <button class="delete-btn" :title="t('detail.footer.delete')" :aria-label="t('detail.ctx.softDelete')" @click="softDelete(entry.id)">
                     <span v-html="Utils?.SvgIcons?.trash(13)"></span>
                   </button>
                 </template>
@@ -538,12 +540,12 @@ onBeforeUnmount(() => {
             <h3 id="empty-title">{{ emptyTitle }}</h3>
             <p id="empty-desc">{{ emptyDesc }}</p>
             <button v-if="vaultState.currentFilter !== 'recycle'" class="btn btn-primary btn-empty" @click="openEntryModal()">
-              添加第一个密码
+              {{ t('empty.cta') }}
             </button>
             <div class="empty-features">
-              <span>离线加密存储</span>
-              <span>二维码同步</span>
-              <span>本地文件备份</span>
+              <span>{{ t('empty.feature.offline') }}</span>
+              <span>{{ t('empty.feature.qr') }}</span>
+              <span>{{ t('empty.feature.localBackup') }}</span>
             </div>
           </div>
         </div>
@@ -553,14 +555,14 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 移动端底部导航（≤480px 显示；替代侧边栏主路径，标签入口打开抽屉） -->
-    <nav id="mobile-tabbar" aria-label="底部导航">
+    <nav id="mobile-tabbar" :aria-label="t('nav.ariaTabbar')">
       <button
         class="tabbar-item"
         :class="{ active: vaultState.currentFilter === 'all' }"
         @click="selectFilter('all')"
       >
         <span v-html="Utils?.SvgIcons?.grid(20)"></span>
-        <span>全部</span>
+        <span>{{ t('nav.all') }}</span>
       </button>
       <button
         class="tabbar-item"
@@ -568,10 +570,10 @@ onBeforeUnmount(() => {
         @click="selectFilter('favorites')"
       >
         <span v-html="Utils?.SvgIcons?.starOutline(20)"></span>
-        <span>收藏</span>
+        <span>{{ t('side.favorites') }}</span>
       </button>
       <!-- FAB 加号：stroke-width 2.5 的特殊视觉（保留内联，不属于通用图标体系） -->
-      <button class="tabbar-add" aria-label="添加密码" @click="openEntryModal()">
+      <button class="tabbar-add" :aria-label="t('side.addPassword')" @click="openEntryModal()">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
       </button>
       <button
@@ -580,11 +582,11 @@ onBeforeUnmount(() => {
         @click="selectFilter('recycle')"
       >
         <span v-html="Utils?.SvgIcons?.trash(20)"></span>
-        <span>回收站<span v-if="sidebarStats.recycle > 0" class="tabbar-badge">{{ sidebarStats.recycle > 99 ? '99+' : sidebarStats.recycle }}</span></span>
+        <span>{{ t('side.trash') }}<span v-if="sidebarStats.recycle > 0" class="tabbar-badge">{{ sidebarStats.recycle > 99 ? '99+' : sidebarStats.recycle }}</span></span>
       </button>
-      <button class="tabbar-item" aria-label="标签筛选" :aria-expanded="vaultState.sidebarOpen ? 'true' : 'false'" @click="vaultState.sidebarOpen = true">
+      <button class="tabbar-item" :aria-label="t('nav.ariaTagsFilter')" :aria-expanded="vaultState.sidebarOpen ? 'true' : 'false'" @click="vaultState.sidebarOpen = true">
         <span v-html="Utils?.SvgIcons?.tag(20)"></span>
-        <span>标签</span>
+        <span>{{ t('nav.tags') }}</span>
       </button>
     </nav>
 
@@ -592,7 +594,7 @@ onBeforeUnmount(() => {
     <CtxMenu
       :menu="ctxMenu"
       :items="entryCtxItems"
-      aria-label="条目快捷操作"
+      :aria-label="t('ctx.ariaLabel')"
       :origin="ctxOrigin"
       @action="onEntryCtxAction"
     />

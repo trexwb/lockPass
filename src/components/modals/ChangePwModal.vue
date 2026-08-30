@@ -5,8 +5,10 @@
 import { ref } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { closeModal, openModal, saveVault } = useVault()
+const { t } = useI18n()
 
 const oldPw = ref('')
 const newPw = ref('')
@@ -24,9 +26,9 @@ function showError(msg) {
 }
 
 async function changePassword() {
-  if (!oldPw.value) return showError('请输入当前主密码')
-  if (newPw.value.length < 8) return showError('新密码至少需要 8 位')
-  if (newPw.value !== confirmPw.value) return showError('两次输入的新密码不一致')
+  if (!oldPw.value) return showError(t('pwchange.errOldRequired'))
+  if (newPw.value.length < 8) return showError(t('pwchange.errNewTooShort'))
+  if (newPw.value !== confirmPw.value) return showError(t('pwchange.errMismatch'))
 
   busy.value = true
 
@@ -42,7 +44,7 @@ async function changePassword() {
     const vaultRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_VAULT, 'main')
     await window.CryptoUtils.decrypt(vaultRecord.data, vaultRecord.iv, oldKey)
   } catch (e) {
-    window.Utils.showToast('当前主密码错误', 'error')
+    window.Utils.showToast(t('pwchange.errWrongCurrent'), 'error')
     busy.value = false
     return
   }
@@ -79,9 +81,9 @@ async function changePassword() {
 
     closeModal()
     openModal('settings')
-    window.Utils.showToast('主密码已修改', 'success')
+    window.Utils.showToast(t('pwchange.changed'), 'success')
   } catch (e) {
-    window.Utils.showToast('修改失败：' + ((e && e.message) || '请重试'), 'error')
+    window.Utils.showToast(t('pwchange.errSave', { msg: (e && e.message) || t('pwchange.errRetry') }), 'error')
   } finally {
     busy.value = false
   }
@@ -91,7 +93,7 @@ async function changePassword() {
 <template>
   <ModalBase :max-width="'420px'" @close="closeModal()">
     <div class="modal-header">
-      <h2>修改主密码</h2>
+      <h2>{{ t('pwchange.title') }}</h2>
       <button class="btn-icon" @click="closeModal()" tabindex="-1">
         <span v-html="Icons.close(16)"></span>
       </button>
@@ -99,36 +101,36 @@ async function changePassword() {
     <div class="modal-body">
       <div class="lock-warning" role="alert">
         <span class="lock-warning-icon" v-html="Icons.alert(14)"></span>
-        <span class="text-sm">此操作不可撤销：修改后需使用新密码解锁，如遗忘新主密码，将无法恢复保险箱内任何数据。请确保牢记新密码。</span>
+        <span class="text-sm">{{ t('pwchange.warning') }}</span>
       </div>
       <div class="form-group">
-        <label class="form-label">当前主密码</label>
+        <label class="form-label">{{ t('pwchange.oldLabel') }}</label>
         <div class="input-affix">
-          <input v-model="oldPw" class="form-input" :type="showOldPw ? 'text' : 'password'" placeholder="输入当前主密码" autocomplete="off" />
+          <input v-model="oldPw" class="form-input" :type="showOldPw ? 'text' : 'password'" :placeholder="t('pwchange.oldPlaceholder')" autocomplete="off" />
           <div class="input-affix-btns">
-            <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="showOldPw = !showOldPw">
+            <button class="pw-gen-btn" type="button" :title="t('pwchange.toggleShow')" :aria-label="t('pwchange.toggleAria')" @click="showOldPw = !showOldPw">
               <span v-html="showOldPw ? Icons.eyeClosed(15) : Icons.eyeOpen(15)"></span>
             </button>
           </div>
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">新主密码</label>
+        <label class="form-label">{{ t('pwchange.newLabel') }}</label>
         <div class="input-affix">
-          <input v-model="newPw" class="form-input" :type="showNewPw ? 'text' : 'password'" placeholder="至少 8 位" autocomplete="off" />
+          <input v-model="newPw" class="form-input" :type="showNewPw ? 'text' : 'password'" :placeholder="t('pwchange.newPlaceholder')" autocomplete="off" />
           <div class="input-affix-btns">
-            <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="showNewPw = !showNewPw">
+            <button class="pw-gen-btn" type="button" :title="t('pwchange.toggleShow')" :aria-label="t('pwchange.toggleAria')" @click="showNewPw = !showNewPw">
               <span v-html="showNewPw ? Icons.eyeClosed(15) : Icons.eyeOpen(15)"></span>
             </button>
           </div>
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">确认新密码</label>
+        <label class="form-label">{{ t('pwchange.confirmLabel') }}</label>
         <div class="input-affix">
-          <input v-model="confirmPw" class="form-input" :type="showConfirmPw ? 'text' : 'password'" placeholder="再次输入新密码" autocomplete="off" />
+          <input v-model="confirmPw" class="form-input" :type="showConfirmPw ? 'text' : 'password'" :placeholder="t('pwchange.confirmPlaceholder')" autocomplete="off" />
           <div class="input-affix-btns">
-            <button class="pw-gen-btn" type="button" title="显示/隐藏" aria-label="显示或隐藏密码" @click="showConfirmPw = !showConfirmPw">
+            <button class="pw-gen-btn" type="button" :title="t('pwchange.toggleShow')" :aria-label="t('pwchange.toggleAria')" @click="showConfirmPw = !showConfirmPw">
               <span v-html="showConfirmPw ? Icons.eyeClosed(15) : Icons.eyeOpen(15)"></span>
             </button>
           </div>
@@ -136,8 +138,8 @@ async function changePassword() {
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" @click="closeModal()">取消</button>
-      <button class="btn btn-primary" :disabled="busy" @click="changePassword()">{{ busy ? '修改中…' : '确认修改' }}</button>
+      <button class="btn btn-secondary" @click="closeModal()">{{ t('confirm.default.cancel') }}</button>
+      <button class="btn btn-primary" :disabled="busy" @click="changePassword()">{{ busy ? t('pwchange.changing') : t('pwchange.confirmBtn') }}</button>
     </div>
   </ModalBase>
 </template>

@@ -2,6 +2,9 @@
    LockPass — 工具函数模块
    ═══════════════════════════════════════════════════════════════════ */
 
+/* i18n：弹窗默认文案在调用时求值（window.I18n 由 core/i18n.js 挂载） */
+const t = (k, p) => window.I18n.t(k, p);
+
 /* Toast 反馈定时器时长（毫秒） */
 const TOAST_VISIBLE_DURATION = 3000; // 显示时长
 const TOAST_FADE_OUT_DELAY = 300;    // 淡出结束后移除延迟
@@ -306,9 +309,9 @@ function showToast(message, type = 'success', options = {}) {
 function confirmDialog(options) {
   return new Promise(resolve => {
     const opts = {
-      title: '请确认',
-      confirmText: '确定',
-      cancelText: '取消',
+      title: t('confirm.default.title'),
+      confirmText: t('confirm.default.ok'),
+      cancelText: t('confirm.default.cancel'),
       danger: false,
       ...(options || {})
     };
@@ -392,12 +395,12 @@ function confirmDialog(options) {
 function promptDialog(options) {
   return new Promise(resolve => {
     const opts = {
-      title: '请输入',
+      title: t('confirm.default.promptTitle'),
       message: '',
       value: '',
       placeholder: '',
-      confirmText: '确定',
-      cancelText: '取消',
+      confirmText: t('confirm.default.ok'),
+      cancelText: t('confirm.default.cancel'),
       selectAll: true,
       ...(options || {})
     };
@@ -775,7 +778,7 @@ function renderTagChip(tagDefs, name, removable = false) {
   // P3-6 修复：颜色注入 style 属性前过十六进制白名单
   const chipColor = safeTagColor(def.color);
   const close = removable
-    ? `<span class="remove-tag-x" aria-label="移除">×</span>`
+    ? `<span class="remove-tag-x" aria-label="${t('common.remove')}">×</span>`
     : '';
   return `<span class="tag-chip" data-tag="${escHtml(name)}" style="--chip-color:${chipColor}">${getCategoryIcon(def.icon, chipColor)}<span class="tag-chip-name">${escHtml(name)}</span>${close}</span>`;
 }

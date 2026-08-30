@@ -87,7 +87,7 @@ function generatePassword(options = {}) {
 function calcStrength(password) {
   if (!password) {
     // N7：颜色走设计令牌，与主题切换联动（内联 style 支持 var()）
-    return { entropy: 0, label: '未输入', color: 'var(--text-muted)', pct: 0 };
+    return { entropy: 0, label: window.I18n ? window.I18n.t('editor.strength.none') : '未输入', color: 'var(--text-muted)', pct: 0 };
   }
 
   // 计算字符集大小
@@ -106,19 +106,19 @@ function calcStrength(password) {
   let label, color, pct;
 
   if (entropy < 40) {
-    label = '弱';
+    label = window.I18n ? window.I18n.t('editor.strength.weak') : '弱';
     color = 'var(--danger)';
     pct = 20;
   } else if (entropy < 60) {
-    label = '中';
+    label = window.I18n ? window.I18n.t('editor.strength.medium') : '中';
     color = 'var(--warning)';
     pct = 50;
   } else if (entropy < 80) {
-    label = '强';
+    label = window.I18n ? window.I18n.t('editor.strength.strong') : '强';
     color = 'var(--accent)';
     pct = 75;
   } else {
-    label = '极强';
+    label = window.I18n ? window.I18n.t('editor.strength.veryStrong') : '极强';
     color = 'var(--success)';
     pct = 100;
   }

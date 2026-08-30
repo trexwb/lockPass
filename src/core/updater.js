@@ -42,16 +42,16 @@
         state.status = 'available'
         state.version = update.version || ''
         state.notes = update.body || ''
-        if (!silent) { try { window.Utils.showToast('发现新版本 v' + state.version, 'info') } catch (e) {} }
+        if (!silent) { try { window.Utils.showToast(window.I18n.t('update.available', { v: state.version }), 'info') } catch (e) {} }
         autoFlow(update)
       } else {
         state.status = 'uptodate'
-        if (!silent) { try { window.Utils.showToast('已是最新版本', 'success') } catch (e) {} }
+        if (!silent) { try { window.Utils.showToast(window.I18n.t('update.uptodate'), 'success') } catch (e) {} }
       }
     } catch (e) {
       state.status = 'error'
       state.error = String((e && e.message) || e)
-      if (!silent) { try { window.Utils.showToast('检查更新失败：' + state.error, 'error') } catch (e2) {} }
+      if (!silent) { try { window.Utils.showToast(window.I18n.t('update.checkFailed', { msg: state.error }), 'error') } catch (e2) {} }
     }
     return state
   }
@@ -81,19 +81,19 @@
         }
       })
       state.status = 'ready'
-      try { window.Utils.showToast('更新已就绪，重启应用后生效', 'success') } catch (e) {}
+      try { window.Utils.showToast(window.I18n.t('update.readyToast'), 'success') } catch (e) {}
       try {
         window.Utils.confirm({
-          title: '更新已就绪',
-          message: '新版本 v' + (state.version || '') + ' 已下载安装完成。\n立即重启应用完成更新？（未保存的数据会自动落盘）',
-          confirmText: '立即重启',
-          cancelText: '稍后',
+          title: window.I18n.t('update.readyTitle'),
+          message: window.I18n.t('update.readyMessage', { version: state.version || '' }),
+          confirmText: window.I18n.t('update.restartNow'),
+          cancelText: window.I18n.t('update.later'),
         }).then(function (ok) { if (ok) relaunch() })
       } catch (e) {}
     } catch (e) {
       state.status = 'available'
       state.error = String((e && e.message) || e)
-      try { window.Utils.showToast('更新下载失败：' + state.error, 'error') } catch (e2) {}
+      try { window.Utils.showToast(window.I18n.t('update.downloadFailed', { msg: state.error }), 'error') } catch (e2) {}
     }
     return state
   }

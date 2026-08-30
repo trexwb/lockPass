@@ -8,8 +8,10 @@
 import { ref } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { saveVault, closeModal } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -68,11 +70,11 @@ async function processFile(file) {
       importData.value = text
       previewVault(text)
     } else {
-      window.Utils.showToast('不支持的文件格式', 'error')
+      window.Utils.showToast(t('import.errUnsupportedFormat'), 'error')
       resetState()
     }
   } catch (e) {
-    window.Utils.showToast('文件读取失败：' + (e.message || e), 'error')
+    window.Utils.showToast(t('import.errReadFailed', { msg: e.message || e }), 'error')
     resetState()
   }
 }
@@ -80,7 +82,7 @@ async function processFile(file) {
 function previewCSV(text) {
   const lines = window.Utils.splitCSVLines(text)
   if (lines.length < 2) {
-    window.Utils.showToast('CSV 文件为空或格式错误', 'error')
+    window.Utils.showToast(t('import.errCsvEmpty'), 'error')
     resetState()
     return
   }
@@ -90,7 +92,7 @@ function previewCSV(text) {
   if (!headers.includes('title')) missing.push('title')
   if (!headers.includes('password')) missing.push('password')
   if (missing.length) {
-    window.Utils.showToast('CSV 缺少必填列：' + missing.join('、') + '（必须包含 title 和 password 列）', 'error')
+    window.Utils.showToast(t('import.errCsvMissingCols', { cols: missing.join('、') }), 'error')
     resetState()
     return
   }
@@ -101,10 +103,10 @@ function previewCSV(text) {
   importMode.value = 'csv'
   previewInfo.value = {
     kind: 'csv',
-    title: 'CSV 明文文件',
+    title: t('import.fileCsv'),
     count: count,
     fields: headers.join(', '),
-    warning: unknown.length ? '未知列将被忽略：' + unknown.join(', ') : null,
+    warning: unknown.length ? t('import.unknownColsIgnored', { cols: unknown.join(', ') }) : null,
   }
 }
 
@@ -119,23 +121,23 @@ function previewVault(text) {
       importData.value = data
       previewInfo.value = {
         kind: 'encrypted',
-        title: '加密备份文件',
-        exportedAt: data.exportedAt || data.updatedAt || '未知',
+        title: t('import.fileEncrypted'),
+        exportedAt: data.exportedAt || data.updatedAt || t('common.unknown'),
       }
     } else if (data.entries) {
       importMode.value = 'plaintext-vault'
       importData.value = data
       previewInfo.value = {
         kind: 'plaintext',
-        title: '明文备份文件',
+        title: t('import.filePlaintext'),
         count: (data.entries || []).length,
       }
     } else {
-      window.Utils.showToast('不支持的文件格式', 'error')
+      window.Utils.showToast(t('import.errUnsupportedFormat'), 'error')
       resetState()
     }
   } catch (e) {
-    window.Utils.showToast('文件格式错误', 'error')
+    window.Utils.showToast(t('import.errBadFormat'), 'error')
     resetState()
   }
 }
@@ -148,7 +150,7 @@ async function confirmImport() {
   if (!importData.value || importing.value) return
   cancelled.value = false
   importing.value = true
-  progress.value = { pct: 0, text: '正在导入…' }
+  progress.value = { pct: 0, text: t('import.importing') }
   try {
     if (importMode.value === 'csv') await importCSV(importData.value)
     else if (importMode.value === 'encrypted-vault') await importEncryptedVault(importData.value)
@@ -159,7 +161,7 @@ async function confirmImport() {
       closeModal()
     }, 1200)
   } catch (e) {
-    window.Utils.showToast('导入失败：' + (e.message || e), 'error')
+    window.Utils.showToast(t('import.errImportFailed', { msg: e.message || e }), 'error')
     importing.value = false
     progress.value = { pct: 0, text: '' }
   }
@@ -193,7 +195,7 @@ async function importCSV(text) {
   const portIdx = headers.indexOf('port')
 
   if (titleIdx === -1 || passwordIdx === -1) {
-    throw new Error('CSV 必须包含 title 和 password 列')
+    throw new Error(t('import.errCsvRequiredCols'))
   }
 
   let added = 0
@@ -260,12 +262,12 @@ async function importCSV(text) {
     // 标题 + 用户名查重（与二维码导入一致）
     const dup = findDuplicateByTitleUser(title, username)
     if (dup) {
-      const dupLabel = `${title || '未命名'}${username ? '（' + username + '）' : ''}`
+      const dupLabel = `${title || t('common.unnamed')}${username ? t('import.withUser', { user: username }) : ''}`
       const ok = await window.Utils.confirm({
-        title: '发现重复条目',
-        message: `已存在相同条目「${dupLabel}」，是否替换？`,
-        confirmText: '替换',
-        cancelText: '跳过',
+        title: t('import.dupFoundTitle'),
+        message: t('import.dupFoundMsg', { label: dupLabel }),
+        confirmText: t('import.dupReplace'),
+        cancelText: t('import.dupSkip'),
         danger: true,
       })
       if (ok) {
@@ -293,20 +295,20 @@ async function importCSV(text) {
       if (cancelled.value) {
         progress.value = {
           pct: 100,
-          text: `已取消：新增 ${added} 条、替换 ${replaced} 条、跳过 ${skipped} 条（未保存）`,
+          text: t('import.cancelledProgress', { added, replaced, skipped }),
         }
-        window.Utils.showToast(`已取消导入：新增 ${added} 条`, 'warning')
+        window.Utils.showToast(t('import.cancelledToast', { added }), 'warning')
         return
       }
     }
   }
 
-  const emptyHint = emptySkipped > 0 ? `（含 ${emptySkipped} 条空行已跳过）` : ''
+  const emptyHint = emptySkipped > 0 ? t('import.emptyRowsSkipped', { n: emptySkipped }) : ''
   progress.value = {
     pct: 100,
-    text: `导入完成：新增 ${added} 条、替换 ${replaced} 条、跳过 ${skipped} 条${emptyHint}`,
+    text: t('import.doneProgress', { added, replaced, skipped, hint: emptyHint }),
   }
-  window.Utils.showToast(`导入完成：新增 ${added} 条、替换 ${replaced} 条、跳过 ${skipped} 条${emptyHint}`, 'success')
+  window.Utils.showToast(t('import.doneProgress', { added, replaced, skipped, hint: emptyHint }), 'success')
 }
 
 /* ── 合并标签注册表（旧 categories 升级为 tagDefs） ────────────── */
@@ -318,7 +320,7 @@ function mergeTagDef(name, def) {
 /* ── 导入加密备份 ─────────────────────────────────────────────── */
 async function importEncryptedVault(data) {
   if (!masterPassword.value) {
-    throw new Error('请输入主密码')
+    throw new Error(t('lock.errorPwEmpty'))
   }
   try {
     // 使用文件的 salt、iterations 和 iv 解密（兼容性：旧文件无 iterations 时回退到 LEGACY_ITERATIONS）
@@ -358,10 +360,10 @@ async function importEncryptedVault(data) {
       Object.keys(decrypted.tagDefs).forEach(name => mergeTagDef(name, decrypted.tagDefs[name]))
     }
 
-    progress.value = { pct: 100, text: `成功导入 ${added} 条记录` }
-    window.Utils.showToast(`已导入 ${added} 条密码`, 'success')
+    progress.value = { pct: 100, text: t('import.doneRecords', { added }) }
+    window.Utils.showToast(t('import.importedN', { added }), 'success')
   } catch (e) {
-    throw new Error('密码错误或文件损坏')
+    throw new Error(t('import.errPwOrCorrupt'))
   }
 }
 
@@ -391,15 +393,15 @@ async function importPlaintextVault(data) {
     Object.keys(tagDefs).forEach(name => mergeTagDef(name, tagDefs[name]))
   }
 
-  progress.value = { pct: 100, text: `成功导入 ${added} 条记录` }
-  window.Utils.showToast(`已导入 ${added} 条密码`, 'success')
+  progress.value = { pct: 100, text: t('import.doneRecords', { added }) }
+  window.Utils.showToast(t('import.importedN', { added }), 'success')
 }
 </script>
 
 <template>
   <ModalBase :max-width="'520px'" @close="closeModal()">
     <div class="modal-header">
-      <h3>批量导入</h3>
+      <h3>{{ t('import.title') }}</h3>
       <button class="btn-icon" @click="closeModal()">
         <span v-html="Icons.close(16)"></span>
       </button>
@@ -420,8 +422,8 @@ async function importPlaintextVault(data) {
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          <div>拖拽文件到这里，或点击选择文件</div>
-          <div class="text-muted text-sm mt-1">支持 .vault / .json（加密或明文备份）与 .csv（明文）</div>
+          <div>{{ t('import.dropHere') }}</div>
+          <div class="text-muted text-sm mt-1">{{ t('import.supportedFormats') }}</div>
           <input id="import-file-input" type="file" accept=".vault,.json,.csv,application/octet-stream,application/json,text/csv" style="display:none" @change="onFileChange" />
         </div>
 
@@ -429,15 +431,15 @@ async function importPlaintextVault(data) {
           <div class="divider"></div>
           <div class="text-sm"><strong>{{ previewInfo.title }}</strong></div>
           <div class="text-muted text-sm mt-1">
-            <template v-if="previewInfo.kind === 'csv'">共 {{ previewInfo.count }} 条记录（不含表头） · 字段：{{ previewInfo.fields }}</template>
-            <template v-else-if="previewInfo.kind === 'encrypted'">导出时间：{{ previewInfo.exportedAt }} · 需要主密码才能解密导入；导入采用合并模式，与现有数据冲突的条目将作为新数据添加</template>
-            <template v-else>包含 {{ previewInfo.count }} 条密码记录 · 导入采用合并模式，与现有数据冲突的条目将作为新数据添加</template>
+            <template v-if="previewInfo.kind === 'csv'">{{ t('import.csvPreviewMeta', { count: previewInfo.count, fields: previewInfo.fields }) }}</template>
+            <template v-else-if="previewInfo.kind === 'encrypted'">{{ t('import.encryptedPreviewMeta', { time: previewInfo.exportedAt }) }}</template>
+            <template v-else>{{ t('import.plaintextPreviewMeta', { count: previewInfo.count }) }}</template>
           </div>
-          <div v-if="previewInfo.kind === 'csv'" class="text-warning text-sm mt-2">⚠️ CSV 为明文格式；累加模式；重复条目将逐条询问；点「导入」开始</div>
+          <div v-if="previewInfo.kind === 'csv'" class="text-warning text-sm mt-2">{{ t('import.csvWarning') }}</div>
           <div v-if="previewInfo.warning" class="text-warning text-sm mt-1">{{ previewInfo.warning }}</div>
-          <div v-if="previewInfo.kind === 'plaintext'" class="text-warning text-sm mt-2">⚠️ 此文件包含明文密码，请妥善保管</div>
+          <div v-if="previewInfo.kind === 'plaintext'" class="text-warning text-sm mt-2">{{ t('import.plaintextWarning') }}</div>
           <div v-if="previewInfo.kind === 'encrypted'" class="form-group mt-2 mb-0">
-            <input v-model="masterPassword" class="form-input" type="password" placeholder="输入主密码解密" @keydown.enter.prevent="confirmImport()" />
+            <input v-model="masterPassword" class="form-input" type="password" :placeholder="t('import.pwPlaceholderDecrypt')" @keydown.enter.prevent="confirmImport()" />
           </div>
         </div>
       </template>
@@ -448,20 +450,20 @@ async function importPlaintextVault(data) {
         </div>
         <div class="text-sm text-muted mt-1">{{ progress.text }}</div>
         <button class="btn btn-secondary btn-sm mt-2" :disabled="cancelled" @click="cancelImport()">
-          {{ cancelled ? '取消中…' : '取消' }}
+          {{ cancelled ? t('import.cancelling') : t('confirm.default.cancel') }}
         </button>
       </div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-secondary" @click="closeModal()">取消</button>
+      <button class="btn btn-secondary" @click="closeModal()">{{ t('confirm.default.cancel') }}</button>
       <button
         v-if="previewInfo && !importing"
         class="btn btn-primary"
         :disabled="importMode === 'encrypted-vault' && !masterPassword"
         @click="confirmImport()"
       >
-        导入
+        {{ t('import.btnImport') }}
       </button>
     </div>
   </ModalBase>

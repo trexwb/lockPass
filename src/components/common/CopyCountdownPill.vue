@@ -49,16 +49,16 @@ function dismiss() {
         class="copy-pill"
         role="status"
         aria-live="polite"
-        aria-label="已复制到剪贴板，剩余秒数后自动清除"
+        :aria-label="t('pill.ariaCopied')"
       >
         <span class="copy-pill-icon" v-html="Icons.check(14)"></span>
-        <span class="copy-pill-text">已复制</span>
+        <span class="copy-pill-text">{{ t('pill.copied') }}</span>
         <span class="copy-pill-count" :style="{ color: progressColor }">{{ cd.remaining }}s</span>
-        <span class="copy-pill-suffix">后清除</span>
+        <span class="copy-pill-suffix">{{ t('pill.suffixClear') }}</span>
         <button
           class="copy-pill-dismiss"
-          title="关闭"
-          aria-label="关闭提示"
+          :title="t('pill.dismiss')"
+          :aria-label="t('pill.ariaDismiss')"
           @click="dismiss"
         >
           <span v-html="Icons.close(12)"></span>
