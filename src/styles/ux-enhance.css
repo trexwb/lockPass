@@ -21,7 +21,7 @@ html.theme-switching .ctx-menu {
 }
 
 /* ── 2. 列表重播：筛选 / 搜索 / 增删后整表重挂载，重播 list-rise 编舞 ── */
-#entries-list .entry-card {
+#entries-list .entry-card-wrap {
   animation: list-rise 0.34s var(--ease-out-quart) both;
   animation-delay: calc(var(--i, 0) * 30ms);
 }

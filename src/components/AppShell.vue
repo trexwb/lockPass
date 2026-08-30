@@ -8,6 +8,7 @@ import DetailPanel from './entries/DetailPanel.vue'
 import CopyCountdownPill from './common/CopyCountdownPill.vue'
 import { useI18n } from '../composables/useI18n'
 import CtxMenu from './common/CtxMenu.vue'
+import { useSwipeActions } from '../composables/useSwipeActions'
 
 // 模板中直接引用 window 会被 Vue 编译为 _ctx.window（undefined）而抛错，
 // 故在 setup 作用域暴露 Utils，模板统一使用 Utils.xxx
@@ -38,6 +39,19 @@ const filteredEntries = computed(() => getFilteredEntries())
 const isRecycleView = computed(() => vaultState.currentFilter === 'recycle')
 // 移动端底部导航徽标（回收站数量）
 const sidebarStats = computed(() => computeSidebarStats())
+
+/* ── 卡片左滑显示操作（Swipe-to-Reveal Actions）
+   仅触屏设备 / ≤1024px 移动端启用；桌面端保留 hover 显示。
+   操作层宽度 = 3 × 44px 按钮 + 12px×2 内边距 = 156px。 */
+const ACTIONS_WIDTH = 156
+const {
+  getCardStyle, cardTouchHandlers, closeAll, openCard, closeCard,
+  draggingMap, actionsWidth,
+} = useSwipeActions({ actionsWidth: ACTIONS_WIDTH })
+
+// 点击空白 / 垂直滚动时关闭已打开的卡片（条目列表容器绑定）
+function onListClickForSwipe() { closeAll() }
+const _isMobileSwipe = () => window.matchMedia('(max-width: 1024px)').matches
 
 /* ── 空状态（对应原版 ui.js renderEntries 的文案分支） ── */
 
@@ -368,6 +382,41 @@ function cancelLongPress() {
   }
 }
 
+/* ── 卡片触摸事件：长按菜单 + 左滑操作（Swipe-to-Reveal）的联合处理 ──
+   协调两个手势：水平滑动一旦被锁定，取消长按计时；
+   反之，垂直滚动或长按触发时，swipe 不会被启动（useSwipeActions 内部判定方向）。
+   仅在 `_isMobileSwipe()`（≤1024px）时启用 swipe，桌面端保持长按单点行为。 */
+function onEntryTouchStart(entry, e) {
+  // 1) 启动长按计时器（若后续判定为水平滑动，将在 touchmove 中取消）
+  onCardTouchStart(entry, e)
+  // 2) swipe 手势初始化
+  if (_isMobileSwipe()) {
+    cardTouchHandlers(entry.id, _isMobileSwipe).onTouchstart(e)
+  }
+}
+function onEntryTouchMove(entry, e) {
+  if (_isMobileSwipe()) {
+    cardTouchHandlers(entry.id, _isMobileSwipe).onTouchmove(e)
+    // 已经进入水平拖拽态：取消长按避免误触发右键菜单
+    if (draggingMap[entry.id]) cancelLongPress()
+  } else {
+    // 桌面端：touchmove 一律取消长按（不常触达但防御性处理）
+    cancelLongPress()
+  }
+}
+function onEntryTouchEnd(entry, e) {
+  cancelLongPress()
+  if (_isMobileSwipe()) {
+    cardTouchHandlers(entry.id, _isMobileSwipe).onTouchend(e)
+  }
+}
+function onEntryTouchCancel(entry, e) {
+  cancelLongPress()
+  if (_isMobileSwipe()) {
+    cardTouchHandlers(entry.id, _isMobileSwipe).onTouchcancel(e)
+  }
+}
+
 /** （旧版动作分发已被 onEntryCtxAction 替代，保留 0 成本空壳避免外部引用编译告警） */
 function onCtxAction() {}
 
@@ -512,63 +561,137 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div id="entries-list" :key="listEpoch" @contextmenu.self.prevent.stop="onWorkspaceContextMenu">
+          <div
+            id="entries-list"
+            :key="listEpoch"
+            @contextmenu.self.prevent.stop="onWorkspaceContextMenu"
+            @click.capture="onListClickForSwipe"
+          >
             <!-- P3-5 虚拟滚动：窗口外用 spacer 撑高（≤100 条时不启用，spacer 高度为 0） -->
             <div v-if="padTop" class="vs-spacer" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
             <div
               v-for="(entry, idx) in visibleEntries"
               :key="entry.id"
-              class="entry-card"
-              :class="[
-                !isRecycleView && entry.favorite ? 'fav' : '',
-                isRecycleView ? 'recycled' : '',
-                vaultState.selectedEntry === entry.id ? 'selected' : '',
-              ]"
-              :data-id="entry.id"
+              class="entry-card-wrap"
               :style="{ '--i': Math.min(idx, 8) }"
-              role="button"
-              tabindex="0"
-              :aria-label="t('detail.viewAria', { title: entry.title, type: typeLabelOf(entry.entryType) })"
-              @click="onCardClick(entry, $event)"
-              @keydown="onCardKeydown(entry, $event)"
-              @contextmenu="onCardContextMenu(entry, $event)"
-              @touchstart.passive="onCardTouchStart(entry, $event)"
-              @touchmove.passive="cancelLongPress"
-              @touchend.passive="cancelLongPress"
-              @touchcancel.passive="cancelLongPress"
             >
-              <div class="entry-icon">
-                <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(typeLabelOf(entry.entryType))" v-html="cardTypeIcon(entry.entryType)"></span>
-              </div>
-              <div class="entry-info">
-                <div class="entry-title" v-html="highlightTitle(entry)"></div>
-                <div class="entry-meta">
-                  <span v-if="cardSubtitle(entry)" class="entry-subtitle" v-html="highlightSubtitle(entry)"></span>
-                  <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" v-html="tagChipHtml(tag)"></span>
-                  <span v-if="(entry.tags || []).length > 3" class="entry-tag-more">+{{ entry.tags.length - 3 }}</span>
-                  <span class="entry-date">{{ formatCardDate(entry) }}</span>
+              <!-- 背景操作层：移动端左滑前景卡片才会露出；桌面端隐藏 -->
+              <div
+                class="card-actions-backdrop"
+                :style="{ '--actions-width': actionsWidth + 'px' }"
+                aria-hidden="false"
+              >
+                <div class="backdrop-inner" :style="{ width: actionsWidth + 'px' }">
+                  <template v-if="isRecycleView">
+                    <button
+                      class="swipe-action-btn restore-action"
+                      :title="t('detail.footer.restore')"
+                      :aria-label="t('card.ariaRestore')"
+                      @click.stop="restoreEntry(entry.id)"
+                    >
+                      <span v-html="Utils?.SvgIcons?.restore(18)"></span>
+                    </button>
+                    <button
+                      class="swipe-action-btn copy-action"
+                      :title="t('detail.ctx.copyPw')"
+                      :aria-label="t('detail.ctx.copyPw')"
+                      @click.stop="copyPassword(entry.id, $event.currentTarget)"
+                    >
+                      <span v-html="Utils?.SvgIcons?.copy(18)"></span>
+                    </button>
+                    <button
+                      class="swipe-action-btn delete-action"
+                      :title="t('empty.title.recycle')"
+                      :aria-label="t('card.ariaPermDelete')"
+                      @click.stop="permanentDelete(entry.id)"
+                    >
+                      <span v-html="Utils?.SvgIcons?.trash(18)"></span>
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="swipe-action-btn star-action"
+                      :class="{ active: entry.favorite }"
+                      :title="t('detail.fav')"
+                      :aria-label="t('card.ariaFav')"
+                      @click.stop="toggleFavorite(entry.id)"
+                    >
+                      <span v-html="favIconHtml(entry)"></span>
+                    </button>
+                    <button
+                      class="swipe-action-btn copy-action"
+                      :title="t('detail.field.copy')"
+                      :aria-label="t('detail.ctx.copyPw')"
+                      @click.stop="copyPassword(entry.id, $event.currentTarget)"
+                    >
+                      <span v-html="Utils?.SvgIcons?.copy(18)"></span>
+                    </button>
+                    <button
+                      class="swipe-action-btn delete-action"
+                      :title="t('detail.footer.delete')"
+                      :aria-label="t('detail.ctx.softDelete')"
+                      @click.stop="softDelete(entry.id)"
+                    >
+                      <span v-html="Utils?.SvgIcons?.trash(18)"></span>
+                    </button>
+                  </template>
                 </div>
               </div>
-              <div class="entry-actions" @click="onActionsClick">
-                <template v-if="isRecycleView">
-                  <button class="restore-btn" :title="t('detail.footer.restore')" :aria-label="t('card.ariaRestore')" @click="restoreEntry(entry.id)">
-                    <span v-html="Utils?.SvgIcons?.restore(13)"></span>
-                  </button>
-                  <button class="copy-btn" :title="t('detail.ctx.copyPw')" :aria-label="t('detail.ctx.copyPw')" @click="copyPassword(entry.id, $event.currentTarget)">
-                    <span v-html="Utils?.SvgIcons?.copy(13)"></span>
-                  </button>
-                </template>
-                <template v-else>
-                  <button class="star-btn" :class="{ active: entry.favorite }" :data-id="entry.id" :title="t('detail.fav')" :aria-label="t('card.ariaFav')" @click="toggleFavorite(entry.id)">
-                    <span v-html="favIconHtml(entry)"></span>
-                  </button>
-                  <button class="copy-btn" :title="t('detail.field.copy')" :aria-label="t('detail.ctx.copyPw')" @click="copyPassword(entry.id, $event.currentTarget)">
-                    <span v-html="Utils?.SvgIcons?.copy(13)"></span>
-                  </button>
-                  <button class="delete-btn" :title="t('detail.footer.delete')" :aria-label="t('detail.ctx.softDelete')" @click="softDelete(entry.id)">
-                    <span v-html="Utils?.SvgIcons?.trash(13)"></span>
-                  </button>
-                </template>
+              <!-- 前景卡片层：跟随手指滑动 -->
+              <div
+                class="entry-card"
+                :class="[
+                  !isRecycleView && entry.favorite ? 'fav' : '',
+                  isRecycleView ? 'recycled' : '',
+                  vaultState.selectedEntry === entry.id ? 'selected' : '',
+                  draggingMap[entry.id] ? 'swiping' : '',
+                ]"
+                :data-id="entry.id"
+                :style="getCardStyle(entry.id) || {}"
+                role="button"
+                tabindex="0"
+                :aria-label="t('detail.viewAria', { title: entry.title, type: typeLabelOf(entry.entryType) })"
+                @click="onCardClick(entry, $event)"
+                @keydown="onCardKeydown(entry, $event)"
+                @contextmenu="onCardContextMenu(entry, $event)"
+                @touchstart.passive="onEntryTouchStart(entry, $event)"
+                @touchmove.passive="onEntryTouchMove(entry, $event)"
+                @touchend.passive="onEntryTouchEnd(entry, $event)"
+                @touchcancel.passive="onEntryTouchCancel(entry, $event)"
+              >
+                <div class="entry-icon">
+                  <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(typeLabelOf(entry.entryType))" v-html="cardTypeIcon(entry.entryType)"></span>
+                </div>
+                <div class="entry-info">
+                  <div class="entry-title" v-html="highlightTitle(entry)"></div>
+                  <div class="entry-meta">
+                    <span v-if="cardSubtitle(entry)" class="entry-subtitle" v-html="highlightSubtitle(entry)"></span>
+                    <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" v-html="tagChipHtml(tag)"></span>
+                    <span v-if="(entry.tags || []).length > 3" class="entry-tag-more">+{{ entry.tags.length - 3 }}</span>
+                    <span class="entry-date">{{ formatCardDate(entry) }}</span>
+                  </div>
+                </div>
+                <div class="entry-actions" @click="onActionsClick">
+                  <template v-if="isRecycleView">
+                    <button class="restore-btn" :title="t('detail.footer.restore')" :aria-label="t('card.ariaRestore')" @click="restoreEntry(entry.id)">
+                      <span v-html="Utils?.SvgIcons?.restore(13)"></span>
+                    </button>
+                    <button class="copy-btn" :title="t('detail.ctx.copyPw')" :aria-label="t('detail.ctx.copyPw')" @click="copyPassword(entry.id, $event.currentTarget)">
+                      <span v-html="Utils?.SvgIcons?.copy(13)"></span>
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button class="star-btn" :class="{ active: entry.favorite }" :data-id="entry.id" :title="t('detail.fav')" :aria-label="t('card.ariaFav')" @click="toggleFavorite(entry.id)">
+                      <span v-html="favIconHtml(entry)"></span>
+                    </button>
+                    <button class="copy-btn" :title="t('detail.field.copy')" :aria-label="t('detail.ctx.copyPw')" @click="copyPassword(entry.id, $event.currentTarget)">
+                      <span v-html="Utils?.SvgIcons?.copy(13)"></span>
+                    </button>
+                    <button class="delete-btn" :title="t('detail.footer.delete')" :aria-label="t('detail.ctx.softDelete')" @click="softDelete(entry.id)">
+                      <span v-html="Utils?.SvgIcons?.trash(13)"></span>
+                    </button>
+                  </template>
+                </div>
               </div>
             </div>
             <div v-if="padBottom" class="vs-spacer" :style="{ height: padBottom + 'px' }" aria-hidden="true"></div>

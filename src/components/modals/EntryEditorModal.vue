@@ -7,11 +7,16 @@ import { useVault, vaultState, ENTRY_TYPES } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
+import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 import { CUSTOM_FIELD_TYPES, FIELD_TEMPLATES, createCustomField } from '../../core/templates'
 
 const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal, openPasswordGenerator } = useVault()
 const { t } = useI18n()
+
+const cfTypeOptions = computed(() =>
+  CUSTOM_FIELD_TYPES.map(tp => ({ value: tp, label: t('editor.custom.type.' + tp) }))
+)
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -999,9 +1004,12 @@ const editorCtxItems = computed(() => {
           >{{ t('editor.custom.tpl.' + key) }}</button>
         </div>
         <div class="cf-add-row">
-          <select v-model="cfType" class="form-input cf-type-select" :aria-label="t('editor.custom.addHint')">
-            <option v-for="tp in CUSTOM_FIELD_TYPES" :key="tp" :value="tp">{{ t('editor.custom.type.' + tp) }}</option>
-          </select>
+          <BaseSelect
+            v-model="cfType"
+            class="form-input cf-type-select"
+            :options="cfTypeOptions"
+            :aria-label="t('editor.custom.addHint')"
+          />
           <input
             v-model="cfLabel"
             class="form-input"
@@ -1049,9 +1057,11 @@ const editorCtxItems = computed(() => {
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="cfReveal[cf.id] ? windowEyeClosed : windowEyeOpen"></svg>
                 </button>
               </div>
-              <select v-model="cf.type" class="form-input cf-type-select">
-                <option v-for="tp in CUSTOM_FIELD_TYPES" :key="tp" :value="tp">{{ t('editor.custom.type.' + tp) }}</option>
-              </select>
+              <BaseSelect
+                v-model="cf.type"
+                class="form-input cf-type-select"
+                :options="cfTypeOptions"
+              />
               <label class="cf-sensitive-toggle">
                 <input type="checkbox" v-model="cf.sensitive" />
                 <span>{{ t('editor.custom.sensitive') }}</span>

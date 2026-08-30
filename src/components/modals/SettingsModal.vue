@@ -9,6 +9,7 @@ import { buildShortcutDefs } from '../../composables/useShortcuts'
 import { useTheme } from '../../composables/useTheme'
 import { useI18n } from '../../composables/useI18n'
 import ModalBase from '../common/ModalBase.vue'
+import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 
@@ -22,8 +23,7 @@ const settingsTab = ref('security')
 const SETTINGS_TABS = [
   { id: 'security', label: '安全', labelKey: 'settings.tab.security' },
   { id: 'appearance', label: '外观', labelKey: 'settings.tab.appearance' },
-  { id: 'sync', label: '同步备份', labelKey: 'settings.tab.sync' },
-  { id: 'data', label: '数据', labelKey: 'settings.tab.data' },
+  { id: 'sync', label: '备份', labelKey: 'settings.tab.sync' },
   { id: 'extension', label: '扩展', labelKey: 'settings.tab.extension' },
   { id: 'about', label: '关于', labelKey: 'settings.tab.about' },
 ]
@@ -49,10 +49,59 @@ const isMac = (navigator.userAgentData && navigator.userAgentData.platform === '
 /* ── I1：界面语言（多语言方案 §6.5） ── */
 const { t, pref: langPref, setLang } = useI18n()
 
-function onLangChange(e) {
+const langOptions = computed(() => [
+  { value: 'system', label: t('settings.lang.system') },
+  { value: 'zh-CN', label: t('settings.lang.zh') },
+  { value: 'en-US', label: t('settings.lang.en') },
+])
+
+const lockTimeoutOptions = computed(() => [
+  { value: 60000, label: t('settings.security.lock1m') },
+  { value: 300000, label: t('settings.security.lock5m') },
+  { value: 900000, label: t('settings.security.lock15m') },
+  { value: 1800000, label: t('settings.security.lock30m') },
+  { value: 0, label: t('settings.security.lockNever') },
+])
+
+const clipboardClearOptions = computed(() => [
+  { value: 10000, label: t('settings.security.clear10s') },
+  { value: 30000, label: t('settings.security.clear30s') },
+  { value: 60000, label: t('settings.security.clear60s') },
+])
+
+const recycleTtlOptions = computed(() => [
+  { value: 0, label: t('settings.security.recycleNever') },
+  { value: 30, label: t('settings.security.recycle30d') },
+  { value: 60, label: t('settings.security.recycle60d') },
+  { value: 90, label: t('settings.security.recycle90d') },
+])
+
+const backupIntervalOptions = computed(() => [
+  { value: 0, label: t('settings.backup.off') },
+  { value: 1, label: t('settings.backup.daily') },
+  { value: 3, label: t('settings.backup.every3d') },
+  { value: 7, label: t('settings.backup.every7d') },
+  { value: 30, label: t('settings.backup.every30d') },
+])
+
+const snapshotIntervalOptions = computed(() => [
+  { value: 1, label: t('settings.backup.snapDaily') },
+  { value: 3, label: t('settings.backup.every3d') },
+  { value: 7, label: t('settings.backup.every7d') },
+  { value: 30, label: t('settings.backup.every30d') },
+])
+
+const snapshotKeepOptions = computed(() => [
+  { value: 3, label: t('settings.backup.keep3') },
+  { value: 5, label: t('settings.backup.keep5') },
+  { value: 10, label: t('settings.backup.keep10') },
+  { value: 20, label: t('settings.backup.keep20') },
+])
+
+function onLangChange(value) {
   // 必须走 useI18n.setLang：同步更新响应式 i18nState.lang 驱动全界面即时刷新，
   // 直接调 window.I18n.setLangPref 只改 core 状态，不触发组件重渲染
-  setLang(e.target.value)
+  setLang(value)
   window.Utils.showToast(t('settings.langChanged'), 'success')
 }
 
@@ -623,18 +672,13 @@ const settingsCtxItems = computed(() => {
             <div class="settings-label">{{ t('settings.security.autoLock') }}</div>
             <div class="settings-desc">{{ t('settings.security.autoLockDesc') }}</div>
           </div>
-          <select
+          <BaseSelect
             class="form-input w-120"
             v-model.number="lockTimeout"
+            :options="lockTimeoutOptions"
             @change="updateLockTimeout()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: lockTimeout, label: t('settings.security.autoLock') }, { w: 220, h: 120 })"
-          >
-            <option :value="60000">{{ t('settings.security.lock1m') }}</option>
-            <option :value="300000">{{ t('settings.security.lock5m') }}</option>
-            <option :value="900000">{{ t('settings.security.lock15m') }}</option>
-            <option :value="1800000">{{ t('settings.security.lock30m') }}</option>
-            <option :value="0">{{ t('settings.security.lockNever') }}</option>
-          </select>
+          />
         </div>
         <div
           class="settings-row"
@@ -644,16 +688,13 @@ const settingsCtxItems = computed(() => {
             <div class="settings-label">{{ t('settings.security.clipboardClear') }}</div>
             <div class="settings-desc">{{ t('settings.security.clipboardClearDesc') }}</div>
           </div>
-          <select
+          <BaseSelect
             class="form-input w-120"
             v-model.number="clipboardClear"
+            :options="clipboardClearOptions"
             @change="updateClipboardClear()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: clipboardClear, label: t('settings.security.clipboardClear') }, { w: 220, h: 120 })"
-          >
-            <option :value="10000">{{ t('settings.security.clear10s') }}</option>
-            <option :value="30000">{{ t('settings.security.clear30s') }}</option>
-            <option :value="60000">{{ t('settings.security.clear60s') }}</option>
-          </select>
+          />
         </div>
         <div
           class="settings-row"
@@ -663,23 +704,22 @@ const settingsCtxItems = computed(() => {
             <div class="settings-label">{{ t('settings.security.recycleTtl') }}</div>
             <div class="settings-desc">{{ t('settings.security.recycleTtlDesc') }}</div>
           </div>
-          <select
+          <BaseSelect
             class="form-input w-120"
             v-model.number="recycleTtl"
+            :options="recycleTtlOptions"
             @change="updateRecycleTtl()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: recycleTtl, label: t('settings.security.recycleTtl') }, { w: 220, h: 120 })"
-          >
-            <option :value="0">{{ t('settings.security.recycleNever') }}</option>
-            <option :value="30">{{ t('settings.security.recycle30d') }}</option>
-            <option :value="60">{{ t('settings.security.recycle60d') }}</option>
-            <option :value="90">{{ t('settings.security.recycle90d') }}</option>
-          </select>
+          />
         </div>
       </div>
 
       <!-- 外观 -->
       <div class="settings-group" v-show="settingsTab === 'appearance'">
         <div class="settings-group-title">{{ t('settings.group.appearance') }}</div>
+
+        <!-- 统一模块：主题模式 + 强调色（主题与色调） -->
+        <div class="appearance-theme-block">
         <div
           class="settings-row"
           @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', desc: t('settings.appearance.themeDesc'), tab: 'appearance', tabLabel: t('settings.tab.appearance') }, { w: 260, h: 140 })"
@@ -699,17 +739,6 @@ const settingsCtxItems = computed(() => {
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'theme-btn', mode: m.value }, { w: 200, h: 120 })"
             >{{ m.label }}</button>
           </div>
-        </div>
-        <div class="settings-row">
-          <div>
-            <div class="settings-label">{{ t('settings.language') }}</div>
-            <div class="settings-desc">{{ t('settings.languageDesc') }}</div>
-          </div>
-          <select class="form-input w-120" :value="langPref" @change="onLangChange($event)">
-            <option value="system">{{ t('settings.lang.system') }}</option>
-            <option value="zh-CN">{{ t('settings.lang.zh') }}</option>
-            <option value="en-US">{{ t('settings.lang.en') }}</option>
-          </select>
         </div>
         <div
           class="settings-row"
@@ -733,6 +762,21 @@ const settingsCtxItems = computed(() => {
               <svg v-if="accentName === a" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3"><polyline points="20 6 9 17 4 12" /></svg>
             </button>
           </div>
+        </div>
+        </div>
+
+        <!-- 语言（独立行，置于主题/色调模块之后，避免下拉被遮挡） -->
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">{{ t('settings.language') }}</div>
+            <div class="settings-desc">{{ t('settings.languageDesc') }}</div>
+          </div>
+          <BaseSelect
+            class="form-input w-120"
+            :model-value="langPref"
+            :options="langOptions"
+            @change="onLangChange"
+          />
         </div>
       </div>
 
@@ -770,18 +814,13 @@ const settingsCtxItems = computed(() => {
             <div class="settings-label">{{ t('settings.backup.remind') }}</div>
             <div class="settings-desc">{{ t('settings.backup.remindDesc') }}</div>
           </div>
-          <select
+          <BaseSelect
             class="form-input w-120"
             v-model.number="backupInterval"
+            :options="backupIntervalOptions"
             @change="updateBackupInterval()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: backupInterval, label: t('settings.backup.remind') }, { w: 220, h: 120 })"
-          >
-            <option :value="0">{{ t('settings.backup.off') }}</option>
-            <option :value="1">{{ t('settings.backup.daily') }}</option>
-            <option :value="3">{{ t('settings.backup.every3d') }}</option>
-            <option :value="7">{{ t('settings.backup.every7d') }}</option>
-            <option :value="30">{{ t('settings.backup.every30d') }}</option>
-          </select>
+          />
         </div>
         <div
           class="settings-row"
@@ -806,17 +845,13 @@ const settingsCtxItems = computed(() => {
               <div class="settings-label">{{ t('settings.backup.snapshotInterval') }}</div>
               <div class="settings-desc">{{ t('settings.backup.snapshotIntervalDesc') }}</div>
             </div>
-            <select
+            <BaseSelect
               class="form-input w-120"
               v-model.number="snapshotInterval"
+              :options="snapshotIntervalOptions"
               @change="updateSnapshotInterval()"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: snapshotInterval, label: t('settings.backup.snapshotInterval') }, { w: 220, h: 120 })"
-            >
-              <option :value="1">{{ t('settings.backup.snapDaily') }}</option>
-              <option :value="3">{{ t('settings.backup.every3d') }}</option>
-              <option :value="7">{{ t('settings.backup.every7d') }}</option>
-              <option :value="30">{{ t('settings.backup.every30d') }}</option>
-            </select>
+            />
           </div>
           <div
             class="settings-row"
@@ -826,17 +861,13 @@ const settingsCtxItems = computed(() => {
               <div class="settings-label">{{ t('settings.backup.keepCount') }}</div>
               <div class="settings-desc">{{ t('settings.backup.keepCountDesc') }}</div>
             </div>
-            <select
+            <BaseSelect
               class="form-input w-120"
               v-model.number="snapshotKeep"
+              :options="snapshotKeepOptions"
               @change="updateSnapshotKeep()"
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: snapshotKeep, label: t('settings.backup.keepCount') }, { w: 220, h: 120 })"
-            >
-              <option :value="3">{{ t('settings.backup.keep3') }}</option>
-              <option :value="5">{{ t('settings.backup.keep5') }}</option>
-              <option :value="10">{{ t('settings.backup.keep10') }}</option>
-              <option :value="20">{{ t('settings.backup.keep20') }}</option>
-            </select>
+            />
           </div>
         </template>
         <div
@@ -894,12 +925,12 @@ const settingsCtxItems = computed(() => {
         </div>
       </div>
 
-      <!-- 标签管理入口 -->
-      <div class="settings-group" v-show="settingsTab === 'data'">
+      <!-- 标签管理入口（归属扩展栏目） -->
+      <div class="settings-group" v-show="settingsTab === 'extension'">
         <div class="settings-group-title">{{ t('settings.group.tags') }}</div>
         <div
           class="settings-row"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', target: 'open-tags', runLabel: t('settings.tags.manage'), desc: t('settings.tags.manageDesc'), tab: 'data', tabLabel: t('settings.tab.data') }, { w: 260, h: 180 })"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', target: 'open-tags', runLabel: t('settings.tags.manage'), desc: t('settings.tags.manageDesc'), tab: 'extension', tabLabel: t('settings.tab.extension') }, { w: 260, h: 180 })"
         >
           <div>
             <div class="settings-label">{{ t('settings.tags.manage') }}</div>
@@ -913,8 +944,8 @@ const settingsCtxItems = computed(() => {
         </div>
       </div>
 
-      <!-- 数据说明 -->
-      <div class="settings-group" v-show="settingsTab === 'data'">
+      <!-- 数据说明（归属安全栏目） -->
+      <div class="settings-group" v-show="settingsTab === 'security'">
         <div class="settings-group-title">{{ t('settings.group.dataInfo') }}</div>
         <div class="data-info-cards">
           <div
