@@ -2,10 +2,10 @@
 /* LockPass — 批量导入（.vault 加密备份 / .json 明文 / .csv 明文）
    Vue 3 迁移：对齐旧版 src/js/import-export.js 的导入流程
    - .vault / .json：加密备份（需输入主密码解密）或明文备份
-   - .csv：明文 CSV（表头映射 + 合并模式）
+   - .csv：Chrome/通用 CSV 导入向导（列映射 → 预览 → 确认，C2）
    导入采用合并模式：按「标题 + 用户名」查重，重复时逐条询问替换/跳过；
    支持进度条与中途取消。数据通过 useVault 的 vaultState / saveVault 操作。 */
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import { useI18n } from '../../composables/useI18n'
@@ -26,6 +26,33 @@ const importing = ref(false)
 const progress = ref({ pct: 0, text: '' })
 const cancelled = ref(false)
 
+/* C2 CSV 向导状态 */
+const csvHeaders = ref([])
+const csvMapping = ref({})       // { 表头原始名: 目标字段 }
+const csvStats = ref(null)       // { totalRows, validCount, dupCount, previewRows }
+const TARGET_OPTIONS = [
+  { value: 'title', label: 'title' },
+  { value: 'username', label: 'username' },
+  { value: 'password', label: 'password' },
+  { value: 'url', label: 'url' },
+  { value: 'notes', label: 'notes' },
+  { value: 'entrytype', label: 'entrytype' },
+  { value: 'category', label: 'category' },
+  { value: 'tags', label: 'tags' },
+  { value: 'port', label: 'port' },
+  { value: 'rootusername', label: 'rootusername' },
+  { value: 'rootpassword', label: 'rootpassword' },
+  { value: 'appid', label: 'appid' },
+  { value: 'privatekey', label: 'privatekey' },
+]
+const IGNORE_VALUE = '__ignore__'
+
+const csvWizardValid = computed(() => {
+  const map = csvMapping.value || {}
+  const values = Object.keys(map).map(k => map[k]).filter(v => v && v !== IGNORE_VALUE)
+  return values.includes('title') && values.includes('password')
+})
+
 function resetState() {
   fileName.value = ''
   importType.value = ''
@@ -36,6 +63,9 @@ function resetState() {
   importing.value = false
   progress.value = { pct: 0, text: '' }
   cancelled.value = false
+  csvHeaders.value = []
+  csvMapping.value = {}
+  csvStats.value = null
 }
 
 function pickFile() {
@@ -86,27 +116,25 @@ function previewCSV(text) {
     resetState()
     return
   }
-  const headers = window.Utils.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim())
-  // 列头校验：title 和 password 为必填列
-  const missing = []
-  if (!headers.includes('title')) missing.push('title')
-  if (!headers.includes('password')) missing.push('password')
-  if (missing.length) {
-    window.Utils.showToast(t('import.errCsvMissingCols', { cols: missing.join('、') }), 'error')
-    resetState()
-    return
-  }
-  // 检测已知列头拼写（提示未知列但不阻断）
-  const KNOWN_COLS = ['title', 'username', 'password', 'url', 'entrytype', 'category', 'tags', 'notes', 'rootusername', 'rootpassword', 'appid', 'privatekey', 'port']
-  const unknown = headers.filter(h => h && !KNOWN_COLS.includes(h))
-  const count = lines.length - 1
+  const rawHeaders = window.Utils.parseCSVLine(lines[0])
+  const headers = rawHeaders.map(h => h.toLowerCase().trim())
+  // C2 向导：不再要求固定 title/password 列，进入列映射步骤
+  const mapping = window.ImportExport
+    ? window.ImportExport.autoGuessMapping(rawHeaders)
+    : {}
+  csvHeaders.value = rawHeaders
+  csvMapping.value = mapping
+  csvStats.value = window.ImportExport
+    ? window.ImportExport.parseCSVPreview(text, mapping, vaultState.entries)
+    : { totalRows: lines.length - 1, validCount: 0, dupCount: 0, previewRows: [] }
+
   importMode.value = 'csv'
   previewInfo.value = {
     kind: 'csv',
     title: t('import.fileCsv'),
-    count: count,
+    count: lines.length - 1,
     fields: headers.join(', '),
-    warning: unknown.length ? t('import.unknownColsIgnored', { cols: unknown.join(', ') }) : null,
+    warning: null,
   }
 }
 
@@ -146,13 +174,21 @@ function cancelImport() {
   cancelled.value = true
 }
 
+/* C2 向导：列映射调整后刷新统计/预览 */
+function refreshCSVStats() {
+  if (!importData.value || importMode.value !== 'csv') return
+  csvStats.value = window.ImportExport
+    ? window.ImportExport.parseCSVPreview(importData.value, csvMapping.value, vaultState.entries)
+    : csvStats.value
+}
+
 async function confirmImport() {
   if (!importData.value || importing.value) return
   cancelled.value = false
   importing.value = true
   progress.value = { pct: 0, text: t('import.importing') }
   try {
-    if (importMode.value === 'csv') await importCSV(importData.value)
+    if (importMode.value === 'csv') await importCSV(importData.value, csvMapping.value)
     else if (importMode.value === 'encrypted-vault') await importEncryptedVault(importData.value)
     else await importPlaintextVault(importData.value)
     await saveVault()
@@ -175,24 +211,36 @@ function findDuplicateByTitleUser(title, username) {
   )
 }
 
-/* ── 导入 CSV（合并模式） ─────────────────────────────────────── */
-async function importCSV(text) {
+/* ── 导入 CSV（C2 向导：按列映射解析，合并模式） ─────────────── */
+async function importCSV(text, mapping) {
   const lines = window.Utils.splitCSVLines(text)
   const headers = window.Utils.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim())
 
-  const titleIdx = headers.indexOf('title')
-  const usernameIdx = headers.indexOf('username')
-  const passwordIdx = headers.indexOf('password')
-  const urlIdx = headers.indexOf('url')
-  const entryTypeIdx = headers.indexOf('entrytype')
-  const categoryIdx = headers.indexOf('category')
-  const tagsIdx = headers.indexOf('tags')
-  const notesIdx = headers.indexOf('notes')
-  const rootUserIdx = headers.indexOf('rootusername')
-  const rootPwdIdx = headers.indexOf('rootpassword')
-  const appIdIdx = headers.indexOf('appid')
-  const privateKeyIdx = headers.indexOf('privatekey')
-  const portIdx = headers.indexOf('port')
+  // 由列映射构建 targetField -> 列索引；映射为空时回退固定表头
+  const idx = {}
+  if (mapping && Object.keys(mapping).length) {
+    Object.keys(mapping).forEach(k => {
+      const target = mapping[k]
+      const hi = headers.indexOf(String(k).toLowerCase().trim())
+      if (hi !== -1 && target) idx[target] = hi
+    })
+  } else {
+    headers.forEach(h => { if (window.ImportExport && window.ImportExport.COLUMN_TARGETS.includes(h)) idx[h] = headers.indexOf(h) })
+  }
+
+  const titleIdx = idx.title !== undefined ? idx.title : -1
+  const passwordIdx = idx.password !== undefined ? idx.password : -1
+  const usernameIdx = idx.username !== undefined ? idx.username : -1
+  const urlIdx = idx.url !== undefined ? idx.url : -1
+  const entryTypeIdx = idx.entrytype !== undefined ? idx.entrytype : -1
+  const categoryIdx = idx.category !== undefined ? idx.category : -1
+  const tagsIdx = idx.tags !== undefined ? idx.tags : -1
+  const notesIdx = idx.notes !== undefined ? idx.notes : -1
+  const rootUserIdx = idx.rootusername !== undefined ? idx.rootusername : -1
+  const rootPwdIdx = idx.rootpassword !== undefined ? idx.rootpassword : -1
+  const appIdIdx = idx.appid !== undefined ? idx.appid : -1
+  const privateKeyIdx = idx.privatekey !== undefined ? idx.privatekey : -1
+  const portIdx = idx.port !== undefined ? idx.port : -1
 
   if (titleIdx === -1 || passwordIdx === -1) {
     throw new Error(t('import.errCsvRequiredCols'))
@@ -435,11 +483,58 @@ async function importPlaintextVault(data) {
           <div class="divider"></div>
           <div class="text-sm"><strong>{{ previewInfo.title }}</strong></div>
           <div class="text-muted text-sm mt-1">
-            <template v-if="previewInfo.kind === 'csv'">{{ t('import.csvPreviewMeta', { count: previewInfo.count, fields: previewInfo.fields }) }}</template>
-            <template v-else-if="previewInfo.kind === 'encrypted'">{{ t('import.encryptedPreviewMeta', { time: previewInfo.exportedAt }) }}</template>
-            <template v-else>{{ t('import.plaintextPreviewMeta', { count: previewInfo.count }) }}</template>
+            <template v-if="previewInfo.kind === 'encrypted'">{{ t('import.encryptedPreviewMeta', { time: previewInfo.exportedAt }) }}</template>
+            <template v-else-if="previewInfo.kind === 'plaintext'">{{ t('import.plaintextPreviewMeta', { count: previewInfo.count }) }}</template>
           </div>
-          <div v-if="previewInfo.kind === 'csv'" class="text-warning text-sm mt-2">{{ t('import.csvWarning') }}</div>
+
+          <!-- C2 CSV 导入向导：列映射 → 预览 → 确认 -->
+          <div v-if="previewInfo.kind === 'csv'" class="csv-wizard mt-2">
+            <div class="text-sm"><strong>{{ t('import.wizard.title') }}</strong></div>
+            <div class="text-muted text-sm mt-1">{{ t('import.wizard.hint') }}</div>
+
+            <div class="csv-map-table mt-2">
+              <div class="csv-map-row csv-map-head">
+                <span class="csv-map-col">{{ t('import.wizard.colSource') }}</span>
+                <span class="csv-map-col">{{ t('import.wizard.colTarget') }}</span>
+              </div>
+              <div v-for="(header, i) in csvHeaders" :key="i" class="csv-map-row">
+                <span class="csv-map-col csv-map-src">{{ header || '(空)' }}</span>
+                <select
+                  class="form-input csv-map-select"
+                  :value="csvMapping[header] || IGNORE_VALUE"
+                  @change="e => { csvMapping[header] = e.target.value; refreshCSVStats() }"
+                >
+                  <option v-for="opt in TARGET_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  <option :value="IGNORE_VALUE">{{ t('import.wizard.ignore') }}</option>
+                </select>
+              </div>
+            </div>
+
+            <div v-if="csvStats" class="text-sm mt-2">
+              <span class="text-muted">{{ t('import.wizard.stats', { total: csvStats.totalRows, valid: csvStats.validCount, dup: csvStats.dupCount }) }}</span>
+              <span v-if="csvStats.dupCount > 0" class="text-warning"> · {{ t('import.wizard.dupWarn') }}</span>
+            </div>
+            <div v-if="!csvWizardValid" class="text-warning text-sm mt-1">{{ t('import.wizard.requiredHint') }}</div>
+            <div v-else-if="csvStats && csvStats.validCount === 0" class="text-warning text-sm mt-1">{{ t('import.wizard.noValid') }}</div>
+
+            <div v-if="csvStats && csvStats.previewRows.length" class="text-sm mt-2">
+              <div class="text-muted">{{ t('import.wizard.preview', { n: csvStats.previewRows.length }) }}</div>
+              <table class="csv-preview-table mt-1">
+                <thead>
+                  <tr><th>title</th><th>username</th><th>url</th><th>notes</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, ri) in csvStats.previewRows" :key="ri">
+                    <td>{{ row.title }}</td>
+                    <td>{{ row.username }}</td>
+                    <td>{{ row.url }}</td>
+                    <td>{{ row.notes }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div v-if="previewInfo.warning" class="text-warning text-sm mt-1">{{ previewInfo.warning }}</div>
           <div v-if="previewInfo.kind === 'plaintext'" class="text-warning text-sm mt-2">{{ t('import.plaintextWarning') }}</div>
           <div v-if="previewInfo.kind === 'encrypted'" class="form-group mt-2 mb-0">
@@ -464,7 +559,7 @@ async function importPlaintextVault(data) {
       <button
         v-if="previewInfo && !importing"
         class="btn btn-primary"
-        :disabled="importMode === 'encrypted-vault' && !masterPassword"
+        :disabled="(importMode === 'encrypted-vault' && !masterPassword) || (importMode === 'csv' && !csvWizardValid)"
         @click="confirmImport()"
       >
         {{ t('import.btnImport') }}

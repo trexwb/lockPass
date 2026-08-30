@@ -172,6 +172,8 @@
   border-radius: var(--radius-xs);
   transition: var(--transition);
   display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .pw-gen-btn:hover { color: var(--accent); background: var(--accent-dim); }
 textarea.form-input { resize: vertical; min-height: 80px; }

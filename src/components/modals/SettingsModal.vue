@@ -12,7 +12,7 @@ import ModalBase from '../common/ModalBase.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 
-const { closeModal, openModal, saveVault, resetLockTimer, lockVault } = useVault()
+const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl } = useVault()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -32,6 +32,7 @@ const SETTINGS_TABS = [
 
 const lockTimeout = ref(vaultState.lockTimeoutMs)
 const clipboardClear = ref(vaultState.clipboardClearMs)
+const recycleTtl = ref(vaultState.recycleTtlDays)
 
 /* ── 浏览器扩展：在线扩展包下载 + 使用指南 ── */
 
@@ -46,11 +47,13 @@ const isMac = (navigator.userAgentData && navigator.userAgentData.platform === '
 
 
 /* ── I1：界面语言（多语言方案 §6.5） ── */
-const { t, langPref } = useI18n()
+const { t, pref: langPref, setLang } = useI18n()
 
 function onLangChange(e) {
-  window.I18n.setLangPref(e.target.value)
-  window.Utils.showToast(window.I18n.t('settings.langChanged'), 'success')
+  // 必须走 useI18n.setLang：同步更新响应式 i18nState.lang 驱动全界面即时刷新，
+  // 直接调 window.I18n.setLangPref 只改 core 状态，不触发组件重渲染
+  setLang(e.target.value)
+  window.Utils.showToast(t('settings.langChanged'), 'success')
 }
 
 
@@ -155,6 +158,26 @@ function updateClipboardClear() {
   const value = parseInt(clipboardClear.value, 10)
   vaultState.clipboardClearMs = value
   try { localStorage.setItem('lockpass_clipboard_clear', String(value)) } catch (e) {}
+  window.Utils.showToast(t('settings.toast.saved'), 'success')
+}
+
+/* C4 回收站自动清空：开启（非从不）时确认「自动清空不可恢复」 */
+async function updateRecycleTtl() {
+  const value = parseInt(recycleTtl.value, 10) || 0
+  if (value > 0 && value !== vaultState.recycleTtlDays) {
+    const ok = await window.Utils.confirm({
+      title: t('settings.security.recycleConfirmTitle'),
+      message: t('settings.security.recycleConfirmMsg', { days: value }),
+      confirmText: t('confirm.default.ok'),
+      cancelText: t('confirm.default.cancel'),
+      danger: true,
+    })
+    if (!ok) {
+      recycleTtl.value = vaultState.recycleTtlDays
+      return
+    }
+  }
+  setRecycleTtl(value)
   window.Utils.showToast(t('settings.toast.saved'), 'success')
 }
 
@@ -630,6 +653,26 @@ const settingsCtxItems = computed(() => {
             <option :value="10000">{{ t('settings.security.clear10s') }}</option>
             <option :value="30000">{{ t('settings.security.clear30s') }}</option>
             <option :value="60000">{{ t('settings.security.clear60s') }}</option>
+          </select>
+        </div>
+        <div
+          class="settings-row"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', desc: t('settings.security.recycleTtlDesc'), tab: 'security', tabLabel: t('settings.tab.security'), runLabel: t('settings.security.recycleTtl') + t('settings.ctx.saveSuffix') }, { w: 260, h: 170 })"
+        >
+          <div>
+            <div class="settings-label">{{ t('settings.security.recycleTtl') }}</div>
+            <div class="settings-desc">{{ t('settings.security.recycleTtlDesc') }}</div>
+          </div>
+          <select
+            class="form-input w-120"
+            v-model.number="recycleTtl"
+            @change="updateRecycleTtl()"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: recycleTtl, label: t('settings.security.recycleTtl') }, { w: 220, h: 120 })"
+          >
+            <option :value="0">{{ t('settings.security.recycleNever') }}</option>
+            <option :value="30">{{ t('settings.security.recycle30d') }}</option>
+            <option :value="60">{{ t('settings.security.recycle60d') }}</option>
+            <option :value="90">{{ t('settings.security.recycle90d') }}</option>
           </select>
         </div>
       </div>

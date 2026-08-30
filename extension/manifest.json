@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LockPass 自动填充",
-  "version": "1.1.5",
+  "version": "1.1.9",
   "description": "LockPass 密码保险箱浏览器扩展：解锁后一键填充登录表单（离线，数据不落盘）",
   "permissions": [
     "activeTab",

@@ -73,6 +73,9 @@ export const vaultState = reactive({
   lockTimer: null,
   lockTimeoutMs: loadSettingInt('lockpass_lock_timeout', 5 * 60 * 1000),
   clipboardClearMs: loadSettingInt('lockpass_clipboard_clear', 30 * 1000),
+  // C4 回收站自动清空：0 = 从不；30/60/90 = 天数（localStorage lockpass_recycle_ttl）
+  recycleTtlDays: loadSettingInt('lockpass_recycle_ttl', 0),
+  recycleTimer: null,
   initialized: false,
   hasBindingHistory: false,
   booted: false,
@@ -425,6 +428,9 @@ export function useVault() {
         // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
         saveSession(password)
         vaultState.isUnlocked = true
+        // C4 回收站自动清空：解锁后立即检查一次 + 启动每日检查
+        purgeExpiredRecycle()
+        startRecycleTimer()
         // 浏览器扩展桥：广播就绪（携带会话令牌）
         try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
         // Tauri 本地服务桥：标记就绪（桌面版扩展自动填充用）
@@ -448,6 +454,9 @@ export function useVault() {
 
       saveSession(password)
       vaultState.isUnlocked = true
+      // C4 回收站自动清空：解锁后立即检查一次 + 启动每日检查
+      purgeExpiredRecycle()
+      startRecycleTimer()
       // 浏览器扩展桥：广播就绪（携带会话令牌）
       try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
       // Tauri 本地服务桥：标记就绪（桌面版扩展自动填充用）
@@ -638,6 +647,10 @@ export function useVault() {
     try { window.TauriServer && window.TauriServer.lock() } catch (e) {}
     clearSession()
     clearTimeout(vaultState.lockTimer)
+    if (vaultState.recycleTimer) {
+      clearInterval(vaultState.recycleTimer)
+      vaultState.recycleTimer = null
+    }
     closeDetail()
     vaultState.lockError = ''
     vaultState.activeModal = null
@@ -670,6 +683,10 @@ export function useVault() {
     clearSession()
     vaultState.cryptoKey = null
     vaultState.isUnlocked = false
+    if (vaultState.recycleTimer) {
+      clearInterval(vaultState.recycleTimer)
+      vaultState.recycleTimer = null
+    }
     vaultState.entries = []
     vaultState.tagDefs = {}
     vaultState.tags = []
@@ -726,8 +743,9 @@ export function useVault() {
 
   function getFilteredEntries() {
     let list
+    const isRecycle = vaultState.currentFilter === 'recycle'
 
-    if (vaultState.currentFilter === 'recycle') {
+    if (isRecycle) {
       list = vaultState.deleted
     } else {
       list = vaultState.entries
@@ -741,28 +759,15 @@ export function useVault() {
       }
     }
 
-    const query = vaultState.searchQuery.trim().toLowerCase()
-    if (query) {
-      list = list.filter(e =>
-        (e.title || '').toLowerCase().includes(query) ||
-        (e.username || '').toLowerCase().includes(query) ||
-        (e.url || '').toLowerCase().includes(query) ||
-        (e.tags || []).some(t => t.toLowerCase().includes(query)) ||
-        // 全文搜索索引 customFields[].value（upgrade-design.md §1.3）
-        (e.customFields || []).some(cf => (cf.value || '').toLowerCase().includes(query)),
-      )
-    }
+    // B5 搜索增强：前缀命中 > 子串命中 > 拼音首字母命中，收藏/最近更新优先（src/core/search.js）
+    const query = vaultState.searchQuery.trim()
+    const results = window.SearchUtil.searchEntries(list, query)
 
-    if (vaultState.currentFilter === 'recycle') {
-      return list.slice().sort((a, b) => new Date(b.deletedAt || 0) - new Date(a.deletedAt || 0))
+    if (isRecycle) {
+      // 回收站视图保持 deletedAt 倒序
+      return results.map(r => r.entry).sort((a, b) => new Date(b.deletedAt || 0) - new Date(a.deletedAt || 0))
     }
-
-    return list.slice().sort((a, b) => {
-      if ((b.favorite || false) !== (a.favorite || false)) {
-        return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)
-      }
-      return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
-    })
+    return results.map(r => r.entry)
   }
 
   function getEntryById(id) {
@@ -854,6 +859,16 @@ export function useVault() {
     const idx = vaultState.entries.findIndex(e => e.id === id)
     if (idx === -1) return
     const entry = vaultState.entries[idx]
+
+    // 确认弹窗：移动端误触防护（卡片按钮/详情页/长按菜单均走此入口）
+    const confirmed = await window.Utils.confirm({
+      title: t('vault.confirm.softDelete.title'),
+      message: t('vault.confirm.softDelete.msg', { title: entry.title || t('detail.untitled') }),
+      confirmText: t('vault.confirm.softDelete.ok'),
+      danger: true,
+    })
+    if (!confirmed) return
+
     entry.deletedAt = new Date().toISOString()
     vaultState.entries.splice(idx, 1)
     vaultState.deleted.push(entry)
@@ -936,6 +951,52 @@ export function useVault() {
     await saveVault()
     if (vaultState.currentFilter === 'recycle') closeDetail()
     window.Utils.showToast(t('toast.trashEmptied'), 'success')
+  }
+
+  /* ── 回收站定时清空（C4） ───────────────────────
+     解锁后立即检查 + 每日检查；超 TTL 条目彻底删除（含密码历史快照）；
+     旧数据无 deletedAt 不参与（安全兜底）。 */
+  function purgeExpiredRecycle() {
+    const ttl = vaultState.recycleTtlDays
+    if (!ttl || ttl <= 0) return 0
+    const cutoff = Date.now() - ttl * 24 * 60 * 60 * 1000
+    const expired = vaultState.deleted.filter(e => {
+      if (!e.deletedAt) return false
+      const ts = new Date(e.deletedAt).getTime()
+      return !isNaN(ts) && ts < cutoff
+    })
+    if (!expired.length) return 0
+    const deadIds = expired.map(e => e.id)
+    vaultState.deleted = vaultState.deleted.filter(e => !deadIds.includes(e.id))
+    // 同步清理这些条目的密码历史（无主数据不保留）
+    if (deadIds.length) {
+      const keep = {}
+      Object.keys(vaultState.history).forEach(id => {
+        if (!deadIds.includes(id)) keep[id] = vaultState.history[id]
+      })
+      vaultState.history = keep
+    }
+    saveVault()
+    if (vaultState.currentFilter === 'recycle') closeDetail()
+    window.Utils.showToast(t('toast.recycleAutoPurged', { count: expired.length }), 'info')
+    return expired.length
+  }
+
+  function startRecycleTimer() {
+    if (vaultState.recycleTimer) {
+      clearInterval(vaultState.recycleTimer)
+      vaultState.recycleTimer = null
+    }
+    if (vaultState.recycleTtlDays > 0) {
+      vaultState.recycleTimer = setInterval(() => { purgeExpiredRecycle() }, 24 * 60 * 60 * 1000)
+    }
+  }
+
+  function setRecycleTtl(days) {
+    const v = parseInt(days, 10) || 0
+    vaultState.recycleTtlDays = v
+    try { localStorage.setItem('lockpass_recycle_ttl', String(v)) } catch (e) {}
+    startRecycleTimer()
   }
 
   /* ── 剪贴板 ────────────────────────────────── */
@@ -1365,6 +1426,8 @@ export function useVault() {
     restoreEntry,
     permanentDelete,
     emptyRecycleBin,
+    purgeExpiredRecycle,
+    setRecycleTtl,
     copyToClipboard,
     copyPassword,
     copyField,

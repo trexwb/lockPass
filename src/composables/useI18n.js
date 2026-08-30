@@ -9,8 +9,10 @@
    ═══════════════════════════════════════════════════════════════════ */
 import { computed, reactive } from 'vue'
 
-/** 语言状态（模块级单例，全部组件共享同一份响应式状态） */
-const i18nState = reactive({ lang: window.I18n.getLang() })
+/** 语言状态（模块级单例，全部组件共享同一份响应式状态）
+    lang：解析后的具体语言；pref：用户偏好（'system' | 具体语言）——
+    两者都入 reactive，否则 computed 首次求值后永久缓存，切换后不更新 */
+const i18nState = reactive({ lang: window.I18n.getLang(), pref: window.I18n.getLangPref() })
 
 export function useI18n() {
   /** 模板/JS 通用 t：读取响应式语言建立依赖，切换语言时使用方自动重渲染 */
@@ -23,12 +25,13 @@ export function useI18n() {
   function setLang(pref) {
     window.I18n.setLangPref(pref)
     i18nState.lang = window.I18n.getLang()
+    i18nState.pref = window.I18n.getLangPref()
   }
 
   return {
     t,
     lang: computed(() => i18nState.lang),
-    pref: computed(() => window.I18n.getLangPref()),
+    pref: computed(() => i18nState.pref),
     setLang,
   }
 }

@@ -13,8 +13,10 @@
  */
 import { computed } from 'vue'
 import { vaultState } from '../../composables/useVault'
+import { useI18n } from '../../composables/useI18n'
 
 const Icons = window.Utils.SvgIcons
+const { t } = useI18n()
 
 const cd = computed(() => vaultState.clipboardCountdown)
 

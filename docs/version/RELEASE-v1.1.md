@@ -5,6 +5,45 @@
 > 收敛说明：以下版本号无独立分节，内容并入相邻分节——
 > `v1.1.1`（并入 v1.1.0，多语言残留清偿）· `v1.1.2`（并入 v1.1.0，Tauri 脚本性能与健壮性深化）· `v1.1.3`（并入 v1.1.0，点击可达性专项审计）· `v1.1.4`（并入 v1.1.0，密码生成器取消生成记录）
 
+### v1.1.7 (2026-08-30)
+
+移动端图标/文字对齐专项修复（触屏优化收口）：
+
+## 修复
+
+- **密码输入框图标错位**（根因）：`.pw-gen-btn` 仅 `display:flex` 缺 `align-items/justify-content` 居中——桌面端尺寸由内容撑开无感，触屏端被 `min-width/min-height: 44px` 撑大后 svg 停靠左上角，表现为眼睛/生成器图标未垂直居中、与相邻按钮视觉重叠；补居中后全局生效（EntryEditorModal 10 处 input-affix、ChangePwModal、自定义字段敏感值眼睛按钮均覆盖）
+- **锁屏主密码眼睛按钮**：`.toggle-pw` 同类缺居中，一并补齐
+- **触屏双按钮间距**：`.input-affix-btns` 在 `(hover:none) and (pointer:coarse)` 下 `gap: 2px` 过挤，调至 `6px`；输入框 `padding-right` 96px → 112px（44+6+44=94px 按钮区 + right 8px，留 10px 缓冲，避免输入文字被按钮压住）
+- **全量排查**：`.btn-icon` / `.btn` / `.type-tab` / `.tag-chip` / `.tag-option` / `.mini-btn` / `.chip .box` / `.hamburger-btn`（含 `.btn-icon` 类）均已具备居中，无其他同类错位
+
+## 验证
+
+- `vite:build` 0 error
+- `version:check` 全版本号一致
+
+### v1.1.6 (2026-08-30)
+
+小功能/小工具第一批（upgrade-design.md 第十章 10.1）：搜索增强（B5）+ Chrome CSV 导入向导（C2）+ 回收站定时清空（C4）
+
+## 新能力
+
+- **B5 搜索增强**：新增 `src/core/search.js`（window.SearchUtil）——拼音首字母 / 全拼 / 子串 / 前缀多路匹配，对标题、用户名、备注、URL、自定义字段统一归一化打分排序；搜索结果标题/副标题命中词高亮（`highlightField` 内置 HTML 转义，防 XSS）；`useVault.getFilteredEntries` 全文搜索改走 SearchUtil，回收站视图仍按 deletedAt 倒序
+- **C2 Chrome CSV 导入向导**：`src/core/import-bridge.js` 新增列映射能力（`autoGuessMapping` 精确/别名命中、`parseCSVPreview` 预览统计、`COLUMN_TARGETS`），`ImportModal.vue` 新增「列映射 → 预览 → 确认」三步向导——自动识别 Chrome 导出列（name/url/username/password/note），支持手动调整映射、忽略列、重复条目计数提示；拖拽导入同样自动猜测映射
+- **C4 回收站定时清空**：软删除已写 `deletedAt` 时间戳；设置-安全新增「回收站自动清空」下拉（从不 / 30 / 60 / 90 天），开启时二次确认（自动清空不可恢复）；解锁后立即检查一次 + 每日定时检查，到期条目彻底删除（同步清理密码历史快照），Toast 报告清理数量
+
+## 存储与设置
+
+- 设置项 `lockpass_recycle_ttl` 存 localStorage（0 = 从不），不改保险箱数据模型，旧数据无 `deletedAt` 不参与自动清空（安全兜底）
+
+## 文档
+
+- AGENTS.md / docs/spec.md 版本号同步 v1.1.6（含 extension/manifest.json、Cargo.toml）
+
+## 验证
+
+- `vite:build` 0 error
+- 新增/改动核心脚本 `node --check` 全过
+
 ### v1.1.5 (2026-08-30)
 
 条目自定义字段扩展（upgrade-design.md 第一章「条目字段扩展」阶段 0）：

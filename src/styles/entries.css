@@ -25,6 +25,9 @@
   padding: 14px 16px;
   margin-bottom: 8px;
   cursor: pointer;
+  /* 触控优化：允许浏览器平移/缩放但禁用双击缩放，保证长按手势不被中断 */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   /* UICraft：GPU 友好的 transform/opacity 过渡 + 边框色 */
   transition: transform var(--dur-fast) var(--ease-out-quart),
               border-color var(--dur-fast) var(--ease-out-quart),
@@ -67,6 +70,12 @@
 .entry-card:hover::after { transform: translateX(100%); }
 .entry-card.fav::before { background: var(--warning); }
 .entry-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+/* 长按进行中：轻微缩放 + 强调边框，给用户触觉级别的视觉确认 */
+.entry-card.long-pressing {
+  transform: scale(0.97);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
 .entry-icon {
   width: 38px;
   height: 38px;
@@ -402,6 +411,8 @@
   flex-direction: column;
   flex-shrink: 0;
   transform: translateX(100%);
+  /* 允许垂直滚动但捕获水平手势（swipe-to-close） */
+  touch-action: pan-y;
   /* 抽屉式入场：transform + visibility 延迟，GPU 友好 */
   transition: transform var(--dur-med) var(--ease-out-quart),
               visibility 0s linear var(--dur-med);
@@ -415,6 +426,37 @@
   z-index: var(--z-detail);
 }
 #detail-panel.open { transform: translateX(0); visibility: visible; transition: transform var(--dur-med) var(--ease-out-quart); }
+/* 拖拽态：内联 style 控制 transform，CSS 仅补视觉反馈 */
+#detail-panel.swiping {
+  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.55);
+  user-select: none;
+}
+/* 滑动暗示：左侧细条，仅移动端抽屉模式可见 */
+#detail-panel .swipe-hint {
+  display: none;
+}
+@media (max-width: 1024px) {
+  #detail-panel.open .swipe-hint {
+    display: block;
+    position: absolute;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 36px;
+    border-radius: 2px;
+    background: var(--text-tertiary);
+    opacity: 0.35;
+    z-index: 1;
+    animation: swipe-hint-pulse 2.4s var(--ease-out-quart) infinite;
+    pointer-events: none;
+  }
+  #detail-panel.swiping .swipe-hint { opacity: 0; }
+}
+@keyframes swipe-hint-pulse {
+  0%, 100% { opacity: 0.2; transform: translateY(-50%) scaleX(1); }
+  50% { opacity: 0.5; transform: translateY(-50%) scaleX(1.4); }
+}
 .detail-header {
   padding: 18px 20px;
   border-bottom: 1px solid var(--border);
@@ -864,4 +906,17 @@
   /* 触屏无 hover，菜单项用 :active 提供按压反馈 */
   .ctx-item:active { background: var(--bg-hover); }
   .ctx-item.ctx-danger:active { background: var(--danger-dim); }
+}
+
+/* ── 手机端（≤480px）：卡片操作按钮提升至 44px 触控下限 ── */
+@media (max-width: 480px) {
+  .entry-actions button,
+  .copy-btn,
+  .delete-btn,
+  .star-btn,
+  .restore-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .entry-actions { gap: 6px; }
 }

@@ -4,6 +4,7 @@
 import { computed, reactive } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import { useCtxMenu } from '../../composables/useCtxMenu'
+import { useSwipeClose } from '../../composables/useSwipeClose'
 import FieldRow from './FieldRow.vue'
 import SecretFieldRow from './SecretFieldRow.vue'
 import CustomFieldRow from './CustomFieldRow.vue'
@@ -30,6 +31,19 @@ const showPw = computed(() => !!(entry.value && vaultState.showPasswordMap[entry
 // P2-6 修复：面板 open/animating 类由响应式状态驱动（selectEntry 维护）
 const panelOpen = computed(() => !!entry.value && vaultState.detailAnim !== 'collapse')
 const panelAnimating = computed(() => vaultState.detailAnim === 'collapse' || vaultState.detailAnim === 'reopen')
+
+// 右滑关闭手势（详情面板在右侧，手指右滑 → translateX 跟随 → 超阈值关闭）
+// 仅移动端抽屉模式（≤1024px）且面板已打开时启用
+const { dragOffset, isDragging, onTouchStart, onTouchMove, onTouchEnd } = useSwipeClose({
+  direction: 'right',
+  threshold: 80,
+  onClose: () => closeDetail(),
+  isEnabled: () => window.matchMedia('(max-width: 1024px)').matches && !!entry.value,
+})
+const panelStyle = computed(() => {
+  if (!isDragging.value || !dragOffset.value) return null
+  return { transform: `translateX(${dragOffset.value}px)`, transition: 'none' }
+})
 
 function maskValue(v) {
   return showPw.value ? String(v ?? '') : '••••••••'
@@ -389,7 +403,16 @@ const detailCtxItems = computed(() => {
 
 <template>
   <div id="detail-backdrop" @click="closeDetail()" aria-hidden="true"></div>
-  <aside id="detail-panel" :class="{ open: panelOpen, animating: panelAnimating }">
+  <aside
+    id="detail-panel"
+    :class="{ open: panelOpen, animating: panelAnimating, swiping: isDragging }"
+    :style="panelStyle"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend.passive="onTouchEnd"
+    @touchcancel.passive="onTouchEnd"
+  >
+    <div class="swipe-hint" aria-hidden="true"></div>
     <template v-if="entry">
       <div
         class="detail-header"
