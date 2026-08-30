@@ -18,6 +18,54 @@ const CHARSETS = {
 };
 
 /**
+ * 拒绝采样随机整数：返回 [0, n) 的均匀整数（消除模运算偏差）
+ * @param {number} n - 上限（n > 0）
+ * @returns {number}
+ */
+function randInt(n) {
+  const max = Math.floor(0xFFFFFFFF / n) * n;
+  const arr = new Uint32Array(1);
+  for (;;) {
+    crypto.getRandomValues(arr);
+    const v = arr[0];
+    if (v < max) return v % n; // 落入拒绝区间则重抽
+  }
+}
+
+/**
+ * Fisher-Yates 原地洗牌（拒绝采样随机源）
+ * @param {Array} arr
+ */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = randInt(i + 1);
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+}
+
+/**
+ * 校验是否违反「禁止连续重复」约束
+ * @param {string} password
+ * @param {number} maxRepeat - 允许的最大连续相同字符数（0 = 不限）
+ * @returns {boolean}
+ */
+function hasExcessiveRepeat(password, maxRepeat) {
+  if (!maxRepeat || maxRepeat < 1 || password.length < 2) return false;
+  let run = 1;
+  for (let i = 1; i < password.length; i++) {
+    if (password[i] === password[i - 1]) {
+      run++;
+      if (run > maxRepeat) return true;
+    } else {
+      run = 1;
+    }
+  }
+  return false;
+}
+
+/**
  * 生成密码
  * @param {Object} options - 配置选项
  * @param {number} options.length - 密码长度 (8-64)
@@ -26,6 +74,8 @@ const CHARSETS = {
  * @param {boolean} options.numbers - 包含数字
  * @param {boolean} options.symbols - 包含符号
  * @param {boolean} options.noAmbiguous - 排除歧义字符 (0/O/l/1/I)
+ * @param {boolean} options.minEachSet - 每组字符集至少出现 1 个字符（默认开启）
+ * @param {number} options.maxRepeat - 允许的最大连续相同字符数（默认 0 = 不限；1 = 禁止连续重复）
  * @returns {string} 生成的密码
  */
 function generatePassword(options = {}) {
@@ -35,44 +85,43 @@ function generatePassword(options = {}) {
     lowercase = true,
     numbers = true,
     symbols = true,
-    noAmbiguous = false
+    noAmbiguous = false,
+    minEachSet = true,
+    maxRepeat = 0
   } = options;
-  
-  // 构建字符集
-  let charset = '';
-  
-  if (uppercase) {
-    charset += noAmbiguous ? CHARSETS.uppercaseNoAmbig : CHARSETS.uppercase;
-  }
-  if (lowercase) {
-    charset += noAmbiguous ? CHARSETS.lowercaseNoAmbig : CHARSETS.lowercase;
-  }
-  if (numbers) {
-    charset += noAmbiguous ? CHARSETS.numbersNoAmbig : CHARSETS.numbers;
-  }
-  if (symbols) {
-    charset += CHARSETS.symbols;
-  }
-  
-  // 如果没有选择任何字符集，使用默认小写字母
-  if (!charset) {
-    charset = CHARSETS.lowercase;
-  }
-  
-  // 生成密码（拒绝采样消除模运算偏差：丢弃落入拒绝区间的随机数）
-  const array = new Uint32Array(length);
-  const charsetLen = charset.length;
-  const max = Math.floor(0xFFFFFFFF / charsetLen) * charsetLen;
 
-  let password = '';
-  let i = 0;
-  while (i < length) {
-    crypto.getRandomValues(array);
-    for (let j = 0; j < length && i < length; j++) {
-      const v = array[j];
-      if (v >= max) continue; // 拒绝采样：落入拒绝区间则丢弃
-      password += charset[v % charsetLen];
-      i++;
+  // 构建启用的字符集列表（保持每类独立，便于 minEachSet 逐组保证）
+  const sets = [];
+  if (uppercase) sets.push(noAmbiguous ? CHARSETS.uppercaseNoAmbig : CHARSETS.uppercase);
+  if (lowercase) sets.push(noAmbiguous ? CHARSETS.lowercaseNoAmbig : CHARSETS.lowercase);
+  if (numbers) sets.push(noAmbiguous ? CHARSETS.numbersNoAmbig : CHARSETS.numbers);
+  if (symbols) sets.push(CHARSETS.symbols);
+
+  // 全取消时回退小写（兼容旧调用方；弹窗层会在 UI 上禁用生成）
+  if (!sets.length) sets.push(CHARSETS.lowercase);
+
+  const charset = sets.join('');
+
+  /**
+   * 生成一次候选密码（不含 maxRepeat 校验）
+   * - minEachSet：先为每个启用集合随机取 1 个字符，剩余位从全集中随机
+   * - 最后洗牌，保证「每集至少 1 个」的字符分布随机而非固定前缀
+   */
+  const build = () => {
+    const chars = [];
+    if (minEachSet && length >= sets.length) {
+      for (const set of sets) chars.push(set[randInt(set.length)]);
+    }
+    while (chars.length < length) chars.push(charset[randInt(charset.length)]);
+    shuffle(chars);
+    return chars.join('');
+  };
+
+  // 生成：maxRepeat 约束通过「整体重试」满足（长度 8~64、字符集 ≥ 4 类时失败概率极低）
+  let password = build();
+  if (maxRepeat && maxRepeat >= 1) {
+    for (let attempt = 0; attempt < 24 && hasExcessiveRepeat(password, maxRepeat); attempt++) {
+      password = build();
     }
   }
 

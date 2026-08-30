@@ -77,6 +77,13 @@ export const vaultState = reactive({
   // 模态框状态（activeModal: 'entry' | 'settings' | 'import' | 'export' | 'qr-import' | 'qr-share' | 'change-pw' | 'tags'）
   activeModal: null,
   editingEntryId: null,
+  // 密码生成器独立弹窗（不占用 activeModal，可叠加在 EntryEditorModal 之上）
+  // target: null=无目标字段（仅复制） | { source: 'entry', field: 'password'|'rootPwd' }
+  pwGenVisible: false,
+  pwGenTarget: null,
+  // 填入回填请求：EntryEditorModal watch 到非ce 递增后回填字段并自动隐藏
+  pwGenFillNonce: 0,
+  pwGenFillValue: '',
   // 详情面板收回再弹出动画状态（P2-6 修复：由 DetailPanel 类绑定响应式驱动）
   // detailAnim: null（静止打开）| 'collapse'（收回中，open 暂时挂起）| 'reopen'（弹出中）
   detailAnim: null,
@@ -1109,6 +1116,23 @@ export function useVault() {
     vaultState.editingEntryId = null
   }
 
+  /* ── 密码生成器独立弹窗（方案 C，不占用 activeModal） ───── */
+
+  function openPasswordGenerator(target = null) {
+    vaultState.pwGenTarget = target || null
+    vaultState.pwGenVisible = true
+  }
+
+  function closePasswordGenerator() {
+    vaultState.pwGenVisible = false
+    vaultState.pwGenTarget = null
+  }
+
+  function requestPwGenFill(value) {
+    vaultState.pwGenFillValue = value || ''
+    vaultState.pwGenFillNonce++
+  }
+
   /* ── 保存条目（编辑器回调） ─────────────────── */
 
   /* ── 修改历史与回滚（v1.0.x：任意字段变更均记录） ───────
@@ -1331,6 +1355,9 @@ export function useVault() {
     openEntryModal,
     openModal,
     closeModal,
+    openPasswordGenerator,
+    closePasswordGenerator,
+    requestPwGenFill,
     saveEntry,
     rollbackEntry,
     snapDiffers,

@@ -11,6 +11,7 @@ import ExportModal from './modals/ExportModal.vue'
 import QrShareModal from './modals/QrShareModal.vue'
 import QrImportModal from './modals/QrImportModal.vue'
 import PairRequestModal from './modals/PairRequestModal.vue'
+import PasswordGeneratorModal from './modals/PasswordGeneratorModal.vue'
 
 const { closeModal } = useVault()
 
@@ -41,4 +42,6 @@ const activeName = computed(() => {
   </Transition>
   <!-- 一键配对弹窗：独立于 activeModal，桌面版配对请求时弹出 -->
   <PairRequestModal />
+  <!-- 密码生成器：独立于 activeModal，可叠加在 EntryEditorModal 之上 -->
+  <PasswordGeneratorModal />
 </template>

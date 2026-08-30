@@ -19,7 +19,7 @@ const {
   getFilteredEntries, emptyRecycleBin, restoreEntry, selectEntry,
   toggleFavorite, copyPassword, softDelete, permanentDelete,
   setFilter, openEntryModal, computeSidebarStats, openModal,
-  copyField, lockVault,
+  copyField, lockVault, openPasswordGenerator,
 } = useVault()
 
 // 类型中文名（P3-8 修复：卡片/详情中的类型 title 不再显示英文 id）
@@ -194,7 +194,14 @@ watch(
 
 /** 根据当前 payload 生成菜单项（扩展自旧版 4 项 → 最高 10+，按类型动态插入） */
 const entryCtxItems = computed(() => {
-  if (!ctxMenu.payload || ctxMenu.payload.kind !== 'entry') return []
+  if (!ctxMenu.payload) return []
+  // 工作区兜底右键：工具栏 / 列表空白 / 空状态 → 生成密码（无目标字段，仅复制）
+  if (ctxMenu.payload.kind === 'workspace') {
+    return [
+      { key: 'pwgen', label: t('pwgen.ctxEntry'), iconHtml: Icons?.refresh?.(14), accent: true },
+    ]
+  }
+  if (ctxMenu.payload.kind !== 'entry') return []
   const e = ctxMenu.payload.entry
   if (!e) return []
 
@@ -231,6 +238,8 @@ const entryCtxItems = computed(() => {
     list.push({ key: 'copy-mysql', label: t('detail.ctx.copyMysql'), iconHtml: Icons?.terminal(14) })
   }
   list.push({ divider: true })
+  list.push({ key: 'pwgen', label: t('pwgen.ctxEntry'), iconHtml: Icons?.refresh?.(14), accent: true })
+  list.push({ divider: true })
   list.push({ key: 'qr-share', label: t('detail.ctx.qrShare'), iconHtml: Icons?.qr(14) })
   list.push({ divider: true })
   list.push({ key: 'delete', label: t('detail.ctx.softDelete'), iconHtml: Icons?.trash(14), danger: true })
@@ -242,6 +251,11 @@ async function onEntryCtxAction(action) {
   const payload = ctxMenu.payload
   closeCtxMenu()
   const e = payload?.entry
+  // 全局级动作：无目标条目也可执行（工作区右键菜单）
+  if (action === 'pwgen') {
+    openPasswordGenerator()
+    return
+  }
   if (!e) return
   const id = e.id
   try {

@@ -1,0 +1,373 @@
+/* LockPass — 密码生成器独立弹窗样式（方案 C）
+   全部颜色/动效走设计令牌（支持深浅主题），命中区域 ≥40px（移动端适配） */
+
+/* ── 弹窗整体 ───────────────────────────────────────────── */
+.pwgen-modal {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pwgen-header {
+  flex-shrink: 0;
+}
+
+.pwgen-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: thin;
+}
+
+/* ── 预览区（点击复制） ──────────────────────────────────── */
+.pwgen-preview {
+  position: relative;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 14px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.pwgen-preview:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+  background: var(--bg-secondary);
+}
+.pwgen-preview:active { transform: scale(0.995); }
+.pwgen-preview.is-copied {
+  border-color: var(--success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 22%, transparent);
+}
+
+.pwgen-preview-pw {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  line-height: 1.5;
+  word-break: break-all;
+  min-height: 1.9em;
+  color: var(--text-primary);
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+.pwgen-preview-pw.is-weak { color: var(--danger); }
+
+/* 逐字浮现微动效（新密码生成时触发） */
+.pwgen-char {
+  display: inline-block;
+  animation: pwgen-char-in var(--dur-fast) var(--ease-out-quart) both;
+}
+@keyframes pwgen-char-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pwgen-empty {
+  color: var(--warning);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.pwgen-preview-tip {
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  transition: color var(--dur-fast);
+}
+.pwgen-preview.is-copied .pwgen-preview-tip { color: var(--success); }
+
+.pwgen-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 预览区小型操作按钮：热区 ≥40px（伪元素扩大命中） */
+.mini-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.mini-btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+}
+.mini-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.mini-btn:active { transform: scale(0.96); }
+.mini-btn-fill {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ── 强度条 ──────────────────────────────────────────────── */
+.pwgen-strength {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pwgen-strength-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pwgen-strength-row .lbl,
+.pwgen-ctl-row .lbl {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+.pwgen-strength-row .val {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.pwgen-strength-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.pwgen-strength-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width var(--dur-med) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart);
+}
+
+/* ── 分隔线 ──────────────────────────────────────────────── */
+.pwgen-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+/* ── 长度滑杆 ────────────────────────────────────────────── */
+.pwgen-ctl-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pwgen-ctl-row .lbl { flex: none; min-width: 52px; }
+.pwgen-range {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              filter var(--dur-fast);
+}
+.pwgen-range:hover { transform: scaleY(1.15); filter: saturate(1.15); }
+.pwgen-range:active { transform: scaleY(0.95); }
+/* thumb：40px 命中区 */
+.pwgen-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-secondary);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+  transition: transform var(--dur-micro) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.pwgen-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.pwgen-range::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  box-shadow: 0 0 0 9px var(--accent-dim);
+}
+.pwgen-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-secondary);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+}
+.pwgen-ctl-row .num {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font-size: 0.9rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 字符集 chips ────────────────────────────────────────── */
+.pwgen-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart);
+}
+.chip:hover {
+  border-color: var(--border-focus, var(--accent));
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+.chip.on {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+.chip .box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.chip.on .box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.chip .box-check {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--bg-primary);
+  font-weight: 700;
+}
+.chip .chip-name {
+  font-size: 0.84rem;
+  flex: 1;
+  white-space: nowrap;
+}
+.chip .hint {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+.chip-wide { grid-column: 1 / -1; }
+.chip-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── 高级选项折叠 ────────────────────────────────────────── */
+.pwgen-adv {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+.pwgen-adv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.pwgen-adv-head:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.pwgen-adv-head .chev {
+  margin-left: auto;
+  font-size: 0.7rem;
+  transition: transform var(--dur-fast) var(--ease-out-quart);
+}
+.pwgen-adv.open .chev { transform: rotate(180deg); }
+.pwgen-adv-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-med) var(--ease-out-quart);
+}
+.pwgen-adv.open .pwgen-adv-body { grid-template-rows: 1fr; }
+.pwgen-adv-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.pwgen-adv-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 14px;
+}
+.pwgen-adv.open .pwgen-adv-inner { padding: 6px 14px 12px; }
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+.switch-row:hover { color: var(--text-primary); }
+
+/* ── 底部 ────────────────────────────────────────────────── */
+.pwgen-footer { flex-shrink: 0; }
+.pwgen-footer .btn { min-height: 40px; }
+
+/* ── 移动端适配：单列 chips、字号/间距微调 ────────────────── */
+@media (max-width: 480px) {
+  .pwgen-body { padding: 14px 16px 18px; gap: 12px; }
+  .pwgen-preview-pw { font-size: 1.1rem; }
+  .pwgen-chips { grid-template-columns: 1fr; gap: 6px; }
+  .chip { min-height: 48px; }
+  .pwgen-ctl-row { flex-wrap: nowrap; }
+  .mini-btn { min-height: 40px; flex: 1; justify-content: center; }
+  .pwgen-actions { flex-wrap: nowrap; }
+  .pwgen-footer .btn { min-height: 44px; }
+  .pwgen-range::-webkit-slider-thumb { width: 28px; height: 28px; }
+  .pwgen-range::-moz-range-thumb { width: 28px; height: 28px; }
+}

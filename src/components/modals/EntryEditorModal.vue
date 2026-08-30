@@ -9,7 +9,7 @@ import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal } = useVault()
+const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal, openPasswordGenerator } = useVault()
 const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
@@ -156,6 +156,19 @@ function toggleSecret(k) {
   }
 }
 
+// 密码生成器「填入」回填：弹窗 requestPwGenFill 递增 nonce 后，回填目标字段并 5s 自动隐藏
+watch(() => vaultState.pwGenFillNonce, (n) => {
+  if (!n) return
+  const val = vaultState.pwGenFillValue
+  const field = vaultState.pwGenTarget?.field
+  if (!val || !field || !(field in fields)) return
+  fields[field] = val
+  showFields[field] = true
+  _scheduleAutoHide(field)
+  updateStrength()
+  window.Utils.showToast?.(t('editor.toastPwGenFilled'), 'success')
+})
+
 // 复制文本到剪贴板（P2-9 修复：走 useVault 统一安全链路——
 // 成功 Toast 反馈 + 30 秒自动清除，替代原来绕过链路的裸 navigator.clipboard 调用）
 async function copyText(text, btnEl = null) {
@@ -163,68 +176,16 @@ async function copyText(text, btnEl = null) {
   await copyToClipboard(text, null, btnEl)
 }
 
-/* ── 密码生成面板 ─────────────────────────────── */
+/* ── 密码生成器（方案 C：独立弹窗，替代原内嵌展开面板） ────── */
 
-const genPanelOpen = ref(false)
-const genOptions = reactive({
-  length: 16,
-  upper: true,
-  lower: true,
-  number: true,
-  symbol: true,
-  noAmbig: false,
-})
-const genPreview = ref('')
-
-function genPasswordNow() {
-  const pw = window.PasswordGenerator.generatePassword({
-    length: genOptions.length,
-    uppercase: genOptions.upper,
-    lowercase: genOptions.lower,
-    numbers: genOptions.number,
-    symbols: genOptions.symbol,
-    noAmbiguous: genOptions.noAmbig,
-  })
-  genPreview.value = pw
-  return pw
-}
-
-const genStrength = computed(() => {
-  if (!genPreview.value) return { label: '', pct: 0, color: '' }
-  const info = window.PasswordGenerator.calcStrength(genPreview.value)
-  return { label: `${info.label} · ${t('editor.strength.entropy', { bits: info.entropy.toFixed(0) })}`, pct: info.pct, color: info.color }
-})
-
-function toggleGenPanel() {
-  genPanelOpen.value = !genPanelOpen.value
-  if (genPanelOpen.value && !genPreview.value) genPasswordNow()
-}
-
-function useGeneratedPassword() {
-  if (!genPreview.value) return
-  fields.password = genPreview.value
-  showFields.password = true
-  _scheduleAutoHide('password')
-  genPanelOpen.value = false
-}
-
-function generatePw() {
-  // 快捷生成：直接填入密码字段（与原生"生成"按钮等价）
-  const pw = genPasswordNow()
-  fields.password = pw
-  showFields.password = true
-  _scheduleAutoHide('password')
-  updateStrength()
+// 唤起独立弹窗：target 携带来源与目标字段，回填时由弹窗 requestPwGenFill 驱动
+function openPwGen(fieldKey) {
+  openPasswordGenerator({ source: 'entry', field: fieldKey || 'password' })
 }
 
 // 局部生成：直接填入指定字段（原版 generatePasswordFor 等价，root 密码用）
 function generateFor(k) {
-  const pw = window.PasswordGenerator.generatePassword({
-    length: 16, uppercase: true, lowercase: true, numbers: true, symbols: true, noAmbiguous: false,
-  })
-  fields[k] = pw
-  showFields[k] = true
-  _scheduleAutoHide(k)
+  openPwGen(k)
 }
 
 /* ── 密码强度条 ───────────────────────────────── */
@@ -422,22 +383,6 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       else if (action === 'clear-field') fields[fieldKey] = ''
       return
     }
-    case 'gen-preview': {
-      const val = genPreview.value
-      if (action === 'copy-preview' && val) copyText(val)
-      else if (action === 'regen') genPasswordNow()
-      else if (action === 'use') useGeneratedPassword()
-      return
-    }
-    case 'gen-charset': {
-      const cs = payload.cs
-      const map = { upper: 'upper', lower: 'lower', number: 'number', symbol: 'symbol', noAmbig: 'noAmbig' }
-      const key = map[cs]
-      if (!key) return
-      if (action === 'toggle') genOptions[key] = !genOptions[key]
-      if (genPanelOpen.value) genPasswordNow()
-      return
-    }
     case 'tag-chip': {
       const name = payload.name
       if (!name) return
@@ -499,19 +444,6 @@ const editorCtxItems = computed(() => {
       const val = fields[p.fieldKey || 'password']
       if (val) list.push({ key: 'copy-value', label: t('editor.ctx.copyValue'), iconHtml: I?.copy?.(14) })
       list.push({ key: 'clear-field', label: t('editor.ctx.clearField'), iconHtml: I?.close?.(14), danger: true })
-      return list
-    }
-    case 'gen-preview': {
-      const val = genPreview.value
-      list.push({ key: 'use', label: t('editor.ctx.useThisPw'), iconHtml: I?.edit?.(14), accent: true, disabled: !val })
-      list.push({ key: 'regen', label: t('editor.ctx.regen'), iconHtml: I?.refresh?.(14) || I?.share?.(14) })
-      if (val) list.push({ key: 'copy-preview', label: t('editor.ctx.copyPreview'), iconHtml: I?.copy?.(14) })
-      return list
-    }
-    case 'gen-charset': {
-      const labels = { upper: t('editor.charset.upper'), lower: t('editor.charset.lower'), number: t('editor.charset.number'), symbol: t('editor.charset.symbol'), noAmbig: t('editor.charset.noAmbig') }
-      const label = labels[p.cs] || p.cs
-      list.push({ key: 'toggle', label: t('editor.ctx.toggleCharset', { label }), iconHtml: I?.edit?.(14), accent: true })
       return list
     }
     case 'tag-chip': {
@@ -606,7 +538,7 @@ const editorCtxItems = computed(() => {
               <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
               </button>
-              <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="toggleGenPanel()">
+              <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="openPwGen('password')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                 </svg>
@@ -618,59 +550,6 @@ const editorCtxItems = computed(() => {
               <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
             </div>
             <div class="pw-strength-text">{{ strength.label }}</div>
-          </div>
-          <div v-if="genPanelOpen" class="pw-gen-panel">
-            <div
-              class="pw-gen-preview"
-              :title="t('editor.tipGenPreviewCtx')"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-preview' }, { w: 260, h: 200 })"
-            >
-              <span class="pw-gen-preview-text mono">{{ genPreview || t('editor.clickToGen') }}</span>
-              <button class="btn-icon btn-icon-xs" type="button" :title="t('editor.ctx.regen')" @click="genPasswordNow()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
-              </button>
-            </div>
-            <div class="pw-gen-controls">
-              <div class="pw-gen-row">
-                <label>{{ t('editor.genLength') }}</label>
-                <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
-                <span>{{ genOptions.length }}</span>
-              </div>
-              <div class="pw-gen-charsets">
-                <label
-                  class="charset-label"
-                  @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'upper' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.upper') }} (A-Z)</label>
-                <label
-                  class="charset-label"
-                  @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'lower' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.lower') }} (a-z)</label>
-                <label
-                  class="charset-label"
-                  @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'number' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.number') }} (0-9)</label>
-                <label
-                  class="charset-label"
-                  @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'symbol' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.symbol') }} (!@#$…)</label>
-              </div>
-              <div class="pw-gen-row gap-8 mt-1">
-                <label
-                  class="charset-label min-w-auto"
-                  @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-charset', cs: 'noAmbig' }, { w: 220, h: 100 })"
-                ><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.noAmbig') }}</label>
-              </div>
-              <div>
-                <div class="pw-strength-bar-bg">
-                  <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
-                </div>
-                <div class="pw-strength-text">{{ genStrength.label }}</div>
-              </div>
-              <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                {{ t('editor.useThisPw') }}
-              </button>
-            </div>
           </div>
         </div>
         <div class="form-group">
@@ -744,7 +623,7 @@ const editorCtxItems = computed(() => {
                   <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="toggleGenPanel()">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="openPwGen('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -761,44 +640,6 @@ const editorCtxItems = computed(() => {
               <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
             </div>
             <div class="pw-strength-text">{{ strength.label }}</div>
-          </div>
-          <div v-if="genPanelOpen" class="pw-gen-panel">
-            <div
-              class="pw-gen-preview"
-              :title="t('editor.tipGenPreviewCtx')"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-preview' }, { w: 260, h: 200 })"
-            >
-              <span class="pw-gen-preview-text mono">{{ genPreview || t('editor.clickToGen') }}</span>
-              <button class="btn-icon btn-icon-xs" type="button" :title="t('editor.ctx.regen')" @click="genPasswordNow()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
-              </button>
-            </div>
-            <div class="pw-gen-controls">
-              <div class="pw-gen-row">
-                <label>{{ t('editor.genLength') }}</label>
-                <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
-                <span>{{ genOptions.length }}</span>
-              </div>
-              <div class="pw-gen-charsets">
-                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.upper') }} (A-Z)</label>
-                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.lower') }} (a-z)</label>
-                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.number') }} (0-9)</label>
-                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.symbol') }} (!@#$…)</label>
-              </div>
-              <div class="pw-gen-row gap-8 mt-1">
-                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.noAmbig') }}</label>
-              </div>
-              <div>
-                <div class="pw-strength-bar-bg">
-                  <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
-                </div>
-                <div class="pw-strength-text">{{ genStrength.label }}</div>
-              </div>
-              <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                {{ t('editor.useThisPw') }}
-              </button>
-            </div>
           </div>
         </div>
         <div class="form-group">
@@ -832,7 +673,7 @@ const editorCtxItems = computed(() => {
                   <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('rootPwd')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.rootPwd ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="generateFor('rootPwd')">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="openPwGen('rootPwd')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -905,7 +746,7 @@ const editorCtxItems = computed(() => {
                   <button class="pw-gen-btn" type="button" :title="t('editor.tipShowHide')" :aria-label="t('editor.ariaShowHidePw')" @click="toggleSecret('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="showFields.password ? windowEyeClosed : windowEyeOpen"></svg>
                   </button>
-                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="toggleGenPanel()">
+                  <button class="pw-gen-btn" type="button" :title="t('editor.tipGenPw')" :aria-label="t('editor.tipGenPw')" @click="openPwGen('password')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
                     </svg>
@@ -922,44 +763,6 @@ const editorCtxItems = computed(() => {
               <div class="pw-strength-bar" :style="{ width: strength.pct + '%', background: strength.color }"></div>
             </div>
             <div class="pw-strength-text">{{ strength.label }}</div>
-          </div>
-          <div v-if="genPanelOpen" class="pw-gen-panel">
-            <div
-              class="pw-gen-preview"
-              :title="t('editor.tipGenPreviewCtx')"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'gen-preview' }, { w: 260, h: 200 })"
-            >
-              <span class="pw-gen-preview-text mono">{{ genPreview || t('editor.clickToGen') }}</span>
-              <button class="btn-icon btn-icon-xs" type="button" :title="t('editor.ctx.regen')" @click="genPasswordNow()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
-              </button>
-            </div>
-            <div class="pw-gen-controls">
-              <div class="pw-gen-row">
-                <label>{{ t('editor.genLength') }}</label>
-                <input v-model.number="genOptions.length" type="range" min="8" max="64" @input="genPasswordNow()" />
-                <span>{{ genOptions.length }}</span>
-              </div>
-              <div class="pw-gen-charsets">
-                <label class="charset-label"><input v-model="genOptions.upper" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.upper') }} (A-Z)</label>
-                <label class="charset-label"><input v-model="genOptions.lower" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.lower') }} (a-z)</label>
-                <label class="charset-label"><input v-model="genOptions.number" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.number') }} (0-9)</label>
-                <label class="charset-label"><input v-model="genOptions.symbol" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.symbol') }} (!@#$…)</label>
-              </div>
-              <div class="pw-gen-row gap-8 mt-1">
-                <label class="charset-label min-w-auto"><input v-model="genOptions.noAmbig" type="checkbox" @change="genPasswordNow()" /> {{ t('editor.charset.noAmbig') }}</label>
-              </div>
-              <div>
-                <div class="pw-strength-bar-bg">
-                  <div class="pw-strength-bar" :style="{ width: genStrength.pct + '%', background: genStrength.color }"></div>
-                </div>
-                <div class="pw-strength-text">{{ genStrength.label }}</div>
-              </div>
-              <button class="btn btn-primary btn-sm" type="button" @click="useGeneratedPassword()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                {{ t('editor.useThisPw') }}
-              </button>
-            </div>
           </div>
         </div>
       </template>

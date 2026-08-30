@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>密码生成器 UI/UX 专项评审 · LockPass · 2026-08-30</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #1c2330; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --accent-dim: rgba(88,166,255,.15);
+    --ok: #3fb950; --warn: #d29922; --danger: #f85149; --mono: ui-monospace, 'SF Mono', Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; line-height: 1.65; padding: 40px 20px 80px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { border-left: 4px solid var(--accent); padding-left: 18px; margin-bottom: 32px; }
+  header h1 { font-size: 1.65rem; margin-bottom: 6px; }
+  header .meta { color: var(--muted); font-size: .88rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 24px 0 32px; }
+  .metric { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .metric .num { font-size: 1.5rem; font-weight: 700; font-family: var(--mono); }
+  .metric .lbl { color: var(--muted); font-size: .78rem; margin-top: 2px; }
+  .num.good { color: var(--ok); } .num.mid { color: var(--accent); } .num.bad { color: var(--warn); }
+  h2 { font-size: 1.2rem; margin: 36px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h2 .tag { font-size: .72rem; vertical-align: middle; background: var(--accent-dim); color: var(--accent); border-radius: 99px; padding: 2px 10px; margin-left: 8px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; margin-bottom: 10px; }
+  .card b { color: var(--accent); }
+  .good-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: .88rem; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: var(--mono); font-size: .82em; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+  .badge { display: inline-block; font-size: .72rem; font-weight: 700; border-radius: 99px; padding: 1px 9px; margin-right: 6px; white-space: nowrap; }
+  .b-p2 { background: rgba(210,153,34,.16); color: var(--warn); }
+  .b-p3 { background: rgba(139,148,158,.16); color: var(--muted); }
+  .dot-ok { color: var(--ok); } .dot-warn { color: var(--warn); }
+  .footnote { color: var(--muted); font-size: .82rem; margin-top: 28px; border-top: 1px solid var(--border); padding-top: 14px; }
+  @media (max-width: 640px) { body { padding: 24px 12px 60px; } th:nth-child(3), td:nth-child(3) { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>密码生成器 UI/UX 专项评审</h1>
+    <div class="meta">LockPass v1.1.3 · 2026-08-30 · 范围：PasswordGeneratorModal.vue（257 行）+ generator.js（183 行）+ generator.css（422 行）+ 集成点与 i18n · 方法：静态代码审计（design-review 路由 / WCAG 2.2 AA 基线）</div>
+  </header>
+
+  <div class="metrics">
+    <div class="metric"><div class="num good">8<span style="font-size:.9rem;color:var(--muted)">/10</span></div><div class="lbl">综合评定（可发布水平）</div></div>
+    <div class="metric"><div class="num good">8.5</div><div class="lbl">视觉美观</div></div>
+    <div class="metric"><div class="num good">8.0</div><div class="lbl">交互易用</div></div>
+    <div class="metric"><div class="num bad">6.0</div><div class="lbl">可达性（唯一短板）</div></div>
+    <div class="metric"><div class="num good">9.0</div><div class="lbl">一致性 / i18n</div></div>
+  </div>
+
+  <div class="card">结论：<b>视觉与交互是长项</b>——全令牌化、命中区体系完整、状态覆盖到位、i18n 零缺失；<b>可达性是唯一明显短板</b>——全局 outline:none 之后本组件没有补任何键盘焦点样式，3 个 P2 集中于此与反馈正确性。一个 v1.1.4 批次即可清偿。</div>
+
+  <h2>做得好的 <span class="tag">10 项保持</span></h2>
+  <div class="good-grid">
+    <div class="card"><b>引擎密码学质量</b><br>拒绝采样消除模偏差 + Fisher-Yates 洗牌 + minEachSet 逐组预置 + maxRepeat 重试上限——密码工具可信度的核心，实现正确。</div>
+    <div class="card"><b>命中区体系</b><br>chip 44px、滑杆 thumb 22px（40px 命中）、mini-btn 伪元素外扩 4px、移动端统一加大到 48px。</div>
+    <div class="card"><b>状态覆盖完整</b><br>全字符集关闭 → 空态 + 引擎回退双保险；footer 主按钮随语境切换复制/填入；复制反馈 1.6s 自动复位。</div>
+    <div class="card"><b>i18n 零缺失</b><br>组件 22 键 + 引擎 5 键在 zh/en 全部命中（23 键定义）；强度标签复用 editor.strength 保持全站一致。</div>
+    <div class="card"><b>深浅主题全令牌化</b><br>颜色/圆角/动效/字体全走 var()；强度四色走设计令牌，主题切换不漂移。</div>
+    <div class="card"><b>动效克制且有意义</b><br>逐字浮现 stagger 22ms、hover 光环、复制成功绿描边；prefers-reduced-motion 全局守护覆盖。</div>
+    <div class="card"><b>隐私设计正确</b><br>会话历史仅内存、不落盘、去重、上限 5 条。</div>
+    <div class="card"><b>弱密码双反馈</b><br>熵 &lt;40 时强度条与预览文字同时变红，视觉通道冗余。</div>
+    <div class="card"><b>方案 C 架构解耦</b><br>独立弹窗叠加在编辑器之上，pwGenFillNonce 事件驱动回填、零耦合。</div>
+    <div class="card"><b>滑杆渐变填充</b><br>JS 计算 linear-gradient 实时反映当前值，视觉自解释。</div>
+  </div>
+
+  <h2>问题清单 <span class="tag">P2 ×3 · P3 ×7</span></h2>
+  <table>
+    <tr><th>级别</th><th>问题与位置</th><th>影响 / 依据</th><th>建议修法</th></tr>
+    <tr><td><span class="badge b-p2">P2-A</span></td><td><b>键盘焦点不可见</b><br><code>base.css:168</code> 全局 outline:none；<code>generator.css</code> 零 :focus/:focus-within 规则——chips（checkbox opacity:0 可聚焦）、折叠头（tabindex=0）、mini-btn、历史项、滑杆全部无焦点指示</td><td>WCAG 2.4.7 失败；纯键盘用户无法定位焦点</td><td>为 5 类控件补 <code>box-shadow: 0 0 0 2px var(--accent-dim)</code> 焦点环（与 btn-icon 既有样式一致）</td></tr>
+    <tr><td><span class="badge b-p2">P2-B</span></td><td><b>历史复制反馈错位</b><br><code>copyPw</code>：点历史第 N 条复制，绿框+「已复制」却出现在预览区——预览显示的是另一个密码</td><td>反馈与动作对象不对应，误导性强</td><td>历史项局部反馈（dot 变绿）；或点击历史先置为预览再复制</td></tr>
+    <tr><td><span class="badge b-p2">P2-C</span></td><td><b>折叠头语义不完整</b><br><code>pwgen-adv-head</code> 缺 aria-expanded 与 Space 键触发（仅 Enter）</td><td>WCAG 2.1.1 / 4.1.2；读屏不知展开状态</td><td>加 <code>:aria-expanded</code> + <code>@keydown.space.prevent</code></td></tr>
+    <tr><td><span class="badge b-p3">P3-D</span></td><td>预览区 user-select:none 与点击复制互斥——无法手动选中部分密码（如取前 8 位做 PIN）</td><td>产品权衡；1Password 允许选择</td><td>可维持现状（有完整复制兜底）或长按进选择态</td></tr>
+    <tr><td><span class="badge b-p3">P3-E</span></td><td>空态提示用 warning 黄——操作引导非警告，语义过重</td><td><code>.pwgen-empty</code></td><td>改 --text-muted</td></tr>
+    <tr><td><span class="badge b-p3">P3-F</span></td><td>历史区无清空入口（投屏/演示场景想立刻清掉做不到）</td><td>隐私场景</td><td>标题行加「清空」文字按钮</td></tr>
+    <tr><td><span class="badge b-p3">P3-G</span></td><td>ModalBase aria-label="pwgen" 非人类可读</td><td>读屏播报</td><td>改 :aria-label="t('pwgen.title')"</td></tr>
+    <tr><td><span class="badge b-p3">P3-H</span></td><td>强度条无 progressbar 语义</td><td>读屏无法感知强度值</td><td>role=progressbar + aria-valuenow</td></tr>
+    <tr><td><span class="badge b-p3">P3-I</span></td><td>pwgen 与编辑器弹窗同 z(200)，叠加靠 DOM 挂载顺序胜出——可用但脆弱</td><td>ModalHost L46 / modal.css</td><td>显式 +1 层或注释固化</td></tr>
+    <tr><td><span class="badge b-p3">P3-J</span></td><td>✓/▾ 文本符号与全站 SVG 图标体系不一致</td><td>一致性（轻度，非 emoji 违规）</td><td>换 Icons.check / 旋转 chevron SVG</td></tr>
+  </table>
+
+  <h2>修复路线建议</h2>
+  <div class="card"><span class="dot-ok">●</span> <b>v1.1.4 单批次可清偿</b>：全部 P2 + P3-E/F/G/H（约 6 个文件触点：焦点环 CSS 一段 + 历史反馈逻辑 5 行 + aria 属性 4 处 + 颜色令牌 1 处）。<span class="dot-warn">●</span> P3-D/I/J 可单独决策（产品权衡/架构显式化/图标统一）。</div>
+
+  <h2>验证状态</h2>
+  <div class="card">静态审计：全部发现带文件:行号证据。<b>未验证</b>：真机（Tauri dev）像素级走查与读屏器实测——建议修复后跑一轮 <code>npm run tauri:dev</code> 键盘走查（Tab 顺序 + Space 折叠 + 滑杆方向键 + 焦点环可视性）。</div>
+
+  <div class="footnote">LockPass 密码保险箱 · 密码生成器 UI/UX 专项评审 · 评审基线：WCAG 2.2 AA / anti-ai-slop 清单 / 项目设计令牌体系 · 2026-08-30</div>
+</div>
+</body>
+</html>
