@@ -49,6 +49,19 @@ function onSystemChange() {
   if (themeMode.value === 'system') applyTheme()
 }
 
+/* 主题 / 强调色切换过渡：短暂挂 .theme-switching 触发 ux-enhance.css 的颜色过渡，
+   连续切换时重置计时，避免类提前移除或残留 */
+let themeFlashTimer = null
+function flashThemeTransition() {
+  const root = document.documentElement
+  root.classList.add('theme-switching')
+  if (themeFlashTimer) clearTimeout(themeFlashTimer)
+  themeFlashTimer = setTimeout(() => {
+    root.classList.remove('theme-switching')
+    themeFlashTimer = null
+  }, 460)
+}
+
 export function useTheme() {
   function init() {
     try {

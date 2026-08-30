@@ -5,6 +5,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useVault, vaultState, TAG_COLOR_OPTIONS, TAG_ICON_OPTIONS } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
@@ -147,6 +148,13 @@ function openMergeForm(name) {
 const mergeTargetTags = computed(() => {
   return sortedTags.value.filter(t => t !== mergeFrom.value)
 })
+
+const mergeTargetOptions = computed(() =>
+  mergeTargetTags.value.map(tag => ({
+    value: tag,
+    label: t('tags.mergeOption', { name: tag, n: tagCounts.value[tag] || 0 }),
+  }))
+)
 
 const mergeAffectedCount = computed(() => tagCounts.value[mergeFrom.value] || 0)
 
@@ -398,10 +406,12 @@ const tagsCtxItems = computed(() => {
         </div>
         <div class="form-group mb-0">
           <label class="form-label">{{ t('tags.mergeInto') }} <span class="text-danger">*</span></label>
-          <select v-model="mergeTo" class="form-input">
-            <option value="" disabled>{{ t('tags.mergePlaceholder') }}</option>
-            <option v-for="tag in mergeTargetTags" :key="tag" :value="tag">{{ t('tags.mergeOption', { name: tag, n: tagCounts[tag] || 0 }) }}</option>
-          </select>
+          <BaseSelect
+            v-model="mergeTo"
+            class="form-input"
+            :options="mergeTargetOptions"
+            :placeholder="t('tags.mergePlaceholder')"
+          />
           <div class="tag-hint">{{ t('tags.mergeHint') }}</div>
         </div>
       </div>

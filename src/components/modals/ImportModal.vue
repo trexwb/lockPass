@@ -8,6 +8,7 @@
 import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 
 const { saveVault, closeModal } = useVault()
@@ -46,6 +47,11 @@ const TARGET_OPTIONS = [
   { value: 'privatekey', label: 'privatekey' },
 ]
 const IGNORE_VALUE = '__ignore__'
+
+const csvTargetOptions = computed(() => [
+  ...TARGET_OPTIONS,
+  { value: IGNORE_VALUE, label: t('import.wizard.ignore') },
+])
 
 const csvWizardValid = computed(() => {
   const map = csvMapping.value || {}
@@ -499,14 +505,12 @@ async function importPlaintextVault(data) {
               </div>
               <div v-for="(header, i) in csvHeaders" :key="i" class="csv-map-row">
                 <span class="csv-map-col csv-map-src">{{ header || '(空)' }}</span>
-                <select
+                <BaseSelect
                   class="form-input csv-map-select"
-                  :value="csvMapping[header] || IGNORE_VALUE"
-                  @change="e => { csvMapping[header] = e.target.value; refreshCSVStats() }"
-                >
-                  <option v-for="opt in TARGET_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  <option :value="IGNORE_VALUE">{{ t('import.wizard.ignore') }}</option>
-                </select>
+                  :model-value="csvMapping[header] || IGNORE_VALUE"
+                  :options="csvTargetOptions"
+                  @change="value => { csvMapping[header] = value; refreshCSVStats() }"
+                />
               </div>
             </div>
 

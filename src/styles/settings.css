@@ -757,6 +757,24 @@
 .accent-red    { background: hsl(4 88% 60%); }
 .accent-cyan   { background: hsl(187 80% 52%); }
 
+/* ── 外观：主题 + 色调统一模块 ─────────────────────────── */
+/* 主题模式与强调色合并为一个视觉模块；语言独立成行置于其后，
+   避免 BaseSelect 下拉展开时被相邻行（hover transform 层叠上下文）遮挡 */
+.appearance-theme-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  padding: 2px 12px;
+  margin-bottom: 6px;
+}
+.appearance-theme-block .settings-row {
+  margin-left: -12px;
+  margin-right: -12px;
+}
+.appearance-theme-block .settings-row:last-child {
+  border-bottom: none;
+}
+
 /* ── 备份设置：开关 ─────────────────────────────────────── */
 .switch {
   position: relative;

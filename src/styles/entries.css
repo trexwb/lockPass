@@ -18,17 +18,100 @@
 /* Entry cards */
 #entries-list { display: flex; flex-direction: column; }
 .vs-spacer { flex-shrink: 0; }
+
+/* ── 左滑显示操作（Swipe-to-Reveal）双层容器结构 ────────────────
+   .entry-card-wrap           = 外层：定位 + 裁剪 + 卡片间距
+   .card-actions-backdrop     = 背景操作层：右对齐，露出 actionsWidth 宽度
+   .entry-card                = 前景内容层：跟随手指 translateX
+
+   桌面端（>1024px）：背景层 display:none，保留 hover 显示内联 .entry-actions
+   移动端（≤1024px）：内联按钮 display:none，左滑露出背景操作层
+   ─────────────────────────────────────────────────────────── */
+.entry-card-wrap {
+  position: relative;
+  margin-bottom: 8px;
+  border-radius: var(--radius-md);
+  /* 裁剪：卡片被拖出左侧 / 背景层只露右侧宽度 */
+  overflow: hidden;
+  /* 防止 iOS Safari 橡皮筋影响外层 */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  /* 列表入场编舞：动画挂在 wrap（背景操作层 + 前景卡片）整体上，
+     避免入场淡入期间背景操作层按钮从透明前景下透出（一闪而过）。
+     fail-open：animation 终止在可见态，JS 失败仍可见。 */
+  animation: list-rise var(--dur-slow) var(--ease-out-quart) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+/* 背景操作层：紧贴卡片右边缘，默认被前景遮挡 */
+.card-actions-backdrop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  /* 由模板通过 --actions-width 注入（默认 156px） */
+  width: var(--actions-width, 156px);
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  /* 桌面端默认隐藏（无触屏，不需要 swipe）；移动端 media query 中启用 */
+  display: none;
+  z-index: 1;
+}
+.backdrop-inner {
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 6px;
+}
+.swipe-action-btn {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart),
+              transform var(--dur-micro) var(--ease-out-quart),
+              box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+.swipe-action-btn:active {
+  transform: scale(0.94);
+}
+.swipe-action-btn svg {
+  display: block;
+  stroke-width: 1.75;
+}
+/* 语义色：收藏 = 警示橙，复制 = 成功绿，删除 = 危险红；恢复 = 强调蓝 */
+.swipe-action-btn.star-action:hover,
+.swipe-action-btn.star-action:active { background: var(--warning-dim); color: var(--warning); }
+.swipe-action-btn.star-action.active { background: var(--warning-dim); color: var(--warning); box-shadow: inset 0 0 0 1px var(--warning); }
+.swipe-action-btn.copy-action:hover,
+.swipe-action-btn.copy-action:active { background: var(--success-dim); color: var(--success); }
+.swipe-action-btn.delete-action:hover,
+.swipe-action-btn.delete-action:active { background: var(--danger-dim); color: var(--danger); }
+.swipe-action-btn.restore-action:hover,
+.swipe-action-btn.restore-action:active { background: var(--accent-dim); color: var(--accent); }
+
+/* 前景卡片：保持原有样式，但 margin-bottom 已移至 wrap；touch-action 允许水平手势 */
 .entry-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 14px 16px;
-  margin-bottom: 8px;
+  margin-bottom: 0; /* 间距由 .entry-card-wrap 控制 */
   cursor: pointer;
-  /* 触控优化：允许浏览器平移/缩放但禁用双击缩放，保证长按手势不被中断 */
-  touch-action: manipulation;
+  /* 触控优化：允许垂直滚动 + 水平滑动（同时保留 manipulation 的双击缩放禁用） */
+  touch-action: pan-y manipulation;
   -webkit-tap-highlight-color: transparent;
-  /* UICraft：GPU 友好的 transform/opacity 过渡 + 边框色 */
+  /* UICraft：GPU 友好的 transform/opacity 过渡 + 边框色
+     注意：transform 动画只在非拖拽态启用（拖拽态由 JS 控制跟随手指，无 transition） */
   transition: transform var(--dur-fast) var(--ease-out-quart),
               border-color var(--dur-fast) var(--ease-out-quart),
               box-shadow var(--dur-fast) var(--ease-out-quart),
@@ -38,9 +121,14 @@
   gap: 12px;
   position: relative;
   overflow: hidden;
-  /* 列表入场编舞：fail-open（animation 终止在可见态，JS 失败仍可见） */
-  animation: list-rise var(--dur-slow) var(--ease-out-quart) both;
-  animation-delay: calc(var(--i, 0) * 35ms);
+  /* 前景卡片必须在背景层之上 */
+  z-index: 2;
+}
+/* 拖拽中：移除过渡动画 + 轻微层级提升，让卡片跟随手指更顺滑 */
+.entry-card.swiping {
+  transition: none !important;
+  z-index: 3;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--accent-dim);
 }
 .entry-card::before {
   content: '';
@@ -120,8 +208,49 @@
   color: var(--text-faint);
   font-size: 0.86rem;
 }
-.entry-actions { display: flex; gap: 4px; opacity: 0; transition: var(--transition); }
-.entry-card:hover .entry-actions { opacity: 1; }
+
+/* ═══════════════════════════════════════════════════════════
+   内联操作按钮（卡片右侧的收藏/复制/删除）
+   设计哲学：移动端优先 + 防 FOUC
+   ───────────────────────────────────────────────────────────
+   基础默认：display: none（移动端/触屏：左滑手势或长按菜单为操作入口）
+             即使 CSS 加载滞后也不出现"按钮闪一下"的 FOUC。
+   桌面端（>1024px 且可 hover 精细指针设备）：启用 hover 渐显 + 位移动画，
+             focus-within 同样显示，保证键盘可达。
+   回收站卡片（桌面端）：按钮常显（便于恢复/彻底删除）。
+   ═══════════════════════════════════════════════════════════ */
+.entry-actions {
+  display: none;
+}
+
+/* ── 桌面端（宽屏 + 可 hover + 精细指针）：启用内联按钮 hover 显示 ── */
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  .entry-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(6px);
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease-out-quart),
+                transform var(--dur-fast) var(--ease-out-quart),
+                visibility var(--dur-fast) var(--ease-out-quart);
+  }
+  .entry-card:hover .entry-actions,
+  .entry-card:focus-within .entry-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  .entry-card.recycled .entry-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+}
+
 .copy-btn {
   width: 28px;
   height: 28px;
@@ -147,12 +276,13 @@
   background: var(--success-dim);
 }
 
-/* 回收站卡片（软删除） */
+/* 回收站卡片（软删除）
+   注：内联按钮的显示/隐藏逻辑已并入上方「桌面端媒体查询」，
+   移动端回收站卡片的操作按钮由左滑背景操作层提供。 */
 .entry-card.recycled { opacity: 0.72; }
 .entry-card.recycled::before { background: var(--text-faint); }
 .entry-card.recycled .entry-title { color: var(--text-secondary); }
 .entry-card.recycled:hover { opacity: 1; }
-.entry-card.recycled .entry-actions { opacity: 1; }
 
 /* 回收站卡片中的「恢复」按钮（复用 copy-btn 的圆形风格） */
 .restore-btn {
@@ -732,22 +862,21 @@
    移动端体验打磨（2026-08-25）
    ═══════════════════════════════════════════════════════════ */
 @media (max-width: 1024px) {
-  /* 关键修复：移动端无 hover，操作按钮必须常显（原 opacity:0 仅 hover 显示） */
-  .entry-actions {
-    opacity: 1;
-  }
-  /* 触控目标：卡片操作按钮 ≥36px */
-  .entry-actions button {
-    width: 36px;
-    height: 36px;
+  /* P3-8 左滑操作：基础样式已默认隐藏内联按钮（防 FOUC），
+     改由手指左滑前景卡片露出右侧背景操作层（.card-actions-backdrop）。
+     好处：信息密度更高，标签不再因按钮挤占空间而换行。 */
+  /* 背景操作层在移动端可见 */
+  .card-actions-backdrop {
     display: flex;
-    align-items: center;
-    justify-content: center;
   }
   /* 卡片信息密度：加大行高与间距，副标题完整截断 */
   .entry-card {
     padding: 14px 12px;
     gap: 10px;
+  }
+  /* 移动端入场动画放慢一档，降低低端机掉帧风险（动画已挂在 wrap 上） */
+  .entry-card-wrap {
+    animation-duration: var(--dur-slower);
   }
   .entry-subtitle {
     max-width: 100%;
@@ -895,6 +1024,12 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  /* P3-8：触屏设备（含平板/触屏笔记本）同样启用左滑背景操作层，
+     即便屏幕宽度 >1024px，也为无 hover 的触屏用户提供手势入口
+     （内联操作按钮已在基础样式中 display:none，无需重复隐藏） */
+  .card-actions-backdrop {
+    display: flex;
+  }
   /* 菜单项对齐项目自身 44px 触控目标规范 */
   .ctx-item {
     padding: 10px 14px;
@@ -906,17 +1041,55 @@
   /* 触屏无 hover，菜单项用 :active 提供按压反馈 */
   .ctx-item:active { background: var(--bg-hover); }
   .ctx-item.ctx-danger:active { background: var(--danger-dim); }
+  /* swipe 按钮语义色在触屏下用 :active 触发 */
+  .swipe-action-btn.star-action:active { background: var(--warning-dim); color: var(--warning); }
+  .swipe-action-btn.copy-action:active { background: var(--success-dim); color: var(--success); }
+  .swipe-action-btn.delete-action:active { background: var(--danger-dim); color: var(--danger); }
+  .swipe-action-btn.restore-action:active { background: var(--accent-dim); color: var(--accent); }
 }
 
-/* ── 手机端（≤480px）：卡片操作按钮提升至 44px 触控下限 ── */
+/* ── 手机端（≤480px）：操作按钮提升至 44px 触控下限，卡片更紧凑 ── */
 @media (max-width: 480px) {
-  .entry-actions button,
-  .copy-btn,
-  .delete-btn,
-  .star-btn,
-  .restore-btn {
-    width: 44px;
-    height: 44px;
+  /* 注：内联 .entry-actions 及其按钮已在基础样式 display:none，
+     此处仅需设置 swipe 背景操作层按钮尺寸（.swipe-action-btn） */
+  /* 背景操作层按钮与卡片等高（手机端卡片高度约 88px，≥44px 已达标）
+     再显式加个 min-height 双保险 + 加大 icon 视觉权重 */
+  .backdrop-inner {
+    padding: 0 4px;
+    gap: 3px;
   }
-  .entry-actions { gap: 6px; }
+  .swipe-action-btn {
+    min-height: 44px;
+    border-radius: var(--radius-xs);
+  }
+  .swipe-action-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  /* 手机端卡片间距略收紧，一屏展示更多条目 */
+  .entry-card-wrap {
+    margin-bottom: 6px;
+  }
+}
+
+/* ── 降低动效偏好（prefers-reduced-motion）：
+   尊重系统设置，关闭 swipe 过渡、入场动画、hover 位移等非必要动效 ── */
+@media (prefers-reduced-motion: reduce) {
+  .entry-card,
+  .entry-card.swiping {
+    transition: none !important;
+    animation: none !important;
+  }
+  .entry-card:hover {
+    transform: none !important;
+  }
+  .swipe-action-btn {
+    transition: none !important;
+  }
+  .swipe-action-btn:active {
+    transform: none !important;
+  }
+  .hero-scan-line {
+    animation: none !important;
+  }
 }

@@ -7,10 +7,16 @@
 import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 
 const { closeModal } = useVault()
 const { t } = useI18n()
+
+const exportScopeOptions = computed(() => [
+  { value: '', label: t('export.allEntries', { n: vaultState.entries.length }) },
+  ...availableTags.value.map(tag => ({ value: tag, label: tag })),
+])
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -161,10 +167,11 @@ async function exportCSV() {
         <!-- P3-F3：按标签筛选导出范围 -->
         <div class="form-group" v-if="availableTags.length">
           <label class="form-label">{{ t('export.scope') }}</label>
-          <select class="form-input" v-model="exportTagFilter">
-            <option value="">{{ t('export.allEntries', { n: vaultState.entries.length }) }}</option>
-            <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
-          </select>
+          <BaseSelect
+            class="form-input"
+            v-model="exportTagFilter"
+            :options="exportScopeOptions"
+          />
           <div class="text-muted text-sm mt-1" v-if="exportTagFilter">
             {{ t('export.tagScopeHint', { tag: exportTagFilter, n: entriesToExport.length }) }}
           </div>
