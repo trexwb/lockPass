@@ -235,6 +235,8 @@ async function autoImport(e) {
     showPassword: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    // 自定义字段扩展（upgrade-design.md §1.3）：二维码导入补默认空数组
+    customFields: [],
   }
   if (e.root) {
     newEntry.root = {

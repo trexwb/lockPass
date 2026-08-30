@@ -1,8 +1,7 @@
 # LockPass 升级设计（2026-08-25）
 
 > 纯离线定位约束：全部功能本地完成，不引入任何联网依赖。
-> 本次升级共 6 项：条目字段扩展、扩展多字段填充、Firefox 兼容、Keychain 集成、全局快捷键、多语言 i18n。
-> 2026-08-30 增补：密码生成器升级（第九章）；多语言 i18n 现状修订与落地细化（6.5）。
+> 2026-08-30 修订：多语言 i18n（原第六章）与密码生成器升级（原第九章·已完成部分）已随 v1.1.x 落地，相关章节已清理；当前保留规划：条目字段扩展、扩展多字段填充、Firefox 兼容、Keychain 集成、全局快捷键、密码生成器剩余项，以及第十章「小功能/小工具路线图」。
 
 ## 一、条目字段扩展
 
@@ -150,68 +149,6 @@
 - 弹窗为独立 WebviewWindow，解锁态才有数据（未解锁时提示先解锁主窗口）
 - 主窗口关闭/锁定 → 弹窗同步关闭
 
-## 六、多语言 i18n（轻量 key-based）
-
-### 6.1 设计约束
-
-- 不做运行时重载复杂度：不引 vue-i18n，自建极简 `t(key)` 函数 + 扁平 key 字典
-- 两种语言：`zh-CN` / `en-US`，切换即时生效（响应式语言变量驱动全量重渲染，简单可靠）
-
-### 6.2 实现
-
-- 新增 `src/i18n/index.js`：语言状态（ref，存 localStorage，与主题同源）、`t(key)` 查表（缺失回退 key 本身 + 中文兜底）、`setLang(lang)`
-- 新增 `src/i18n/zh.js` / `src/i18n/en.js`：扁平词典 `{ "nav.all": "全部", ... }`
-- 组件通过 `useI18n()` 取 `t` 与 `lang`；模板中 `{{ t('xxx') }}` 或 `:placeholder="t('xxx')"`
-- 设置面板新增「语言」选项：跟随系统 / 中文 / English（`navigator.language` 判定跟随系统）
-
-### 6.3 覆盖范围
-
-- 存量 UI：导航、列表、详情、编辑弹窗、设置面板、搜索、回收站、备份、配对等全部可见文案
-- 新增 UI（阶段 0/3/4 引入的自定义字段、Keychain 开关、快速搜索窗）直接以 key 编写，一次到位
-- 时间格式化等沿用现有本地化，不做多语言日期
-
-### 6.4 不做的事
-
-- 不做语言包懒加载、不做复数规则、不做 RTL、不做用户自定义词典
-
-### 6.5 落地细化（2026-08-30 修订）
-
-**现状**（与 6.2 原计划的差异）：基础设施已部分落地——`src/core/i18n.js`（纯函数、`window.I18n`、zh-CN 18 键、`t(key, params)` 占位符），锁屏 AuthView 已试点迁移（`const t = window.I18n.t`）。存量硬编码文案：Toast ~120 处 + 模板文案数百处。
-
-**架构修订**（保持"不引 vue-i18n、响应式切换"的原设计精神）：
-
-```
-core/i18n.js（已落地，保持纯函数、零框架依赖）
-        ▲ setLang / getLang / t
-        │
-composables/useI18n.js（新增，Vue 层桥接）
-  ├─ i18nState = reactive({ lang })        ← 组件订阅点
-  ├─ t(key, params) { void i18nState.lang  ← 读取建立响应式依赖
-  │                   return I18n.t(...) }
-  └─ setLang(l) { I18n.setLang(l); i18nState.lang = l;
-                  localStorage['lockpass_lang'] = l }
-```
-
-- 组件模板中 `{{ t('key') }}` 切换语言时自动重渲染；JS 中 Toast 文案触发时求值，天然即时生效
-- 启动时序：读 localStorage（无则 `navigator.language` 探测，兜底 zh-CN）→ `I18n.setLang()`
-- 设置面板「外观」标签新增语言下拉：跟随系统 / 简体中文 / English，切换即时生效 + Toast 确认
-- dev 模式下 `t()` 未命中键时 `console.warn` 输出键名
-
-**en-US 术语表（翻译前先约定）**：保险箱=Vault、条目=Item、回收站=Trash、标签=Tag、主密码=Master Password、条目类型=Category。
-
-**存量迁移分批**（每批独立构建验收）：
-
-| 批次 | 范围 | 规模 |
-|---|---|---|
-| B1 | 全部 `showToast()` 文案（useVault.js 23 处 / SettingsModal 19 处 / ImportModal、SidebarNav 各 11 处等，共 ~120 处） | 中 |
-| B2 | 主界面骨架：SidebarNav / HeaderBar / 空态 / TYPE_LABELS 类型名 | 中 |
-| B3 | 编辑器 + 详情面板（含右键菜单 label） | 大 |
-| B4 | 设置页 + 其余模态框（Import/Export/QR/Tags/ChangePw） | 大 |
-
-**分期**：I1 基础设施（useI18n + 持久化 + 设置 UI）→ I2 en-US 语言包（骨架级）→ I3-I5 按 B1-B4 迁移。
-
-**验收**：切换即时生效无需刷新；偏好重启保留；en 下全流程无中文残留（除用户数据）；构建体积增量 < 25KB（gzip）。
-
 ## 七、实施顺序
 
 1. 阶段 0：字段扩展（core/templates.js + database.js + 编辑/详情 UI + 迁移）
@@ -219,96 +156,102 @@ composables/useI18n.js（新增，Vue 层桥接）
 3. 阶段 2：Firefox 兼容（manifest + 兼容修正 + 本机验证）
 4. 阶段 3：Keychain（Rust keyring + 锁屏监听 + 前端开关与自动解锁）
 5. 阶段 4：全局快捷键（plugin + 弹窗窗口 + 设置）
-6. 阶段 5：i18n（框架 + 设置项 + 存量/新增 UI 全量 key 化）
+6. 阶段 5：密码生成器剩余升级（第九章）
+7. 阶段 6：小功能/小工具第一批（第十章 10.1）
 
-阶段 0-4 的新 UI 先用中文硬编码，阶段 5 统一 key 化，避免开发中反复切换。
+阶段 0-4 的新 UI 先用中文硬编码，落地时统一走 t() 双语，避免二次返工。
 
-### 2026-08-30 增补
+### 2026-08-30 修订
 
-阶段 5（i18n）细化为 I1-I5（见 6.5）；新增密码生成器升级（第九章，G1-G3）。推荐顺序：
-
-```
-I1（i18n 地基）→ G1（生成器 core + 面板组件化，新文案直接走 t()）
-              → G2（独立弹窗 + 快捷键 + 历史）
-              → I2（en 包骨架）→ G3（偏好持久化）
-              → I3 → I4 → I5（存量分批迁移）
-```
-
-先立 i18n 地基再开发生成器，新功能文案天生双语，避免二次返工。
+多语言 i18n（原阶段 5）已随 v1.1.0 落地，从实施顺序移除；密码生成器已完成部分（独立弹窗、随机密码增强、入口）随 v1.1.4 落地，剩余项见第九章；小功能/小工具路线图见第十章（第一批优先，第二批待单独细化）。
 
 ## 八、约束与风险
 
-- 版本号：本升级完成后 PATCH 自增（v1.0.1 → v1.0.2），禁止 MAJOR/MINOR，禁止 git 操作，禁止 tauri build
+- 版本号：当前基线 v1.1.4（三真源一致），后续升级完成后 PATCH 自增，禁止 MAJOR/MINOR，禁止 git 操作，禁止 tauri build
 - 修改日志：README「更新日志」+ memory 记录
 - Keychain 存主密码属安全取舍，默认关闭，UI 明示
 - Firefox 扩展需本机 Firefox 实测，若环境不可用则该阶段标记待验证
-- i18n 全量 key 化改动面大（几乎所有组件），需逐组件回归四端布局（H5/Pad/PC/Tauri）
+- 小功能/小工具全部遵守：零依赖、纯离线、禁 window.* 原生弹窗（一律 Utils.confirm/Utils.prompt）、新文案直接走 t() 双语
 
-## 九、密码生成器升级（2026-08-30 增补）
+## 九、密码生成器剩余升级（2026-08-30 修订）
 
-### 9.1 现状
+> 已完成（随 v1.1.4 落地，不再列出）：独立弹窗 PasswordGeneratorModal.vue、全局右键入口 + 编辑器闪电按钮、随机密码增强（minEachSet / maxRepeat / noAmbiguous）、calcStrength 强度分级。
+> 主动取消：会话级生成历史（v1.1.4，用户决策——生成过的密码在他人视角下即明文暴露面，取消记录是最干净的解法）。
 
-| 项 | 现状 | 问题 |
+剩余未完成项：
+
+### 9.1 三模式扩展（core）
+
+| 模式 | 参数 | 说明 |
 |---|---|---|
-| core（generator.js，134 行） | 单一随机密码模式：长度 8-64、4 类字符集开关、排除歧义、拒绝采样无偏随机 | 无 passphrase / PIN 模式；无"每类至少一个字符"保证；无破解时间估算 |
-| UI（EntryEditorModal.vue） | 生成面板模板**重复 3 份**（617 / 760 / 921 行，3 个类型分支内联） | 重复代码；改一处要同步三处 |
-| 入口 | 仅编辑器密码字段旁的魔法棒按钮 | 不编辑条目时无法随手生成 |
-| 偏好 | genOptions 为组件内存态 | 每次打开重置，不记忆用户习惯 |
-
-### 9.2 功能设计（对标 1Password / Bitwarden / KeePassXC）
-
-**三种生成模式**：
-
-| 模式 | 参数 | 用途 |
-|---|---|---|
-| 随机密码（现有增强） | 长度 4-128（默认 16）、大写/小写/数字/符号、排除歧义、**自定义排除字符**、**每类至少一个** | 网站账号密码 |
 | 密码短语 Passphrase | 单词数 3-10（默认 4）、分隔符（`-` `_` `.` 空格 / 自定义）、首字母大写、追加随机数字、内置 EFF 短词表 | 好记高熵，主密码/口令 |
 | PIN | 4-12 位纯数字 | 银行卡 PIN / 设备解锁 |
+| 随机密码增强 | 自定义排除字符（与排除歧义叠加） | 现状已支持长度 4-128、四类字符集、noAmbiguous、minEachSet、maxRepeat |
 
-**生成质量增强**：
-- **每类至少一个字符**：先从每类字符集各取 1 个，剩余名额纯随机，最后 Fisher-Yates 洗牌（消除"纯随机可能 16 位无一符号"）
-- **自定义排除字符**：用户输入任意要排除的字符（与排除歧义叠加生效）
-- **破解时间估算**：按熵值 + 10⁹ 次/秒离线暴力假设，输出"约 3 万年"式人类可读文案；熵值数值实时显示（`72.4 bits`）
+接口：`generatePassphrase(options)`、`generatePin(length)`、`EFF_WORDLIST`（~1300 词，公共领域，gzip 约 5KB）；`generatePassword` 增 `excludeChars`。
 
-**独立生成器弹窗**：
-- 新增 `PasswordGeneratorModal.vue`，主界面随时打开；入口：HeaderBar 工具图标 + 快捷键 `Ctrl/Cmd + G`（注册进 useShortcuts）
-- 生成 → 一键复制（走统一剪贴板安全链路 + CopyCountdownPill 倒计时）、重掷、模式切换
-- **生成历史**：会话内保留最近 10 条，仅内存，锁定/退出清空，不落盘（安全红线）
+### 9.2 破解时间估算
 
-**偏好持久化**：生成器配置（模式、长度、各开关）存 localStorage（键 `lockpass_gen_prefs`），编辑器内嵌面板与独立弹窗共享同一份偏好。
+按熵值 + 10⁹ 次/秒离线暴力假设，输出「约 3 万年」式人类可读文案；熵值数值实时显示（`72.4 bits`）。接口：`crackTimeEstimate(entropyBits)`。
 
-### 9.3 技术设计
+### 9.3 偏好持久化（G3）
 
-**generator.js 新增接口**（`window.PasswordGenerator` 挂载不变）：
+生成器配置（模式、长度、各开关）存 localStorage（键 `lockpass_gen_prefs`），编辑器唤起与独立弹窗共享同一份偏好；打开时读取、关闭时写回。
 
-```
-generatePassword(options)          // 现有；options 增 excludeChars，内部加每类保证
-generatePassphrase(options)        // words, separator, capitalize, appendNumber
-generatePin(length)                // 4-12
-crackTimeEstimate(entropyBits)     // → { label, seconds }
-EFF_WORDLIST                       // ~1300 词（EFF short list 子集，公共领域）
-```
+### 9.4 快捷键入口
 
-**生成状态机（三模式统一）**：
+`Ctrl/Cmd + G` 呼出独立弹窗（注册进 useShortcuts，当前 27 项之外新增；补充设置面板快捷键表与 i18n 键）。
 
-```
-打开 → 读取偏好(localStorage) → 按当前模式生成
-  ├─ 调整参数 → 即时重生成（debounce 150ms）
-  ├─ 重掷 → 同参数重新生成
-  ├─ 复制 → 统一剪贴板链路 → CopyCountdownPill → pushHistory(max 10，会话内)
-  └─ 关闭 → 写回偏好(localStorage)
-```
+### 9.5 验收
 
-**代码收敛（顺带清债）**：3 份重复内联面板收敛为 `PasswordGeneratorPanel.vue` 单组件，编辑器 3 处 + 独立弹窗复用；`useVault.openModal` 增加 `'generator'` 分支。
+三模式可用、参数即时重生成；`Ctrl/Cmd+G` 呼出；偏好重启保留；体积增量 gzip < 8KB；vite build 0 error 0 warning。
 
-**词表选型**：EFF Diceware short list 子集（~1300 词，公共领域），gzip 后约 5KB。
+## 十、小功能/小工具路线图（2026-08-30 增补）
 
-### 9.4 分期与验收
+> 与一~五章大项解耦的轻量增量，分批实施，每批独立设计→验收。
 
-| 分期 | 内容 | 文件 |
-|---|---|---|
-| G1 | core 能力 + 面板组件化收敛 | generator.js、PasswordGeneratorPanel.vue（新）、EntryEditorModal.vue |
-| G2 | 独立弹窗 + 入口 + 快捷键 + 会话历史 | PasswordGeneratorModal.vue（新）、HeaderBar.vue、useShortcuts、useVault.js |
-| G3 | 偏好持久化 | useVault.js / 新 composable |
+### 10.1 第一批（随 v1.1.5 落地）
 
-验收：三模式可用、参数即时重生成；每类字符保证（统计验证 1000 次）；`Ctrl/Cmd+G` 呼出；历史锁定清空；偏好重启保留；体积增量 gzip < 8KB；vite build 0 error 0 warning。
+#### 10.1.1 搜索增强（B5）
+
+现状：useVault.js 对 title/username/url 子串匹配 + tags，无拼音、无排序。
+
+1. **归一化**：query 与字段 trim + lowercase + 折叠空白
+2. **拼音首字母**：新 `core/search.js`（纯函数），内置常用 3500 汉字→首字母映射表（gzip 约 4KB，零依赖）；标题/用户名额外生成首字母串，如「银行」→ `yh`，query `yh` 命中
+3. **排序**：前缀命中 > 子串命中 > 拼音命中；同级按收藏、最近使用优先
+4. **高亮**：结果列表对命中片段轻量高亮
+
+文件：`core/search.js`（新）、`useVault.js` 搜索逻辑替换、词典新键。
+验收：`yh` 命中「银行」类标题；增量 gzip < 6KB；vite build 0 error。
+
+#### 10.1.2 Chrome 密码 CSV 导入向导（C2）
+
+现状：import-bridge.js 要求 `title`+`password` 列，Chrome 导出（`name,url,username,password,note`）直接报错。
+
+1. **列映射表**：`name→title`、`url→url`、`username→username`、`password→password`、`note→note`；兼容变体（website/网址/标题/用户名/密码/备注等中英文）
+2. **向导流程**：ImportModal 内新增入口 → 选文件 → 解析预览（表格展示前 5 行 + 列映射下拉，自动识别可手调）→ 导入
+3. **去重与默认**：title+username 重复跳过并计数；默认条目类型「网站」；引号/逗号转义复用 `Utils.parseCSVLine`
+
+文件：`core/import-bridge.js` 扩展、`ImportModal.vue`、词典键。
+验收：Chrome 样例 CSV 成功导入；无 title 列不报错；重复跳过计数正确。
+
+#### 10.1.3 回收站定时清空（C4）
+
+1. **数据**：软删除时条目打 `deletedAt`（ISO 时间戳）；旧数据无该字段不参与自动清空（安全兜底）；导出/导入保留
+2. **设置**：设置面板「回收站」新增「自动清空」下拉：从不 / 30 / 60 / 90 天（默认从不），存 `localStorage lockpass_recycle_ttl`
+3. **执行**：解锁后立即检查一次 + 每日检查（setInterval 24h）；超 TTL 条目彻底删除（含修改历史快照）；Toast 报告清空数
+4. **明示**：开启时确认提示「自动清空不可恢复」
+
+文件：`useVault.js`、`SettingsModal.vue`、`database.js`（字段透传）、词典键。
+验收：设置 30 天后构造旧 deletedAt 条目 → 解锁即被清空；Toast 正确；vite build 通过。
+
+### 10.2 第二批（待第一批验收后单独细化）
+
+- **数据自检**：vault 完整性校验（JSON 解析、加密轮次校验、损坏提示 + 恢复指引）
+- **无障碍强化**：aria 补全 / 键盘导航完善
+
+### 10.3 共同约束
+
+- 零依赖（拼音用内置表，不引库）、纯离线、禁 window.* 原生弹窗（一律 Utils.confirm/Utils.prompt）
+- 新文案直接走 t() 双语
+- 完成后 PATCH 自增 v1.1.5（三真源）、禁 git / 禁 tauri build、README 更新日志 + memory 记录
