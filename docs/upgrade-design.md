@@ -2,6 +2,7 @@
 
 > 纯离线定位约束：全部功能本地完成，不引入任何联网依赖。
 > 本次升级共 6 项：条目字段扩展、扩展多字段填充、Firefox 兼容、Keychain 集成、全局快捷键、多语言 i18n。
+> 2026-08-30 增补：密码生成器升级（第九章）；多语言 i18n 现状修订与落地细化（6.5）。
 
 ## 一、条目字段扩展
 
@@ -173,6 +174,44 @@
 
 - 不做语言包懒加载、不做复数规则、不做 RTL、不做用户自定义词典
 
+### 6.5 落地细化（2026-08-30 修订）
+
+**现状**（与 6.2 原计划的差异）：基础设施已部分落地——`src/core/i18n.js`（纯函数、`window.I18n`、zh-CN 18 键、`t(key, params)` 占位符），锁屏 AuthView 已试点迁移（`const t = window.I18n.t`）。存量硬编码文案：Toast ~120 处 + 模板文案数百处。
+
+**架构修订**（保持"不引 vue-i18n、响应式切换"的原设计精神）：
+
+```
+core/i18n.js（已落地，保持纯函数、零框架依赖）
+        ▲ setLang / getLang / t
+        │
+composables/useI18n.js（新增，Vue 层桥接）
+  ├─ i18nState = reactive({ lang })        ← 组件订阅点
+  ├─ t(key, params) { void i18nState.lang  ← 读取建立响应式依赖
+  │                   return I18n.t(...) }
+  └─ setLang(l) { I18n.setLang(l); i18nState.lang = l;
+                  localStorage['lockpass_lang'] = l }
+```
+
+- 组件模板中 `{{ t('key') }}` 切换语言时自动重渲染；JS 中 Toast 文案触发时求值，天然即时生效
+- 启动时序：读 localStorage（无则 `navigator.language` 探测，兜底 zh-CN）→ `I18n.setLang()`
+- 设置面板「外观」标签新增语言下拉：跟随系统 / 简体中文 / English，切换即时生效 + Toast 确认
+- dev 模式下 `t()` 未命中键时 `console.warn` 输出键名
+
+**en-US 术语表（翻译前先约定）**：保险箱=Vault、条目=Item、回收站=Trash、标签=Tag、主密码=Master Password、条目类型=Category。
+
+**存量迁移分批**（每批独立构建验收）：
+
+| 批次 | 范围 | 规模 |
+|---|---|---|
+| B1 | 全部 `showToast()` 文案（useVault.js 23 处 / SettingsModal 19 处 / ImportModal、SidebarNav 各 11 处等，共 ~120 处） | 中 |
+| B2 | 主界面骨架：SidebarNav / HeaderBar / 空态 / TYPE_LABELS 类型名 | 中 |
+| B3 | 编辑器 + 详情面板（含右键菜单 label） | 大 |
+| B4 | 设置页 + 其余模态框（Import/Export/QR/Tags/ChangePw） | 大 |
+
+**分期**：I1 基础设施（useI18n + 持久化 + 设置 UI）→ I2 en-US 语言包（骨架级）→ I3-I5 按 B1-B4 迁移。
+
+**验收**：切换即时生效无需刷新；偏好重启保留；en 下全流程无中文残留（除用户数据）；构建体积增量 < 25KB（gzip）。
+
 ## 七、实施顺序
 
 1. 阶段 0：字段扩展（core/templates.js + database.js + 编辑/详情 UI + 迁移）
@@ -184,6 +223,19 @@
 
 阶段 0-4 的新 UI 先用中文硬编码，阶段 5 统一 key 化，避免开发中反复切换。
 
+### 2026-08-30 增补
+
+阶段 5（i18n）细化为 I1-I5（见 6.5）；新增密码生成器升级（第九章，G1-G3）。推荐顺序：
+
+```
+I1（i18n 地基）→ G1（生成器 core + 面板组件化，新文案直接走 t()）
+              → G2（独立弹窗 + 快捷键 + 历史）
+              → I2（en 包骨架）→ G3（偏好持久化）
+              → I3 → I4 → I5（存量分批迁移）
+```
+
+先立 i18n 地基再开发生成器，新功能文案天生双语，避免二次返工。
+
 ## 八、约束与风险
 
 - 版本号：本升级完成后 PATCH 自增（v1.0.1 → v1.0.2），禁止 MAJOR/MINOR，禁止 git 操作，禁止 tauri build
@@ -191,3 +243,72 @@
 - Keychain 存主密码属安全取舍，默认关闭，UI 明示
 - Firefox 扩展需本机 Firefox 实测，若环境不可用则该阶段标记待验证
 - i18n 全量 key 化改动面大（几乎所有组件），需逐组件回归四端布局（H5/Pad/PC/Tauri）
+
+## 九、密码生成器升级（2026-08-30 增补）
+
+### 9.1 现状
+
+| 项 | 现状 | 问题 |
+|---|---|---|
+| core（generator.js，134 行） | 单一随机密码模式：长度 8-64、4 类字符集开关、排除歧义、拒绝采样无偏随机 | 无 passphrase / PIN 模式；无"每类至少一个字符"保证；无破解时间估算 |
+| UI（EntryEditorModal.vue） | 生成面板模板**重复 3 份**（617 / 760 / 921 行，3 个类型分支内联） | 重复代码；改一处要同步三处 |
+| 入口 | 仅编辑器密码字段旁的魔法棒按钮 | 不编辑条目时无法随手生成 |
+| 偏好 | genOptions 为组件内存态 | 每次打开重置，不记忆用户习惯 |
+
+### 9.2 功能设计（对标 1Password / Bitwarden / KeePassXC）
+
+**三种生成模式**：
+
+| 模式 | 参数 | 用途 |
+|---|---|---|
+| 随机密码（现有增强） | 长度 4-128（默认 16）、大写/小写/数字/符号、排除歧义、**自定义排除字符**、**每类至少一个** | 网站账号密码 |
+| 密码短语 Passphrase | 单词数 3-10（默认 4）、分隔符（`-` `_` `.` 空格 / 自定义）、首字母大写、追加随机数字、内置 EFF 短词表 | 好记高熵，主密码/口令 |
+| PIN | 4-12 位纯数字 | 银行卡 PIN / 设备解锁 |
+
+**生成质量增强**：
+- **每类至少一个字符**：先从每类字符集各取 1 个，剩余名额纯随机，最后 Fisher-Yates 洗牌（消除"纯随机可能 16 位无一符号"）
+- **自定义排除字符**：用户输入任意要排除的字符（与排除歧义叠加生效）
+- **破解时间估算**：按熵值 + 10⁹ 次/秒离线暴力假设，输出"约 3 万年"式人类可读文案；熵值数值实时显示（`72.4 bits`）
+
+**独立生成器弹窗**：
+- 新增 `PasswordGeneratorModal.vue`，主界面随时打开；入口：HeaderBar 工具图标 + 快捷键 `Ctrl/Cmd + G`（注册进 useShortcuts）
+- 生成 → 一键复制（走统一剪贴板安全链路 + CopyCountdownPill 倒计时）、重掷、模式切换
+- **生成历史**：会话内保留最近 10 条，仅内存，锁定/退出清空，不落盘（安全红线）
+
+**偏好持久化**：生成器配置（模式、长度、各开关）存 localStorage（键 `lockpass_gen_prefs`），编辑器内嵌面板与独立弹窗共享同一份偏好。
+
+### 9.3 技术设计
+
+**generator.js 新增接口**（`window.PasswordGenerator` 挂载不变）：
+
+```
+generatePassword(options)          // 现有；options 增 excludeChars，内部加每类保证
+generatePassphrase(options)        // words, separator, capitalize, appendNumber
+generatePin(length)                // 4-12
+crackTimeEstimate(entropyBits)     // → { label, seconds }
+EFF_WORDLIST                       // ~1300 词（EFF short list 子集，公共领域）
+```
+
+**生成状态机（三模式统一）**：
+
+```
+打开 → 读取偏好(localStorage) → 按当前模式生成
+  ├─ 调整参数 → 即时重生成（debounce 150ms）
+  ├─ 重掷 → 同参数重新生成
+  ├─ 复制 → 统一剪贴板链路 → CopyCountdownPill → pushHistory(max 10，会话内)
+  └─ 关闭 → 写回偏好(localStorage)
+```
+
+**代码收敛（顺带清债）**：3 份重复内联面板收敛为 `PasswordGeneratorPanel.vue` 单组件，编辑器 3 处 + 独立弹窗复用；`useVault.openModal` 增加 `'generator'` 分支。
+
+**词表选型**：EFF Diceware short list 子集（~1300 词，公共领域），gzip 后约 5KB。
+
+### 9.4 分期与验收
+
+| 分期 | 内容 | 文件 |
+|---|---|---|
+| G1 | core 能力 + 面板组件化收敛 | generator.js、PasswordGeneratorPanel.vue（新）、EntryEditorModal.vue |
+| G2 | 独立弹窗 + 入口 + 快捷键 + 会话历史 | PasswordGeneratorModal.vue（新）、HeaderBar.vue、useShortcuts、useVault.js |
+| G3 | 偏好持久化 | useVault.js / 新 composable |
+
+验收：三模式可用、参数即时重生成；每类字符保证（统计验证 1000 次）；`Ctrl/Cmd+G` 呼出；历史锁定清空；偏好重启保留；体积增量 gzip < 8KB；vite build 0 error 0 warning。

@@ -147,7 +147,7 @@ async function deleteDatabase() {
     const timeout = setTimeout(() => {
       if (!settled) {
         settled = true;
-        reject(new Error('删除数据库超时，请关闭其他 LockPass 标签页后重试'));
+        reject(new Error(window.I18n ? window.I18n.t('db.errDeleteTimeout') : '删除数据库超时，请关闭其他 LockPass 标签页后重试'));
       }
     }, 10000);
     request.onsuccess = () => {

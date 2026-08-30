@@ -15,21 +15,15 @@ import PairRequestModal from './modals/PairRequestModal.vue'
 const { closeModal } = useVault()
 
 // 已实现的模态框
-const IMPLEMENTED = {
-  settings: '设置',
-  'change-pw': '修改主密码',
-  tags: '标签管理',
-  import: '批量导入',
-  export: '导出',
-  'qr-import': '二维码添加',
-  'qr-share': '二维码分享',
-}
+const IMPLEMENTED = new Set([
+  'settings', 'change-pw', 'tags', 'import', 'export', 'qr-import', 'qr-share',
+])
 
 // activeName 返回模态框 key（'entry' | 'settings' | ...），
 // 模板分支按 key 匹配；IMPLEMENTED 仅用于判定该 modal 是否已实现。
 const activeName = computed(() => {
   if (vaultState.activeModal === 'entry') return 'entry'
-  if (vaultState.activeModal && IMPLEMENTED[vaultState.activeModal]) return vaultState.activeModal
+  if (vaultState.activeModal && IMPLEMENTED.has(vaultState.activeModal)) return vaultState.activeModal
   return ''
 })
 </script>

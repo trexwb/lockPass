@@ -11,6 +11,7 @@
  *  - pushRight    复制按钮右对齐（原 AI 服务名称行的 ml-auto 布局）
  */
 import { useVault } from '../../composables/useVault'
+import { useI18n } from '../../composables/useI18n'
 
 const props = defineProps({
   label: { type: String, required: true },
@@ -22,6 +23,7 @@ const props = defineProps({
 })
 
 const { copyField } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons（消除与图标库的重复定义）
 const Icons = window.Utils.SvgIcons
@@ -50,8 +52,8 @@ function displayText() {
         v-if="copyable"
         class="btn-icon btn-icon-sm"
         :class="{ 'ml-auto': pushRight }"
-        title="复制"
-        aria-label="复制"
+        :title="t('detail.field.copy')"
+        :aria-label="t('detail.field.copy')"
         @click="copyField(value, $event.currentTarget)"
       >
         <span v-html="Icons.copy(14)"></span>

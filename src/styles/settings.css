@@ -636,6 +636,13 @@
   transform: scale(1.1);
   animation: ring-pop var(--dur-med) var(--ease-out-quart);
 }
+/* 触控热区：视觉 28px，命中区扩至 40px（不改变视觉尺寸） */
+.color-swatch-btn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
 
 /* Icon picker */
 .icon-picker-grid {

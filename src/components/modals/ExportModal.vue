@@ -7,8 +7,10 @@
 import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { closeModal } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -28,10 +30,10 @@ const entriesToExport = computed(() => {
 async function exportEncryptedVault() {
   if (exporting.value) return
   exporting.value = true
-  exportProgress.value = '正在加密导出…'
+  exportProgress.value = t('export.exportingVault')
   try {
     if (!vaultState.cryptoKey) {
-      window.Utils.showToast('未找到会话密钥，请先解锁', 'error')
+      window.Utils.showToast(t('export.errNoSessionKey'), 'error')
       return
     }
     const now = new Date()
@@ -62,16 +64,16 @@ async function exportEncryptedVault() {
 
     const tagSuffix = exportTagFilter.value ? `-${exportTagFilter.value}` : ''
     window.Utils.downloadFile(
-      `LockPass-备份${tagSuffix}-${dateStr}.vault`,
+      `${t('export.filePrefix')}${tagSuffix}-${dateStr}.vault`,
       JSON.stringify(exportData, null, 2),
       'application/json'
     )
     // 记录备份时间：提醒周期从最近一次 .vault 导出/快照起算
     if (window.BackupManager) window.BackupManager.markBackupNow()
-    window.Utils.showToast(`已导出 ${entriesToExport.value.length} 条密码`, 'success')
+    window.Utils.showToast(t('export.doneVault', { n: entriesToExport.value.length }), 'success')
     closeModal()
   } catch (e) {
-    window.Utils.showToast('导出失败：' + (e.message || e), 'error')
+    window.Utils.showToast(t('toast.exportFailed', { msg: e.message || e }), 'error')
   } finally {
     exporting.value = false
     exportProgress.value = ''
@@ -80,15 +82,15 @@ async function exportEncryptedVault() {
 
 async function exportCSV() {
   const confirmed = await window.Utils.confirm({
-    title: '导出 CSV',
-    message: '⚠️ CSV 文件为明文格式，包含所有密码！\n\n请确保导出后妥善保管该文件，使用后立即删除。\n\n是否继续？',
-    confirmText: '继续导出',
+    title: t('export.confirmCsvTitle'),
+    message: t('export.confirmCsvMsg'),
+    confirmText: t('export.confirmCsvOk'),
     danger: true,
   })
   if (!confirmed) return
   if (exporting.value) return
   exporting.value = true
-  exportProgress.value = '正在生成 CSV 文件…'
+  exportProgress.value = t('export.exportingCsv')
   try {
     // 含 entryType + 各类型专有字段；未使用的字段留空
     const headers = [
@@ -123,14 +125,14 @@ async function exportCSV() {
     const dateStr = window.Utils.formatDateFilename(new Date())
     const tagSuffix = exportTagFilter.value ? `-${exportTagFilter.value}` : ''
     window.Utils.downloadFile(
-      `LockPass-备份${tagSuffix}-${dateStr}.csv`,
+      `${t('export.filePrefix')}${tagSuffix}-${dateStr}.csv`,
       rows.join('\n'),
       'text/csv'
     )
-    window.Utils.showToast(`已导出 ${entriesToExport.value.length} 条密码，请妥善保管`, 'warning')
+    window.Utils.showToast(t('export.doneCsv', { n: entriesToExport.value.length }), 'warning')
     closeModal()
   } catch (e) {
-    window.Utils.showToast('导出失败：' + (e.message || e), 'error')
+    window.Utils.showToast(t('toast.exportFailed', { msg: e.message || e }), 'error')
   } finally {
     exporting.value = false
     exportProgress.value = ''
@@ -141,7 +143,7 @@ async function exportCSV() {
 <template>
   <ModalBase :max-width="'560px'" @close="closeModal()">
     <div class="modal-header">
-      <h3>导出</h3>
+      <h3>{{ t('export.title') }}</h3>
       <button class="btn-icon" @click="closeModal()">
         <span v-html="Icons.close(16)"></span>
       </button>
@@ -155,16 +157,16 @@ async function exportCSV() {
       <div v-else class="export-options">
         <!-- P3-F3：按标签筛选导出范围 -->
         <div class="form-group" v-if="availableTags.length">
-          <label class="form-label">导出范围</label>
+          <label class="form-label">{{ t('export.scope') }}</label>
           <select class="form-input" v-model="exportTagFilter">
-            <option value="">全部密码（{{ vaultState.entries.length }} 条）</option>
+            <option value="">{{ t('export.allEntries', { n: vaultState.entries.length }) }}</option>
             <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
           </select>
           <div class="text-muted text-sm mt-1" v-if="exportTagFilter">
-            将导出标签「{{ exportTagFilter }}」下的 {{ entriesToExport.length }} 条密码
+            {{ t('export.tagScopeHint', { tag: exportTagFilter, n: entriesToExport.length }) }}
           </div>
         </div>
-        <div class="export-option" role="button" tabindex="1" @click="exportEncryptedVault()">
+        <div class="export-option" role="button" @click="exportEncryptedVault()">
           <div class="export-option-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -172,11 +174,11 @@ async function exportCSV() {
             </svg>
           </div>
           <div class="export-option-text">
-            <div class="export-option-title">加密备份 (.vault)</div>
-            <div class="text-muted text-sm">使用会话密钥加密，导出文件包含 salt / iterations / iv / data</div>
+            <div class="export-option-title">{{ t('export.optEncrypted') }}</div>
+            <div class="text-muted text-sm">{{ t('export.optEncryptedDesc') }}</div>
           </div>
         </div>
-        <div class="export-option" role="button" tabindex="2" @click="exportCSV()">
+        <div class="export-option" role="button" @click="exportCSV()">
           <div class="export-option-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -186,15 +188,15 @@ async function exportCSV() {
             </svg>
           </div>
           <div class="export-option-text">
-            <div class="export-option-title">明文 CSV</div>
-            <div class="text-muted text-sm">包含所有密码的明文表格，导出前会二次确认风险</div>
+            <div class="export-option-title">{{ t('export.optCsv') }}</div>
+            <div class="text-muted text-sm">{{ t('export.optCsvDesc') }}</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-secondary" @click="closeModal()">关闭</button>
+      <button class="btn btn-secondary" @click="closeModal()">{{ t('modal.close') }}</button>
     </div>
   </ModalBase>
 </template>

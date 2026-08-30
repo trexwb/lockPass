@@ -5,6 +5,9 @@
    扩展轮询 /pair/poll 领取 token，完成配对。
    该弹窗不占用 activeModal，可在任意界面弹出。 */
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from '../../composables/useI18n'
+
+const { t } = useI18n()
 
 const visible = ref(false)
 const nonce = ref('')
@@ -26,11 +29,11 @@ async function onAllow() {
   try {
     if (window.TauriServer) {
       await window.TauriServer.confirmPair(nonce.value)
-      window.Utils.showToast('扩展配对成功，可自动填充密码', 'success')
+      window.Utils.showToast(t('pair.success'), 'success')
     }
     close()
   } catch (e) {
-    window.Utils.showToast('配对失败：' + (e.message || '未知错误'), 'error')
+    window.Utils.showToast(t('pair.failed', { msg: e.message || t('toast.unknownError') }), 'error')
   } finally {
     busy.value = false
   }
@@ -44,7 +47,7 @@ async function onReject() {
       await window.TauriServer.rejectPair(nonce.value)
     }
   } catch (e) { /* 忽略取消时的错误 */ }
-  window.Utils.showToast('已拒绝配对请求', 'info')
+  window.Utils.showToast(t('pair.rejected'), 'info')
   close()
   busy.value = false
 }
@@ -55,6 +58,8 @@ function onPairRequest(e) {
 
 function onKeydown(e) {
   if (e.key === 'Escape' && visible.value) {
+    // 阻断向 document 其他 keydown 监听（useShortcuts）继续传播，避免 Esc 双重触发
+    e.stopImmediatePropagation()
     onReject()
   }
 }
@@ -78,14 +83,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="visible" class="lp-pair-overlay" @click.self="onReject">
-    <div class="lp-pair-card" role="dialog" aria-modal="true" aria-label="浏览器扩展配对请求">
-      <h3>浏览器扩展配对请求</h3>
-      <p class="lp-pair-desc">检测到浏览器扩展请求连接 LockPass。请在扩展弹窗中确认显示的数字是否一致：</p>
+  <div v-if="visible" class="lp-pair-overlay" @click.self="close">
+    <div class="lp-pair-card" role="dialog" aria-modal="true" :aria-label="t('pair.ariaTitle')">
+      <h3>{{ t('pair.title') }}</h3>
+      <p class="lp-pair-desc">{{ t('pair.desc') }}</p>
       <div class="lp-pair-nonce">{{ nonce }}</div>
       <div class="lp-pair-actions">
-        <button class="btn btn-secondary" :disabled="busy" @click="onReject">拒绝</button>
-        <button class="btn btn-primary" :disabled="busy" @click="onAllow">允许配对</button>
+        <button class="btn btn-secondary" :disabled="busy" @click="onReject">{{ t('pair.reject') }}</button>
+        <button class="btn btn-primary" :disabled="busy" @click="onAllow">{{ t('pair.allow') }}</button>
       </div>
     </div>
   </div>
@@ -95,7 +100,7 @@ onBeforeUnmount(() => {
 .lp-pair-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2000;
+  z-index: var(--z-pair);
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;

@@ -8,8 +8,10 @@ import { computed, reactive, ref } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import { useTheme } from '../../composables/useTheme'
 import CtxMenu from '../common/CtxMenu.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { openModal, lockVault } = useVault()
+const { t } = useI18n()
 const { themeMode, accentName, ACCENTS, setMode, setAccent } = useTheme()
 
 const searchInput = ref(null)
@@ -33,8 +35,8 @@ function clearSearch() {
 
 /* ── 顶栏右键菜单 ── */
 
-const ACCENT_LABELS = { blue: '蓝色', green: '绿色', purple: '紫色', orange: '橙色', red: '红色', cyan: '青色' }
-const THEME_LABELS = { dark: '暗色', light: '亮色', system: '跟随系统' }
+const ACCENT_LABELS = { blue: 'accent.blue', green: 'accent.green', purple: 'accent.purple', orange: 'accent.orange', red: 'accent.red', cyan: 'accent.cyan' }
+const THEME_LABELS = { dark: 'theme.dark', light: 'theme.light', system: 'theme.system' }
 
 const headerCtxMenu = reactive({ visible: false, x: 0, y: 0, payload: null })
 const headerCtxOrigin = ref('bl')
@@ -78,30 +80,30 @@ const headerCtxItems = computed(() => {
   const list = []
 
   if (kind === 'app') {
-    list.push({ key: 'settings', label: '设置', iconHtml: window.Utils?.SvgIcons?.settings?.(14) })
-    list.push({ key: 'change-pw', label: '修改主密码', iconHtml: window.Utils?.SvgIcons?.key?.(14) })
-    list.push({ key: 'tags', label: '标签管理', iconHtml: window.Utils?.SvgIcons?.tag?.(14) })
+    list.push({ key: 'settings', label: t('header.ctxSettings'), iconHtml: window.Utils?.SvgIcons?.settings?.(14) })
+    list.push({ key: 'change-pw', label: t('settings.data.changeMaster'), iconHtml: window.Utils?.SvgIcons?.key?.(14) })
+    list.push({ key: 'tags', label: t('settings.tags.manage'), iconHtml: window.Utils?.SvgIcons?.tag?.(14) })
     list.push({ divider: true })
-    list.push({ key: 'lock', label: '立即锁定', iconHtml: window.Utils?.SvgIcons?.lock?.(14) })
+    list.push({ key: 'lock', label: t('header.ctxLock'), iconHtml: window.Utils?.SvgIcons?.lock?.(14) })
     return list
   }
 
   // 设置快速菜单：入口 + 主题模式 + 强调色
-  list.push({ key: 'settings', label: '打开设置', iconHtml: window.Utils?.SvgIcons?.settings?.(14), accent: true })
-  list.push({ key: 'change-pw', label: '修改主密码', iconHtml: window.Utils?.SvgIcons?.key?.(14) })
-  list.push({ key: 'tags', label: '标签管理', iconHtml: window.Utils?.SvgIcons?.tag?.(14) })
+  list.push({ key: 'settings', label: t('header.ctxOpenSettings'), iconHtml: window.Utils?.SvgIcons?.settings?.(14), accent: true })
+  list.push({ key: 'change-pw', label: t('settings.data.changeMaster'), iconHtml: window.Utils?.SvgIcons?.key?.(14) })
+  list.push({ key: 'tags', label: t('settings.tags.manage'), iconHtml: window.Utils?.SvgIcons?.tag?.(14) })
   list.push({ divider: true })
-  list.push({ key: 'th-title', label: '主题模式', disabled: true })
+  list.push({ key: 'th-title', label: t('header.ctxTheme'), disabled: true })
   for (const m of ['dark', 'light', 'system']) {
-    list.push({ key: 'theme:' + m, label: THEME_LABELS[m] + (themeMode.value === m ? '  ✓' : '') })
+    list.push({ key: 'theme:' + m, label: t(THEME_LABELS[m]) + (themeMode.value === m ? '  ✓' : '') })
   }
   list.push({ divider: true })
-  list.push({ key: 'ac-title', label: '强调色', disabled: true })
+  list.push({ key: 'ac-title', label: t('settings.appearance.accent'), disabled: true })
   for (const a of ACCENTS) {
-    list.push({ key: 'accent:' + a, label: ACCENT_LABELS[a] + (accentName.value === a ? '  ✓' : '') })
+    list.push({ key: 'accent:' + a, label: t(ACCENT_LABELS[a]) + (accentName.value === a ? '  ✓' : '') })
   }
   list.push({ divider: true })
-  list.push({ key: 'lock', label: '立即锁定', iconHtml: window.Utils?.SvgIcons?.lock?.(14) })
+  list.push({ key: 'lock', label: t('header.ctxLock'), iconHtml: window.Utils?.SvgIcons?.lock?.(14) })
   return list
 })
 
@@ -118,7 +120,7 @@ function onHeaderCtxAction(action) {
 
 <template>
   <header id="header" @contextmenu="onHeaderContextMenu">
-    <button class="btn-icon hamburger-btn" id="hamburger-btn" aria-label="菜单" :aria-expanded="vaultState.sidebarOpen ? 'true' : 'false'" @click="vaultState.sidebarOpen = !vaultState.sidebarOpen">
+    <button class="btn-icon hamburger-btn" id="hamburger-btn" :aria-label="t('header.ariaMenu')" :aria-expanded="vaultState.sidebarOpen ? 'true' : 'false'" @click="vaultState.sidebarOpen = !vaultState.sidebarOpen">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="3" y1="6" x2="21" y2="6" />
         <line x1="3" y1="12" x2="21" y2="12" />
@@ -132,7 +134,7 @@ function onHeaderCtxAction(action) {
         <path d="M35 45V32a15 15 0 0 1 30 0v13" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" />
         <circle cx="50" cy="62" r="5" fill="var(--accent)" />
       </svg>
-      密码保险箱
+      {{ t('header.logoTitle') }}
     </div>
 
     <div class="header-search">
@@ -145,15 +147,15 @@ function onHeaderCtxAction(action) {
         id="global-search"
         v-model="vaultState.searchQuery"
         type="text"
-        placeholder="搜索密码 (⌘ + K)"
-        aria-label="搜索密码"
+        :placeholder="t('header.searchPlaceholderShort')"
+        :aria-label="t('header.ariaSearch')"
         @keydown="onSearchKeydown"
       />
       <button
         v-if="vaultState.searchQuery"
         class="search-clear-btn"
         type="button"
-        aria-label="清除搜索"
+        :aria-label="t('header.ariaClear')"
         @click="clearSearch"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -166,8 +168,8 @@ function onHeaderCtxAction(action) {
     <div class="header-actions">
       <button
         class="btn btn-ghost btn-sm"
-        title="设置（右键快速切换主题）"
-        aria-label="打开设置"
+        :title="t('header.settingsTitle')"
+        :aria-label="t('header.ariaSettings')"
         @click="openModal('settings')"
         @contextmenu="onSettingsCtx"
       >
@@ -175,7 +177,7 @@ function onHeaderCtxAction(action) {
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
-        <span>设置</span>
+        <span>{{ t('settings.title') }}</span>
       </button>
     </div>
 
@@ -183,7 +185,7 @@ function onHeaderCtxAction(action) {
     <CtxMenu
       :menu="headerCtxMenu"
       :items="headerCtxItems"
-      aria-label="顶栏快捷操作"
+      :aria-label="t('ctx.ariaLabel')"
       :origin="headerCtxOrigin"
       @action="onHeaderCtxAction"
     />

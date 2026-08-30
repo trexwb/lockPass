@@ -84,7 +84,9 @@
   --z-toast: 300;            /* Toast 通知 */
   --z-float-tip: 350;        /* 瞬时浮动提示（复制倒计时胶囊），盖 toast 但低于 confirm */
   --z-confirm: 400;          /* 确认弹窗（盖过 modal / detail） */
-  --z-banner: 900;           /* 顶部提醒横幅 */
+  --z-pair: 450;             /* 配对确认弹窗（最高层，盖过 confirm，不锁死底层模态交互） */
+  --z-banner: 150;           /* 顶部提醒横幅（与 #lp-bind-banner 的 150 一致）；
+                                抽屉(151)/遮罩(150) 在其上、仍在弹窗(200+)/确认(400) 之下 */
 
   /* 粒子背景 RGB 三元组（canvas 用，随主题切换） */
   --particle-link: 88,166,255;
@@ -740,6 +742,14 @@ body:has(#lp-bind-banner) #app {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
+/* 触控热区：视觉 32px，命中区扩至 40px（不改变视觉尺寸） */
+.btn-icon::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--radius-sm);
 }
 .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
 .btn-icon.danger:hover { background: var(--danger-dim); color: var(--danger); }

@@ -7,8 +7,10 @@
 import { ref, watch, nextTick } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { getSession, closeModal } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -39,8 +41,8 @@ function _loadVendor(src, check) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script')
     s.src = src
-    s.onload = () => (check() ? resolve() : reject(new Error('库加载完成但未就绪：' + src)))
-    s.onerror = () => reject(new Error('库加载失败：' + src))
+    s.onload = () => (check() ? resolve() : reject(new Error(t('qrshare.errLibNotReady', { src }))))
+    s.onerror = () => reject(new Error(t('qrshare.errLibLoad', { src })))
     document.head.appendChild(s)
   })
 }
@@ -56,7 +58,7 @@ async function generate() {
   try {
     const password = getSession()
     if (!password) {
-      errorMsg.value = '未找到会话主密码，请重新解锁后重试'
+      errorMsg.value = t('qrshare.errNoSession')
       return
     }
 
@@ -90,11 +92,11 @@ async function generate() {
     const len = new TextEncoder().encode(text).length
     byteLen.value = len
     if (len > 2200) {
-      errorMsg.value = `二维码容量不足（内容约 ${(len / 1024).toFixed(1)}KB，上限约 2.2KB）。请精简备注或字段后重试，或改用文件同步传输`
+      errorMsg.value = t('qrshare.errTooLarge', { kb: (len / 1024).toFixed(1) })
       return
     }
     if (len > 1800) {
-      window.Utils.showToast(`⚠️ 内容较大（${(len / 1024).toFixed(1)}KB），扫码时需保持光线充足`, 'warning')
+      window.Utils.showToast(t('qrshare.warnLarge', { kb: (len / 1024).toFixed(1) }), 'warning')
     }
 
     qrText.value = text
@@ -127,7 +129,7 @@ async function generate() {
       colorLight: '#ffffff',
     })
   } catch (e) {
-    errorMsg.value = '生成失败：' + (e.message || e)
+    errorMsg.value = t('qrshare.errGenerate', { msg: e.message || e })
   } finally {
     loading.value = false
   }
@@ -137,9 +139,9 @@ async function copyQrText() {
   if (!qrText.value) return
   try {
     await window.Utils.copyText(qrText.value)
-    window.Utils.showToast('二维码文本已复制', 'success')
+    window.Utils.showToast(t('qrshare.copied'), 'success')
   } catch (e) {
-    window.Utils.showToast('复制失败，请手动选择复制', 'error')
+    window.Utils.showToast(t('qrshare.errCopy'), 'error')
   }
 }
 </script>
@@ -147,7 +149,7 @@ async function copyQrText() {
 <template>
   <ModalBase :max-width="'520px'" @close="closeModal()">
     <div class="modal-header">
-      <h3>分享为二维码</h3>
+      <h3>{{ t('qrshare.title') }}</h3>
       <button class="btn-icon" @click="closeModal()">
         <span v-html="Icons.close(16)"></span>
       </button>
@@ -155,24 +157,24 @@ async function copyQrText() {
 
     <div class="modal-body">
       <div v-if="!entry" class="text-muted text-sm text-center py-6">
-        请先选择一条密码记录，再打开二维码分享
+        {{ t('qrshare.pickFirst') }}
       </div>
       <template v-else>
         <div class="text-muted text-sm mb-3">
-          将「{{ entry.title || '未命名' }}」加密为二维码，可在另一台设备扫码导入
+          {{ t('qrshare.encryptedHint', { title: entry.title || t('common.unnamed') }) }}
         </div>
         <div class="text-center">
           <div v-if="loading" class="spinner-col">
             <div class="spinner"></div>
-            <span class="text-muted text-sm">正在生成…</span>
+            <span class="text-muted text-sm">{{ t('qrshare.generating') }}</span>
           </div>
           <div v-else-if="errorMsg" class="text-danger text-sm p-6">{{ errorMsg }}</div>
           <template v-else-if="qrText">
             <div ref="qrContainer" class="qr-paper inline-block"></div>
-            <p class="text-muted text-sm mt-2">二维码已加密，另一台设备扫码后自动导入</p>
+            <p class="text-muted text-sm mt-2">{{ t('qrshare.scanHint') }}</p>
             <div class="qr-text-box mt-2">
               <textarea v-model="qrText" readonly rows="3" class="form-input text-xs" spellcheck="false"></textarea>
-              <button class="btn btn-secondary btn-sm mt-1" @click="copyQrText()">复制二维码文本</button>
+              <button class="btn btn-secondary btn-sm mt-1" @click="copyQrText()">{{ t('qrshare.copyQrText') }}</button>
             </div>
           </template>
         </div>
@@ -180,7 +182,7 @@ async function copyQrText() {
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-secondary" @click="closeModal()">关闭</button>
+      <button class="btn btn-secondary" @click="closeModal()">{{ t('modal.close') }}</button>
     </div>
   </ModalBase>
 </template>

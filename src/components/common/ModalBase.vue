@@ -71,7 +71,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="overlayRef" id="modal-overlay" role="dialog" aria-modal="true" tabindex="-1" :aria-labelledby="ariaLabelledBy || undefined">
+  <div ref="overlayRef" id="modal-overlay" role="dialog" aria-modal="true" tabindex="-1" :aria-labelledby="ariaLabelledBy || undefined" @click.self="emit('close')">
     <div id="modal" role="document">
       <slot />
     </div>

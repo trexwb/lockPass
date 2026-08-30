@@ -7,8 +7,10 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
+import { useI18n } from '../../composables/useI18n'
 
 const { saveVault, closeModal, getSession } = useVault()
+const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -39,8 +41,8 @@ function _loadVendor(src, check) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script')
     s.src = src
-    s.onload = () => (check() ? resolve() : reject(new Error('库加载完成但未就绪：' + src)))
-    s.onerror = () => reject(new Error('库加载失败：' + src))
+    s.onload = () => (check() ? resolve() : reject(new Error(t('qrshare.errLibNotReady', { src }))))
+    s.onerror = () => reject(new Error(t('qrshare.errLibLoad', { src })))
     document.head.appendChild(s)
   })
 }
@@ -61,7 +63,7 @@ function onDrop(e) {
   e.currentTarget.classList.remove('dragover')
   const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]
   if (file && file.type && file.type.startsWith('image/')) processImage(file)
-  else window.Utils.showToast('请拖入图片文件', 'error')
+  else window.Utils.showToast(t('qrimport.errNotImage'), 'error')
 }
 
 function onPaste(e) {
@@ -77,7 +79,7 @@ function onPaste(e) {
   }
   // 非图片粘贴：给予提示
   e.preventDefault()
-  window.Utils.showToast('请粘贴图片格式的二维码（截图或右键复制图片）', 'warning')
+  window.Utils.showToast(t('qrimport.errPasteNotImage'), 'warning')
 }
 
 /* ── 图片解码 ─────────────────────────────────────────── */
@@ -85,12 +87,12 @@ function onPaste(e) {
 async function processImage(file) {
   fileName.value = file.name || ''
   step.value = 'working'
-  setStatus('正在识别二维码…')
+  setStatus(t('qrimport.recognizing'))
   try {
     const text = await decodeImageFile(file)
     await handleQrText(text)
   } catch (e) {
-    setStatus(e.message || '二维码识别失败', 'danger')
+    setStatus(e.message || t('qrimport.errRecognize'), 'danger')
     step.value = 'upload'
   }
 }
@@ -99,7 +101,7 @@ async function decodeImageFile(file) {
   await _loadVendor(import.meta.env.BASE_URL + 'assets/vendor/jsQR.js', () => typeof jsQR === 'function')
   return new Promise((resolve, reject) => {
     if (typeof jsQR !== 'function') {
-      reject(new Error('二维码解码库加载失败'))
+      reject(new Error(t('qrimport.errDecoderLib')))
       return
     }
     const reader = new FileReader()
@@ -132,15 +134,15 @@ async function decodeImageFile(file) {
             resolve(codeInverted.data)
             return
           }
-          reject(new Error('未在图片中找到二维码'))
+          reject(new Error(t('qrimport.errNotFound')))
         } catch (e) {
-          reject(new Error('图片解码失败'))
+          reject(new Error(t('qrimport.errImageDecode')))
         }
       }
-      img.onerror = () => reject(new Error('图片读取失败'))
+      img.onerror = () => reject(new Error(t('qrimport.errImageRead')))
       img.src = reader.result
     }
-    reader.onerror = () => reject(new Error('文件读取失败'))
+    reader.onerror = () => reject(new Error(t('qrimport.errFileRead')))
     reader.readAsDataURL(file)
   })
 }
@@ -149,11 +151,11 @@ async function decodeImageFile(file) {
 
 async function handleQrText(text) {
   step.value = 'working'
-  setStatus('二维码识别成功，正在自动同步…')
+  setStatus(t('qrimport.recognized'))
   // 对齐原版：自动取会话主密码解密，无需再次输入
   const password = getSession()
   if (!password) {
-    setStatus('未找到会话主密码，请先解锁保险箱后重试', 'danger')
+    setStatus(t('qrimport.errNoSession'), 'danger')
     step.value = 'upload'
     return
   }
@@ -162,7 +164,7 @@ async function handleQrText(text) {
     entry.value = decrypted
     await autoImport(decrypted)
   } catch (e) {
-    setStatus(e.message || '导入失败', 'danger')
+    setStatus(e.message || t('qrimport.errImport'), 'danger')
     step.value = 'upload'
   }
 }
@@ -173,20 +175,20 @@ async function qrStringToEntry(qrText, masterPassword) {
   try {
     obj = JSON.parse(String(qrText).trim())
   } catch (e) {
-    throw new Error('不是有效的 LockPass 二维码内容')
+    throw new Error(t('qrimport.errNotLockPassContent'))
   }
   if (!obj || obj.format !== QR_FORMAT) {
-    throw new Error('不是 LockPass 二维码')
+    throw new Error(t('qrimport.errNotLockPass'))
   }
   if (!obj.salt || !obj.iv || !obj.data) {
-    throw new Error('二维码内容不完整')
+    throw new Error(t('qrimport.errIncomplete'))
   }
   try {
     const salt = window.CryptoUtils.base64ToArrayBuffer(obj.salt)
     const key = await window.CryptoUtils.deriveKey(masterPassword, new Uint8Array(salt))
     return await window.CryptoUtils.decrypt(obj.data, obj.iv, key)
   } catch (e) {
-    throw new Error('主密码错误或二维码已损坏')
+    throw new Error(t('qrimport.errPwOrCorrupt'))
   }
 }
 
@@ -197,16 +199,16 @@ async function autoImport(e) {
     (x.username || '') === (e.username || '')
   )
   if (dup) {
-    const dupLabel = `${e.title || '未命名'}${e.username ? '（' + e.username + '）' : ''}`
+    const dupLabel = `${e.title || t('common.unnamed')}${e.username ? t('import.withUser', { user: e.username }) : ''}`
     const ok = await window.Utils.confirm({
-      title: '发现重复条目',
-      message: `已存在相同条目「${dupLabel}」，是否替换？`,
-      confirmText: '替换',
-      cancelText: '跳过',
+      title: t('import.dupFoundTitle'),
+      message: t('import.dupFoundMsg', { label: dupLabel }),
+      confirmText: t('import.dupReplace'),
+      cancelText: t('import.dupSkip'),
       danger: true,
     })
     if (!ok) {
-      window.Utils.showToast('已跳过，可继续扫码', 'info')
+      window.Utils.showToast(t('qrimport.skippedContinue'), 'info')
       setTimeout(() => resetToUpload(), 1200)
       return
     }
@@ -252,7 +254,7 @@ async function autoImport(e) {
     }
   }
   await saveVault()
-  window.Utils.showToast(dup ? '导入成功（已替换原条目）' : '导入成功', 'success')
+  window.Utils.showToast(dup ? t('qrimport.doneReplaced') : t('qrimport.done'), 'success')
 
   // 短暂停留后回到上传视图，可继续导入下一张
   setTimeout(() => resetToUpload(), 1500)
@@ -262,7 +264,7 @@ async function autoImport(e) {
 
 async function startCameraScan() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    window.Utils.showToast('当前浏览器不支持摄像头访问，请使用上传图片', 'error')
+    window.Utils.showToast(t('qrimport.errNoCamera'), 'error')
     return
   }
   stopCamera() // 清理上一次扫码会话
@@ -279,7 +281,7 @@ async function initCameraScan() {
       audio: false,
     })
   } catch (e) {
-    setStatus('无法访问摄像头：' + (e.message || e) + '（可改用上传图片识别）', 'danger')
+    setStatus(t('qrimport.errCameraAccess', { msg: e.message || e }), 'danger')
     step.value = 'upload'
     return
   }
@@ -300,7 +302,7 @@ async function initCameraScan() {
       video.muted = true
       await video.play()
     } catch (e2) {
-      setStatus('请点击画面开始扫码', 'muted')
+      setStatus(t('qrimport.tapToScan'), 'muted')
     }
   }
 
@@ -318,7 +320,7 @@ async function initCameraScan() {
     try {
       await _loadVendor(import.meta.env.BASE_URL + 'assets/vendor/jsQR.js', () => typeof jsQR === 'function')
     } catch (e) {
-      setStatus('二维码解码库加载失败，请检查网络后重试', 'danger')
+      setStatus(t('qrimport.errDecoderLibRetry'), 'danger')
       stopCamera()
       step.value = 'upload'
       return
@@ -351,7 +353,7 @@ async function scanLoop() {
       }
       if (text) {
         stopCamera()
-        setStatus('识别成功，正在导入…')
+        setStatus(t('qrimport.scanSuccess'))
         await handleQrText(text)
         return
       }
@@ -397,7 +399,7 @@ onUnmounted(() => {
 <template>
   <ModalBase :max-width="'560px'" @close="closeModal()">
     <div class="modal-header">
-      <h3>二维码添加</h3>
+      <h3>{{ t('qrimport.title') }}</h3>
       <button class="btn-icon" @click="closeModal()">
         <span v-html="Icons.close(16)"></span>
       </button>
@@ -420,8 +422,8 @@ onUnmounted(() => {
           <path d="M14 14h3v3h-3z" />
           <path d="M21 14v3h-3" />
         </svg>
-        <div>粘贴 / 上传 / 拖拽二维码图片</div>
-        <div class="text-muted text-sm mt-1">支持 PNG / JPG；可直接复制二维码图片后按 ⌘+V 粘贴，或拖拽图片到此处</div>
+        <div>{{ t('qrimport.dropHere') }}</div>
+        <div class="text-muted text-sm mt-1">{{ t('qrimport.dropHint') }}</div>
         <input id="qr-import-file" type="file" accept="image/*" style="display:none" @change="onFileChange" />
       </div>
 
@@ -429,7 +431,7 @@ onUnmounted(() => {
       <div v-else-if="step === 'scan'" class="qr-scan-frame">
         <video id="qr-scan-video" autoplay playsinline muted></video>
         <canvas id="qr-scan-canvas" class="hidden" aria-hidden="true"></canvas>
-        <div class="text-muted text-sm text-center mt-2">将二维码对准取景框，识别后自动导入</div>
+        <div class="text-muted text-sm text-center mt-2">{{ t('qrimport.frameHint') }}</div>
         <div v-if="statusMsg" :class="['text-sm mt-2 text-center', statusType === 'danger' ? 'text-danger' : 'text-muted']">{{ statusMsg }}</div>
       </div>
 
@@ -448,20 +450,20 @@ onUnmounted(() => {
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
           <circle cx="12" cy="13" r="4" />
         </svg>
-        扫码识别
+        {{ t('qrimport.btnScan') }}
       </button>
     </div>
 
     <div class="modal-footer">
       <template v-if="step === 'upload'">
-        <button class="btn btn-secondary" @click="closeModal()">取消</button>
+        <button class="btn btn-secondary" @click="closeModal()">{{ t('confirm.default.cancel') }}</button>
       </template>
       <template v-else-if="step === 'scan'">
-        <button class="btn btn-secondary" @click="cancelCameraScan()">返回上传</button>
-        <button class="btn btn-secondary" @click="closeModal()">关闭</button>
+        <button class="btn btn-secondary" @click="cancelCameraScan()">{{ t('qrimport.btnBackUpload') }}</button>
+        <button class="btn btn-secondary" @click="closeModal()">{{ t('modal.close') }}</button>
       </template>
       <template v-else>
-        <button class="btn btn-secondary" @click="resetToUpload()">返回</button>
+        <button class="btn btn-secondary" @click="resetToUpload()">{{ t('qrimport.btnBack') }}</button>
       </template>
     </div>
   </ModalBase>

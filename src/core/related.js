@@ -145,14 +145,14 @@ function buildRelatedReason(key) {
   const type = key.slice(0, sep);
   const value = key.slice(sep + 1);
   const labels = {
-    ip: '同 IP',
-    domain: '同域名',
-    host: '同主机',
-    user: '同账号'
+    ip: window.I18n ? window.I18n.t('related.ip') : '同 IP',
+    domain: window.I18n ? window.I18n.t('related.domain') : '同域名',
+    host: window.I18n ? window.I18n.t('related.host') : '同主机',
+    user: window.I18n ? window.I18n.t('related.user') : '同账号'
   };
   return {
     type: type,
-    label: labels[type] || '关联',
+    label: labels[type] || (window.I18n ? window.I18n.t('related.fallback') : '关联'),
     detail: value
   };
 }
@@ -240,7 +240,7 @@ function renderRelatedSection(entry) {
     <div class="detail-field related-section">
       <div class="detail-field-label">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        关联密码（${related.length}）
+        ${window.I18n ? window.I18n.t('related.sectionTitle', { count: related.length }) : ('关联密码（' + related.length + '）')}
       </div>
       <div class="related-list">${items}</div>
     </div>

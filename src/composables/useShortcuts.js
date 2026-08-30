@@ -7,6 +7,9 @@
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState } from './useVault'
 
+/** i18n 简写：延迟取 window.I18n（core/i18n 先于组件加载） */
+const t = (key, params) => (window.I18n ? window.I18n.t(key, params) : key)
+
 /**
  * 快捷键定义表（与原生 SHORTCUT_DEFS 一致，run 改为调用 Vue composable）
  * test(ctx)：命中判定；run(ctx)：执行动作
@@ -22,74 +25,86 @@ export function buildShortcutDefs() {
 
   return [
     {
-      id: 'search', name: '快速搜索', mac: '⌘ + K', win: 'Ctrl + K',
-      when: '全局（解锁后）', desc: '聚焦搜索框，输入关键词实时筛选密码',
+      id: 'search', nameKey: 'shortcuts.search.name', name: t('shortcuts.search.name'), mac: '⌘ + K', win: 'Ctrl + K',
+      whenKey: 'shortcuts.search.when', descKey: 'shortcuts.search.desc',
+      when: t('shortcuts.search.when'), desc: t('shortcuts.search.desc'),
       test: ctx => ctx.mod && !ctx.alt && !ctx.shift && ctx.key === 'k',
       run: () => { const el = document.getElementById('global-search'); if (el) el.focus(); },
     },
     {
-      id: 'save', name: '保存当前表单', mac: '⌘ + ↵', win: 'Ctrl + Enter',
-      when: '新建/编辑弹窗打开时', desc: '保存新增或编辑中的密码条目',
+      id: 'save', nameKey: 'shortcuts.save.name', name: t('shortcuts.save.name'), mac: '⌘ + ↵', win: 'Ctrl + Enter',
+      whenKey: 'shortcuts.save.when', descKey: 'shortcuts.save.desc',
+      when: t('shortcuts.save.when'), desc: t('shortcuts.save.desc'),
       test: ctx => ctx.modalOpen && ctx.mod && ctx.key === 'enter',
       run: () => { const btn = document.getElementById('entry-editor-save'); if (btn) btn.click(); },
     },
     {
-      id: 'new-entry', name: '新建密码', mac: '⌥ + N', win: 'Alt + N',
-      when: '全局（解锁后）', desc: '打开新增密码表单',
+      id: 'new-entry', nameKey: 'shortcuts.new-entry.name', name: t('shortcuts.new-entry.name'), mac: '⌥ + N', win: 'Alt + N',
+      whenKey: 'shortcuts.new-entry.when', descKey: 'shortcuts.new-entry.desc',
+      when: t('shortcuts.new-entry.when'), desc: t('shortcuts.new-entry.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'n',
       run: () => openEntryModal(),
     },
     {
-      id: 'qr-import', name: '二维码添加', mac: '⌥ + Q', win: 'Alt + Q',
-      when: '全局（解锁后）', desc: '打开二维码导入弹窗',
+      id: 'qr-import', nameKey: 'shortcuts.qr-import.name', name: t('shortcuts.qr-import.name'), mac: '⌥ + Q', win: 'Alt + Q',
+      whenKey: 'shortcuts.qr-import.when', descKey: 'shortcuts.qr-import.desc',
+      when: t('shortcuts.qr-import.when'), desc: t('shortcuts.qr-import.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'q',
       run: () => openModal('qr-import'),
     },
     {
-      id: 'import', name: '批量导入', mac: '⌥ + I', win: 'Alt + I',
-      when: '全局（解锁后）', desc: '打开 CSV 批量导入弹窗',
+      id: 'import', nameKey: 'shortcuts.import.name', name: t('shortcuts.import.name'), mac: '⌥ + I', win: 'Alt + I',
+      whenKey: 'shortcuts.import.when', descKey: 'shortcuts.import.desc',
+      when: t('shortcuts.import.when'), desc: t('shortcuts.import.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'i',
       run: () => openModal('import'),
     },
     {
-      id: 'export', name: '导出备份', mac: '⌥ + E', win: 'Alt + E',
-      when: '全局（解锁后）', desc: '打开导出备份弹窗',
+      id: 'export', nameKey: 'shortcuts.export.name', name: t('shortcuts.export.name'), mac: '⌥ + E', win: 'Alt + E',
+      whenKey: 'shortcuts.export.when', descKey: 'shortcuts.export.desc',
+      when: t('shortcuts.export.when'), desc: t('shortcuts.export.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'e',
       run: () => openModal('export'),
     },
     {
-      id: 'tag-manage', name: '标签管理', mac: '⌥ + T', win: 'Alt + T',
-      when: '全局（解锁后）', desc: '打开标签管理弹窗',
+      id: 'tag-manage', nameKey: 'shortcuts.tag-manage.name', name: t('shortcuts.tag-manage.name'), mac: '⌥ + T', win: 'Alt + T',
+      whenKey: 'shortcuts.tag-manage.when', descKey: 'shortcuts.tag-manage.desc',
+      when: t('shortcuts.tag-manage.when'), desc: t('shortcuts.tag-manage.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 't',
       run: () => openModal('tags'),
     },
     {
-      id: 'settings', name: '打开设置', mac: '⌘ + ,', win: 'Ctrl + ,',
-      when: '全局（解锁后）', desc: '打开设置面板',
+      id: 'settings', nameKey: 'shortcuts.settings.name', name: t('shortcuts.settings.name'), mac: '⌘ + ,', win: 'Ctrl + ,',
+      whenKey: 'shortcuts.settings.when', descKey: 'shortcuts.settings.desc',
+      when: t('shortcuts.settings.when'), desc: t('shortcuts.settings.desc'),
       test: ctx => ctx.mod && !ctx.alt && !ctx.shift && ctx.key === ',',
       run: () => openModal('settings'),
     },
     {
-      id: 'lock', name: '锁定保险箱', mac: '⌥ + L', win: 'Alt + L',
-      when: '全局（解锁后）', desc: '锁定并返回解锁界面',
+      id: 'lock', nameKey: 'shortcuts.lock.name', name: t('shortcuts.lock.name'), mac: '⌥ + L', win: 'Alt + L',
+      whenKey: 'shortcuts.lock.when', descKey: 'shortcuts.lock.desc',
+      when: t('shortcuts.lock.when'), desc: t('shortcuts.lock.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'l',
       run: () => lockVault(),
     },
     {
-      id: 'logout', name: '退出登录', mac: '⌥ + ⇧ + L', win: 'Alt + Shift + L',
-      when: '全局（解锁后）', desc: '清除会话并退出登录',
+      id: 'logout', nameKey: 'shortcuts.logout.name', name: t('shortcuts.logout.name'), mac: '⌥ + ⇧ + L', win: 'Alt + Shift + L',
+      whenKey: 'shortcuts.logout.when', descKey: 'shortcuts.logout.desc',
+      when: t('shortcuts.logout.when'), desc: t('shortcuts.logout.desc'),
       test: ctx => ctx.alt && ctx.shift && ctx.key === 'l',
       run: () => logout(),
     },
     {
-      id: 'filter-all', name: '筛选：全部', mac: '⌥ + A', win: 'Alt + A',
-      when: '全局（解锁后）', desc: '切换到全部密码列表',
+      id: 'filter-all', nameKey: 'shortcuts.filter-all.name', name: t('shortcuts.filter-all.name'), mac: '⌥ + A', win: 'Alt + A',
+      whenKey: 'shortcuts.filter-all.when', descKey: 'shortcuts.filter-all.desc',
+      when: t('shortcuts.filter-all.when'), desc: t('shortcuts.filter-all.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'a',
       run: () => setFilter('all'),
     },
     {
-      id: 'filter-fav', name: '筛选：收藏 / 收藏当前', mac: '⌥ + F', win: 'Alt + F',
-      when: '全局（解锁后）', desc: '列表视图切换到收藏；详情面板打开时切换当前条目收藏',
+      id: 'filter-fav', nameKey: 'shortcuts.filter-fav.name', name: t('shortcuts.filter-fav.name'), mac: '⌥ + F', win: 'Alt + F',
+      whenKey: 'shortcuts.filter-fav.when', descKey: 'shortcuts.filter-fav.desc',
+      when: t('shortcuts.filter-fav.when'), desc: t('shortcuts.filter-fav.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'f',
       run: ctx => {
         if (ctx.detailOpen && ctx.selectedId) toggleFavorite(ctx.selectedId)
@@ -97,62 +112,72 @@ export function buildShortcutDefs() {
       },
     },
     {
-      id: 'filter-recycle', name: '筛选：回收站', mac: '⌥ + R', win: 'Alt + R',
-      when: '全局（解锁后）', desc: '切换到回收站列表',
+      id: 'filter-recycle', nameKey: 'shortcuts.filter-recycle.name', name: t('shortcuts.filter-recycle.name'), mac: '⌥ + R', win: 'Alt + R',
+      whenKey: 'shortcuts.filter-recycle.when', descKey: 'shortcuts.filter-recycle.desc',
+      when: t('shortcuts.filter-recycle.when'), desc: t('shortcuts.filter-recycle.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === 'r',
       run: () => setFilter('recycle'),
     },
     {
-      id: 'filter-type-1', name: '筛选：网站', mac: '⌥ + 1', win: 'Alt + 1',
-      when: '全局（解锁后）', desc: '筛选网站类型条目',
+      id: 'filter-type-1', nameKey: 'shortcuts.filter-type-1.name', name: t('shortcuts.filter-type-1.name'), mac: '⌥ + 1', win: 'Alt + 1',
+      whenKey: 'shortcuts.filter-type-1.when', descKey: 'shortcuts.filter-type-1.desc',
+      when: t('shortcuts.filter-type-1.when'), desc: t('shortcuts.filter-type-1.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === '1',
       run: () => setFilter('type:website'),
     },
     {
-      id: 'filter-type-2', name: '筛选：服务器', mac: '⌥ + 2', win: 'Alt + 2',
-      when: '全局（解锁后）', desc: '筛选服务器类型条目',
+      id: 'filter-type-2', nameKey: 'shortcuts.filter-type-2.name', name: t('shortcuts.filter-type-2.name'), mac: '⌥ + 2', win: 'Alt + 2',
+      whenKey: 'shortcuts.filter-type-2.when', descKey: 'shortcuts.filter-type-2.desc',
+      when: t('shortcuts.filter-type-2.when'), desc: t('shortcuts.filter-type-2.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === '2',
       run: () => setFilter('type:server'),
     },
     {
-      id: 'filter-type-3', name: '筛选：数据库', mac: '⌥ + 3', win: 'Alt + 3',
-      when: '全局（解锁后）', desc: '筛选数据库类型条目',
+      id: 'filter-type-3', nameKey: 'shortcuts.filter-type-3.name', name: t('shortcuts.filter-type-3.name'), mac: '⌥ + 3', win: 'Alt + 3',
+      whenKey: 'shortcuts.filter-type-3.when', descKey: 'shortcuts.filter-type-3.desc',
+      when: t('shortcuts.filter-type-3.when'), desc: t('shortcuts.filter-type-3.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === '3',
       run: () => setFilter('type:database'),
     },
     {
-      id: 'filter-type-4', name: '筛选：AI', mac: '⌥ + 4', win: 'Alt + 4',
-      when: '全局（解锁后）', desc: '筛选 AI 类型条目',
+      id: 'filter-type-4', nameKey: 'shortcuts.filter-type-4.name', name: t('shortcuts.filter-type-4.name'), mac: '⌥ + 4', win: 'Alt + 4',
+      whenKey: 'shortcuts.filter-type-4.when', descKey: 'shortcuts.filter-type-4.desc',
+      when: t('shortcuts.filter-type-4.when'), desc: t('shortcuts.filter-type-4.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === '4',
       run: () => setFilter('type:ai'),
     },
     {
-      id: 'filter-type-5', name: '筛选：应用', mac: '⌥ + 5', win: 'Alt + 5',
-      when: '全局（解锁后）', desc: '筛选应用类型条目',
+      id: 'filter-type-5', nameKey: 'shortcuts.filter-type-5.name', name: t('shortcuts.filter-type-5.name'), mac: '⌥ + 5', win: 'Alt + 5',
+      whenKey: 'shortcuts.filter-type-5.when', descKey: 'shortcuts.filter-type-5.desc',
+      when: t('shortcuts.filter-type-5.when'), desc: t('shortcuts.filter-type-5.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === '5',
       run: () => setFilter('type:app'),
     },
     {
-      id: 'filter-type-6', name: '筛选：其他', mac: '⌥ + 6', win: 'Alt + 6',
-      when: '全局（解锁后）', desc: '筛选其他类型条目',
+      id: 'filter-type-6', nameKey: 'shortcuts.filter-type-6.name', name: t('shortcuts.filter-type-6.name'), mac: '⌥ + 6', win: 'Alt + 6',
+      whenKey: 'shortcuts.filter-type-6.when', descKey: 'shortcuts.filter-type-6.desc',
+      when: t('shortcuts.filter-type-6.when'), desc: t('shortcuts.filter-type-6.desc'),
       test: ctx => ctx.alt && !ctx.shift && ctx.key === '6',
       run: () => setFilter('type:other'),
     },
     {
-      id: 'edit-entry', name: '编辑当前条目', mac: '⌥ + ⇧ + E', win: 'Alt + Shift + E',
-      when: '详情面板打开时', desc: '打开当前条目的编辑表单',
+      id: 'edit-entry', nameKey: 'shortcuts.edit-entry.name', name: t('shortcuts.edit-entry.name'), mac: '⌥ + ⇧ + E', win: 'Alt + Shift + E',
+      whenKey: 'shortcuts.edit-entry.when', descKey: 'shortcuts.edit-entry.desc',
+      when: t('shortcuts.edit-entry.when'), desc: t('shortcuts.edit-entry.desc'),
       test: ctx => ctx.detailOpen && ctx.selectedId && ctx.alt && ctx.shift && ctx.key === 'e',
       run: () => editCurrentEntry(),
     },
     {
-      id: 'copy-password', name: '复制密码', mac: '⌥ + C', win: 'Alt + C',
-      when: '详情面板打开时', desc: '复制当前条目主密码到剪贴板',
+      id: 'copy-password', nameKey: 'shortcuts.copy-password.name', name: t('shortcuts.copy-password.name'), mac: '⌥ + C', win: 'Alt + C',
+      whenKey: 'shortcuts.copy-password.when', descKey: 'shortcuts.copy-password.desc',
+      when: t('shortcuts.copy-password.when'), desc: t('shortcuts.copy-password.desc'),
       test: ctx => ctx.detailOpen && ctx.selectedId && ctx.alt && !ctx.shift && ctx.key === 'c',
       run: ctx => copyPassword(ctx.selectedId),
     },
     {
-      id: 'copy-username', name: '复制用户名', mac: '⌥ + U', win: 'Alt + U',
-      when: '详情面板打开时', desc: '复制当前条目用户名到剪贴板',
+      id: 'copy-username', nameKey: 'shortcuts.copy-username.name', name: t('shortcuts.copy-username.name'), mac: '⌥ + U', win: 'Alt + U',
+      whenKey: 'shortcuts.copy-username.when', descKey: 'shortcuts.copy-username.desc',
+      when: t('shortcuts.copy-username.when'), desc: t('shortcuts.copy-username.desc'),
       test: ctx => ctx.detailOpen && ctx.selectedId && ctx.alt && !ctx.shift && ctx.key === 'u',
       run: ctx => {
         const entry = getEntryById(ctx.selectedId)
@@ -160,14 +185,16 @@ export function buildShortcutDefs() {
       },
     },
     {
-      id: 'toggle-pw', name: '切换密码可见性', mac: '⌥ + P', win: 'Alt + P',
-      when: '详情面板打开时', desc: '显示/隐藏当前条目密码',
+      id: 'toggle-pw', nameKey: 'shortcuts.toggle-pw.name', name: t('shortcuts.toggle-pw.name'), mac: '⌥ + P', win: 'Alt + P',
+      whenKey: 'shortcuts.toggle-pw.when', descKey: 'shortcuts.toggle-pw.desc',
+      when: t('shortcuts.toggle-pw.when'), desc: t('shortcuts.toggle-pw.desc'),
       test: ctx => ctx.detailOpen && ctx.selectedId && ctx.alt && !ctx.shift && ctx.key === 'p',
       run: () => toggleDetailPassword(),
     },
     {
-      id: 'delete-entry', name: '删除当前条目', mac: '⌘ + ⌫', win: 'Ctrl + Backspace',
-      when: '详情面板打开时', desc: '移入回收站（回收站视图中为彻底删除）',
+      id: 'delete-entry', nameKey: 'shortcuts.delete-entry.name', name: t('shortcuts.delete-entry.name'), mac: '⌘ + ⌫', win: 'Ctrl + Backspace',
+      whenKey: 'shortcuts.delete-entry.when', descKey: 'shortcuts.delete-entry.desc',
+      when: t('shortcuts.delete-entry.when'), desc: t('shortcuts.delete-entry.desc'),
       test: ctx => ctx.detailOpen && ctx.selectedId && ctx.mod && ctx.key === 'backspace',
       run: ctx => {
         if (ctx.isRecycleView) permanentDelete(ctx.selectedId)
@@ -175,26 +202,30 @@ export function buildShortcutDefs() {
       },
     },
     {
-      id: 'restore-entry', name: '恢复条目', mac: '⌥ + ⇧ + R', win: 'Alt + Shift + R',
-      when: '回收站详情打开时', desc: '从回收站恢复当前条目',
+      id: 'restore-entry', nameKey: 'shortcuts.restore-entry.name', name: t('shortcuts.restore-entry.name'), mac: '⌥ + ⇧ + R', win: 'Alt + Shift + R',
+      whenKey: 'shortcuts.restore-entry.when', descKey: 'shortcuts.restore-entry.desc',
+      when: t('shortcuts.restore-entry.when'), desc: t('shortcuts.restore-entry.desc'),
       test: ctx => ctx.detailOpen && ctx.selectedId && ctx.isRecycleView && ctx.alt && ctx.shift && ctx.key === 'r',
       run: ctx => restoreEntry(ctx.selectedId),
     },
     {
-      id: 'empty-recycle', name: '清空回收站', mac: '⌥ + ⇧ + ⌫', win: 'Alt + Shift + Backspace',
-      when: '回收站视图', desc: '永久删除回收站全部条目（需二次确认）',
+      id: 'empty-recycle', nameKey: 'shortcuts.empty-recycle.name', name: t('shortcuts.empty-recycle.name'), mac: '⌥ + ⇧ + ⌫', win: 'Alt + Shift + Backspace',
+      whenKey: 'shortcuts.empty-recycle.when', descKey: 'shortcuts.empty-recycle.desc',
+      when: t('shortcuts.empty-recycle.when'), desc: t('shortcuts.empty-recycle.desc'),
       test: ctx => ctx.isRecycleView && ctx.alt && ctx.shift && ctx.key === 'backspace',
       run: () => emptyRecycleBin(),
     },
     {
-      id: 'list-nav', name: '列表上下导航', mac: '↑ / ↓', win: '↑ / ↓',
-      when: '全局（非输入态）', desc: '在列表中上/下移动选中条目（选中后可 Enter/Space 打开详情）',
+      id: 'list-nav', nameKey: 'shortcuts.list-nav.name', name: t('shortcuts.list-nav.name'), mac: '↑ / ↓', win: '↑ / ↓',
+      whenKey: 'shortcuts.list-nav.when', descKey: 'shortcuts.list-nav.desc',
+      when: t('shortcuts.list-nav.when'), desc: t('shortcuts.list-nav.desc'),
       test: ctx => ctx.key === 'arrowdown' || ctx.key === 'arrowup',
       run: () => {}, // 实际分发在 handleKeyboard 中提前拦截处理
     },
     {
-      id: 'close', name: '关闭/返回', mac: 'Esc', win: 'Esc',
-      when: '全局（解锁后）', desc: '关闭弹窗/详情面板，或清空搜索',
+      id: 'close', nameKey: 'shortcuts.close.name', name: t('shortcuts.close.name'), mac: 'Esc', win: 'Esc',
+      whenKey: 'shortcuts.close.when', descKey: 'shortcuts.close.desc',
+      when: t('shortcuts.close.when'), desc: t('shortcuts.close.desc'),
       test: ctx => ctx.key === 'escape',
       run: () => {},
     },
@@ -233,6 +264,8 @@ function handleKeyboard(event, defs) {
 
   // ── Escape：关闭弹窗 → 详情面板 → 清空搜索；confirm 打开时交由其自身处理 ──
   if (key === 'escape') {
+    // 配对弹窗可见时 Esc 全权交由 PairRequestModal 处理，避免双监听冲突
+    if (document.querySelector('.lp-pair-overlay')) return
     if (confirmOpen) return
     if (modalOpen) {
       event.preventDefault()
