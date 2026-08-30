@@ -167,33 +167,63 @@ async function fetchCredentials(domain) {
   }
 }
 
-// ── 自动填充 ─────────────────────────────────────────
-async function sendFill(tabId, entry, password, frameId) {
-  if (!tabId || password === undefined || password === null) return { ok: false, error: '密码数据无效' }
+// ── 多字段填充（upgrade-design.md §2.2） ─────────────
+// key 语义名：username/password/email/phone/otp/url（url 为自定义字段类型扩展项）
+// 条目数据来源：username←条目 username；password←条目 password；
+// email←自定义字段 type=email；phone←type=phone；otp←type=otp；url←type=url。
+// 发送前仍做密码剥离：LP_MULTI_FILL 仅在 background → content 瞬时内存中携带明文。
+const MULTI_FILL_KEYS = ['username', 'password', 'email', 'phone', 'otp', 'url']
+
+function pickCustomFieldValue(entry, type) {
+  const cf = ((entry && entry.customFields) || []).find((c) => c && c.type === type)
+  const v = cf ? cf.value : ''
+  return v === undefined || v === null ? '' : String(v)
+}
+
+// 按字段集合构造 LP_MULTI_FILL 字段数组（保持 用户名→密码→邮箱/手机→验证码 顺序），
+// 条目无对应值（空字符串）的字段自动剔除
+function buildFields(entry, password, keys) {
+  const want = Array.isArray(keys) && keys.length ? keys : MULTI_FILL_KEYS
+  const fields = []
+  for (const key of MULTI_FILL_KEYS) {
+    if (!want.includes(key)) continue
+    let value = ''
+    if (key === 'username') value = entry && entry.username
+    else if (key === 'password') value = password
+    else if (key === 'email') value = (entry && entry.email) || pickCustomFieldValue(entry, 'email')
+    else if (key === 'phone') value = pickCustomFieldValue(entry, 'phone')
+    else if (key === 'otp') value = pickCustomFieldValue(entry, 'otp')
+    else if (key === 'url') value = pickCustomFieldValue(entry, 'url')
+    if (value !== undefined && value !== null && value !== '') fields.push({ key, value: String(value) })
+  }
+  return fields
+}
+
+async function sendMultiFill(tabId, fields, frameId) {
+  if (!tabId || !fields || !fields.length) return { ok: false, error: '无可填充字段' }
   try {
     // 显式指定 frameId（默认顶层 0），避免 all_frames 下向所有 frame 广播导致重复填充
     const opts = { frameId: typeof frameId === 'number' ? frameId : 0 }
-    const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_FILL', entry, password }, opts)
+    const resp = await chrome.tabs.sendMessage(
+      tabId,
+      { type: 'LP_MULTI_FILL', frameId: opts.frameId, fields },
+      opts
+    )
     return resp || { ok: true }
   } catch (e) {
     return { ok: false, error: 'page not ready: ' + (e.message || e) }
   }
 }
 
-// 多步登录第一步：仅填用户名
-async function sendFillUsername(tabId, entry, frameId) {
-  if (!tabId) return { ok: false, error: 'no tab' }
-  try {
-    const opts = { frameId: typeof frameId === 'number' ? frameId : 0 }
-    const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_FILL_USERNAME', entry }, opts)
-    return resp || { ok: true }
-  } catch (e) {
-    return { ok: false, error: 'page not ready: ' + (e.message || e) }
-  }
-}
-
-async function autoFill(domain, tabId, frameId, hasPassword) {
+// 多字段自动填充（upgrade-design.md §2.2/§2.3）：
+// 按页面能力位 availableFields 构造字段集并填充；若页面还有未出现字段
+// （多步登录），把整套字段数据缓存进 pendingCredential（120s 有效期），
+// 后续 LP_FIELDS_READY 上报新字段出现时补填剩余字段。
+async function autoFill(domain, tabId, frameId, hasPassword, availableFields) {
   const entryForDomain = (list) => (list && list.length ? list[0] : null)
+  const keys = Array.isArray(availableFields) && availableFields.length
+    ? availableFields
+    : hasPassword ? MULTI_FILL_KEYS : ['username']
   if (httpReadyFlag) {
     let entries = await fetchCredentials(domain)
     if ((!entries || !entries.length) && tabId) {
@@ -209,11 +239,12 @@ async function autoFill(domain, tabId, frameId, hasPassword) {
     const entry = entryForDomain(entries)
     if (entry) {
       lastSuggestCreds = { tabId, domain, entries, at: Date.now() }
-      if (hasPassword) {
-        await sendFill(tabId, entry, entry.password, frameId)
-      } else {
-        await sendFillUsername(tabId, entry, frameId)
-        pendingCredential = { tabId, domain, entry, password: entry.password, at: Date.now() }
+      const allFields = buildFields(entry, entry.password, MULTI_FILL_KEYS)
+      const sendFields = allFields.filter((f) => keys.includes(f.key))
+      if (sendFields.length) await sendMultiFill(tabId, sendFields, frameId)
+      // 多步：页面能力位中仍有未发送字段（如密码框尚未出现）→ 缓存整套字段数据等待补填
+      if (keys.some((k) => !sendFields.some((f) => f.key === k))) {
+        pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
       }
     }
     // 命中/未命中都弹建议气泡（页面有登录表单的前提下）
@@ -226,11 +257,11 @@ async function autoFill(domain, tabId, frameId, hasPassword) {
     if (entry) {
       const pwd = await requestPassword(entry.id)
       if (pwd.ok) {
-        if (hasPassword) {
-          await sendFill(tabId, entry, pwd.password, frameId)
-        } else {
-          await sendFillUsername(tabId, entry, frameId)
-          pendingCredential = { tabId, domain, entry, password: pwd.password, at: Date.now() }
+        const allFields = buildFields(entry, pwd.password, MULTI_FILL_KEYS)
+        const sendFields = allFields.filter((f) => keys.includes(f.key))
+        if (sendFields.length) await sendMultiFill(tabId, sendFields, frameId)
+        if (keys.some((k) => !sendFields.some((f) => f.key === k))) {
+          pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
         }
         await sendSuggestions(tabId, [entry])
         return
@@ -244,7 +275,7 @@ function maybeAutoFill() {
   if (!autoFillPending) return
   const p = autoFillPending
   autoFillPending = null
-  autoFill(p.domain, p.tabId, p.frameId, p.hasPassword)
+  autoFill(p.domain, p.tabId, p.frameId, p.hasPassword, p.fields)
 }
 
 // ── 自动弹出建议（按 URL 域名预筛选推荐条目） ────────
@@ -384,7 +415,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break
 
     // 网页发现登录表单 → 就绪后自动填充
-    // hasPassword=false 表示多步登录第一步（仅用户名框），先填用户名并缓存凭据
+    // fields 为页面能力位（username/password/email/phone/otp/url），后台据此构造多字段填充
     case 'LP_PAGE_READY': {
       const tabId = sender.tab && sender.tab.id
       const frameId = sender.frameId
@@ -394,16 +425,42 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       lastFormFrame = { tabId, frameId, at: Date.now() }
       checkHttpStatus().then(() => {
         if (isReady()) {
-          autoFill(domain, tabId, frameId, hasPassword)
+          autoFill(domain, tabId, frameId, hasPassword, msg.fields)
         } else {
-          autoFillPending = { domain, tabId, frameId, hasPassword }
+          autoFillPending = { domain, tabId, frameId, hasPassword, fields: msg.fields }
         }
       })
       sendResponse({ ok: true })
       break
     }
 
-    // 多步登录第二步：密码框出现后，用第一步缓存的凭据补填密码
+    // 多步状态机（upgrade-design.md §2.3）：新字段出现后补填剩余字段
+    case 'LP_FIELDS_READY': {
+      const tabId = sender.tab && sender.tab.id
+      const frameId = sender.frameId
+      const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
+      lastFormFrame = { tabId, frameId, at: Date.now() }
+      const want = Array.isArray(msg.fields) && msg.fields.length ? msg.fields : MULTI_FILL_KEYS
+      const pc = pendingCredential
+      const fresh = pc && Date.now() - pc.at < 120000 // 120s 有效，过期丢弃
+      if (pc && fresh && pc.tabId === tabId && pc.domain === domain) {
+        const toSend = (pc.fields || []).filter((f) => want.includes(f.key))
+        // 条目可提供的字段已全部填充（或无值可填）→ 结束等待
+        const sendable = want.filter((k) => (pc.fields || []).some((f) => f.key === k))
+        if (sendable.every((k) => toSend.some((f) => f.key === k))) pendingCredential = null
+        sendMultiFill(tabId, toSend, frameId).then(sendResponse)
+      } else {
+        // 缓存缺失/过期（如用户隔了很久才到下一步）→ 走常规自动填充兜底
+        pendingCredential = null
+        checkHttpStatus().then(() => {
+          if (isReady()) autoFill(domain, tabId, frameId, want.includes('password'), want)
+        })
+        sendResponse({ ok: true })
+      }
+      break
+    }
+
+    // 多步登录第二步（兼容旧路径）：密码框出现后，用缓存的字段数据补填密码
     case 'LP_PASSWORD_READY': {
       const tabId = sender.tab && sender.tab.id
       const frameId = sender.frameId
@@ -413,13 +470,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const pc = pendingCredential
       const fresh = pc && Date.now() - pc.at < 120000 // 120s 有效，过期丢弃
       if (pc && fresh && pc.tabId === tabId && pc.domain === domain) {
-        pendingCredential = null
-        sendFill(tabId, pc.entry, pc.password, frameId).then(sendResponse)
+        const toSend = (pc.fields || []).filter((f) => f.key === 'password')
+        if (toSend.length) pendingCredential = null
+        sendMultiFill(tabId, toSend, frameId).then(sendResponse)
       } else {
         // 缓存缺失/过期（如用户隔了很久才到第二步）→ 走常规自动填充兜底
         pendingCredential = null
         checkHttpStatus().then(() => {
-          if (isReady()) autoFill(domain, tabId, frameId, true)
+          if (isReady()) autoFill(domain, tabId, frameId, true, ['password'])
         })
         sendResponse({ ok: true })
       }
@@ -484,11 +542,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return
         }
         const domain = (lastSuggestCreds && lastSuggestCreds.domain) || ''
-        sendFill(tabId, entry, password, frameId).then((r) => {
-          const filled = !!(r && r.filledPassword)
-          // 多步登录：本次只填到用户名框 → 缓存凭据，密码框出现后由 LP_PASSWORD_READY 补填
-          if (!filled && password) {
-            pendingCredential = { tabId, domain, entry, password, at: Date.now() }
+        const allFields = buildFields(entry, password, MULTI_FILL_KEYS)
+        if (!allFields.length) {
+          sendResponse({ ok: false, error: 'no fillable values' })
+          return
+        }
+        sendMultiFill(tabId, allFields, frameId).then((r) => {
+          const filled = !!(r && r.ok && r.filled && r.filled.length)
+          // 多步登录：页面可能只有部分字段 → 缓存整套字段数据，新字段出现后由 LP_FIELDS_READY 补填
+          if (filled) {
+            pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
           }
           sendResponse({ ok: true, filled, frameId })
           try { chrome.action.setBadgeText({ tabId, text: '' }) } catch (e) { /* 忽略 */ }
@@ -539,7 +602,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse({ ok: false, error: 'no active web page' })
             return
           }
-          sendFill(tab.id, entry, entry.password).then(sendResponse)
+          const fields = buildFields(entry, entry.password, MULTI_FILL_KEYS)
+          sendMultiFill(tab.id, fields, 0).then(sendResponse)
         })
       } else {
         fillCurrentTab(entryId).then(sendResponse)

@@ -38,6 +38,15 @@
       url: e.url || '',
       entryType: e.entryType || 'website',
       domain: extractDomain(e.url || ''),
+      // 自定义字段（upgrade-design.md §2.2）：桌面通道与密码同权（Rust 内存明文），
+      // 完整下发含 value，供扩展按 type 匹配 email/phone/otp/url 多字段填充。
+      customFields: (e.customFields || []).map((cf) => ({
+        id: cf.id || '',
+        label: cf.label || '',
+        value: String(cf.value ?? ''),
+        sensitive: !!cf.sensitive,
+        type: cf.type || 'text',
+      })),
     };
   }
 

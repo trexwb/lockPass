@@ -14,6 +14,60 @@ function isUsernameCandidate(el) {
   return ['text', 'email', 'tel'].includes(type)
 }
 
+// ── 多字段识别（upgrade-design.md §2.1） ─────────────
+// 在 username/password 启发式之外，按特征识别 email / phone / otp / url 字段，
+// 供 LP_MULTI_FILL 按条目 customFields type 匹配填充。识别结果与既有逻辑共用
+// walkRoots 遍历框架（iframe / shadow DOM 自动兼容）。
+const EMAIL_HINT_RE = /email|mail/i
+const PHONE_HINT_RE = /phone|mobile|tel/i
+const OTP_HINT_RE = /code|otp|verify|verification|captcha|mfa|2fa|auth/i
+const URL_HINT_RE = /url|website|web.?site|link|domain/i
+
+function isEmailField(el) {
+  const type = (el.type || '').toLowerCase()
+  if (type === 'email') return true
+  const auto = (el.autocomplete || '').toLowerCase()
+  if (auto === 'email' || /(^|\s)email(\s|$)/.test(auto)) return true
+  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
+    .filter(Boolean)
+    .join(' ')
+  return EMAIL_HINT_RE.test(attrs)
+}
+
+function isPhoneField(el) {
+  const type = (el.type || '').toLowerCase()
+  if (type === 'tel') return true
+  const auto = (el.autocomplete || '').toLowerCase()
+  if (auto === 'tel' || /(^|\s)tel(\s|$)/.test(auto)) return true
+  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
+    .filter(Boolean)
+    .join(' ')
+  return PHONE_HINT_RE.test(attrs)
+}
+
+function isOtpField(el) {
+  const auto = (el.autocomplete || '').toLowerCase()
+  if (auto === 'one-time-code') return true
+  const type = (el.type || '').toLowerCase()
+  if (!['text', 'tel', 'number'].includes(type)) return false
+  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
+    .filter(Boolean)
+    .join(' ')
+  if (!OTP_HINT_RE.test(attrs)) return false
+  // 强特征（名称/占位符含验证码语义）或数字输入模式视为 OTP，避免误抓普通 code 输入框
+  if (/(verify|verification|otp|captcha|mfa|2fa)/i.test(attrs)) return true
+  return el.inputMode === 'numeric' && /(code|auth)/i.test(attrs)
+}
+
+function isUrlField(el) {
+  const type = (el.type || '').toLowerCase()
+  if (type === 'url') return true
+  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
+    .filter(Boolean)
+    .join(' ')
+  return URL_HINT_RE.test(attrs)
+}
+
 /* ── Shadow DOM 穿透遍历 ────────────────────────────
    遍历 root（Document 或 ShadowRoot）下所有元素；遇到 open shadow root 时深入。
    cb 返回 false 提前终止。
@@ -45,78 +99,94 @@ function findPasswordInput() {
   return found
 }
 
-function findUsernameInput(passwordInput) {
-  // 与密码框同一渲染边界（Document 或 ShadowRoot）内找用户名候选
-  const root = passwordInput.getRootNode()
-  let found = null
+/* ── 页面状态检测（多字段，upgrade-design.md §2.1/§2.3） ──
+   统一扫描 username / password / email / phone / otp / url 输入框：
+   优先以「密码框所在渲染边界」为范围（避免误填不同表单的框）；
+   无密码框时回退全文档扫描（多步登录/注册/验证码场景）。
+   返回 fieldKeys 能力位，供后台按条目数据构造 LP_MULTI_FILL 字段集。 */
+function findFormFields() {
+  const fields = {
+    username: null,
+    password: null,
+    email: null,
+    phone: null,
+    otp: null,
+    url: null,
+  }
+  const passwordInput = findPasswordInput()
+  const root = passwordInput ? passwordInput.getRootNode() : document
   walkRoots(root, (el) => {
     if (!(el instanceof HTMLInputElement)) return
     if (el === passwordInput) return
     if (el.disabled || el.readOnly) return
     const type = (el.type || '').toLowerCase()
-    if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image'].includes(type)) return
+    if (['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(type)) return
     const r = el.getBoundingClientRect()
     if (r.width === 0 && r.height === 0) return
-    if (!isUsernameCandidate(el)) return
-    found = el
-    return false
+    // 优先级：password > otp > email > phone > url > username（避免 email 框被抢作 username）
+    if (type === 'password') {
+      fields.password = fields.password || el
+    } else if (isOtpField(el)) {
+      fields.otp = fields.otp || el
+    } else if (isEmailField(el)) {
+      fields.email = fields.email || el
+    } else if (isPhoneField(el)) {
+      fields.phone = fields.phone || el
+    } else if (isUrlField(el)) {
+      fields.url = fields.url || el
+    } else if (isUsernameCandidate(el)) {
+      fields.username = fields.username || el
+    }
   })
-  return found
-}
-
-function findLoginForm() {
-  const passwordInput = findPasswordInput()
-  if (!passwordInput) return null
-  const root = passwordInput.getRootNode()
-  return {
-    form: passwordInput.closest('form') || null,
-    passwordInput,
-    usernameInput: findUsernameInput(passwordInput),
+  if (passwordInput) fields.password = passwordInput
+  // 无密码框时：全文档找 username 候选（含提交按钮校验，避免误抓搜索框）
+  if (!fields.password && !fields.username) {
+    let usernameEl = null
+    walkRoots(document, (el) => {
+      if (!(el instanceof HTMLInputElement)) return
+      if (el.disabled || el.readOnly) return
+      const type = (el.type || '').toLowerCase()
+      if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(type)) return
+      if (isEmailField(el) || isPhoneField(el) || isOtpField(el) || isUrlField(el)) return
+      const r = el.getBoundingClientRect()
+      if (r.width === 0 && r.height === 0) return
+      if (!isUsernameCandidate(el)) return
+      usernameEl = el
+      return false
+    })
+    if (usernameEl) {
+      const r2 = usernameEl.getRootNode()
+      let hasSubmit = false
+      walkRoots(r2, (el) => {
+        if (el.tagName === 'BUTTON' && (!el.type || el.type === 'submit')) {
+          hasSubmit = true
+          return false
+        }
+        if (el instanceof HTMLInputElement && ['submit', 'image'].includes((el.type || '').toLowerCase())) {
+          hasSubmit = true
+          return false
+        }
+      })
+      if (hasSubmit) fields.username = usernameEl
+    }
   }
+  return fields
 }
 
-/* ── 多步登录：仅有「用户名输入框 + 提交按钮」的潜在登录表单 ── */
-function findUsernameOnlyForm() {
-  let usernameInput = null
-  walkRoots(document, (el) => {
-    if (!(el instanceof HTMLInputElement)) return
-    if (el.disabled || el.readOnly) return
-    const type = (el.type || '').toLowerCase()
-    if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image'].includes(type)) return
-    const r = el.getBoundingClientRect()
-    if (r.width === 0 && r.height === 0) return
-    if (!isUsernameCandidate(el)) return
-    usernameInput = el
-    return false
-  })
-  if (!usernameInput) return null
-  // 同一渲染边界内存在提交按钮才算潜在登录表单，避免误报搜索框等
-  const root = usernameInput.getRootNode()
-  let hasSubmit = false
-  walkRoots(root, (el) => {
-    if (el.tagName === 'BUTTON' && (!el.type || el.type === 'submit')) {
-      hasSubmit = true
-      return false
-    }
-    if (el instanceof HTMLInputElement && ['submit', 'image'].includes((el.type || '').toLowerCase())) {
-      hasSubmit = true
-      return false
-    }
-  })
-  return hasSubmit
-    ? { form: usernameInput.closest('form') || null, passwordInput: null, usernameInput }
-    : null
-}
-
-/* ── 页面状态检测 ─────────────────────────────────── */
 function detectLoginState() {
-  const full = findLoginForm()
-  const usernameOnly = full ? null : findUsernameOnlyForm()
+  const f = findFormFields()
   return {
-    hasPassword: !!full,
-    passwordInput: full && full.passwordInput,
-    usernameInput: (full && full.usernameInput) || (usernameOnly && usernameOnly.usernameInput),
-    form: (full && full.form) || (usernameOnly && usernameOnly.form),
+    hasPassword: !!f.password,
+    hasAnyField: !!(f.password || f.username || f.email || f.phone || f.otp || f.url),
+    passwordInput: f.password,
+    usernameInput: f.username,
+    emailInput: f.email,
+    phoneInput: f.phone,
+    otpInput: f.otp,
+    urlInput: f.url,
+    form: (f.password && f.password.closest('form')) || (f.username && f.username.closest('form')) || null,
+    // 能力位：本页面已出现哪些可填字段（按状态机顺序）
+    fieldKeys: ['username', 'password', 'email', 'phone', 'otp', 'url'].filter((k) => f[k]),
   }
 }
 
@@ -155,20 +225,20 @@ function highlightSubmit(ctx) {
 }
 
 /* ── 自动检测（自动填充入口） ────────────────────────
-   页面出现「密码框」或「用户名框+提交按钮」时上报后台，后台在
-   「网页版页面桥 / 桌面版 HTTP 服务」任一就绪后自动取数填充。
+   页面出现「密码框」或「用户名框+提交按钮」或 email/phone/otp 等字段时上报后台，
+   后台在「网页版页面桥 / 桌面版 HTTP 服务」任一就绪后自动取数填充。
    节流：同一域名 5 秒内只上报一次，避免 MutationObserver 高频触发。
-   多步登录：第一步只填用户名并进入 waitingPassword；密码框出现时
-   立即上报 LP_PASSWORD_READY（不受节流限制）请求补填密码。 */
+   多步登录：第一步只填已出现字段并进入 waitingFields；后续字段出现时
+   立即上报 LP_FIELDS_READY（携带当前能力位）请求补填剩余字段。 */
 let lastPageReadyAt = 0
 const PAGE_READY_THROTTLE_MS = 5000
 let lastScanAt = 0
 const SCAN_THROTTLE_MS = 300 // MutationObserver 微节流：避免同帧高频变化时重复全树遍历
-let waitingPassword = false // 已填用户名，等待密码框出现后补填密码
+let waitingFields = null // 已填字段 key 数组；页面出现新字段后请求补填剩余字段
 
 function notifyPageReady() {
   const state = detectLoginState()
-  if (!state.hasPassword && !state.usernameInput) return
+  if (!state.hasAnyField) return
   const now = Date.now()
   if (now - lastPageReadyAt < PAGE_READY_THROTTLE_MS) return
   lastPageReadyAt = now
@@ -177,6 +247,7 @@ function notifyPageReady() {
       type: 'LP_PAGE_READY',
       domain: location.hostname,
       hasPassword: state.hasPassword,
+      fields: state.fieldKeys,
     })
   } catch (e) { /* 忽略 */ }
 }
@@ -186,13 +257,21 @@ function onDomMaybeChanged() {
   if (now - lastScanAt < SCAN_THROTTLE_MS) return
   lastScanAt = now
   const state = detectLoginState()
-  // 多步登录第二步：等待中的密码框出现 → 立即请求密码补填
-  if (waitingPassword && state.hasPassword) {
-    waitingPassword = false
-    try {
-      chrome.runtime.sendMessage({ type: 'LP_PASSWORD_READY', domain: location.hostname })
-    } catch (e) { /* 忽略 */ }
-    return
+  // 多步状态机（upgrade-design.md §2.3）：等待中的新字段出现（密码框 / 邮箱 / 验证码…）
+  // → 立即请求补填剩余字段
+  if (waitingFields && waitingFields.length) {
+    const newKeys = state.fieldKeys.filter((k) => !waitingFields.includes(k))
+    if (newKeys.length) {
+      waitingFields = null
+      try {
+        chrome.runtime.sendMessage({
+          type: 'LP_FIELDS_READY',
+          domain: location.hostname,
+          fields: state.fieldKeys,
+        })
+      } catch (e) { /* 忽略 */ }
+      return
+    }
   }
   notifyPageReady()
 }
@@ -218,6 +297,44 @@ function observeLoginForms() {
 
 /* ── 消息处理 ────────────────────────────────────── */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // 多字段填充（upgrade-design.md §2.2 主路径）：fields = [{ key, value }]
+  // key ∈ username/password/email/phone/otp/url，按页面能力位匹配输入框逐项填充
+  if (msg.type === 'LP_MULTI_FILL') {
+    const { fields } = msg
+    if (!Array.isArray(fields) || !fields.length) {
+      sendResponse({ ok: false, error: '无可填充字段' })
+      return
+    }
+    const state = detectLoginState()
+    const inputMap = {
+      username: state.usernameInput,
+      password: state.passwordInput,
+      email: state.emailInput,
+      phone: state.phoneInput,
+      otp: state.otpInput,
+      url: state.urlInput,
+    }
+    const filled = []
+    for (const f of fields) {
+      const input = f && inputMap[f.key]
+      if (!input) continue
+      if (f.value === undefined || f.value === null || f.value === '') continue
+      setNativeValue(input, f.value)
+      filled.push(f.key)
+    }
+    if (!filled.length) {
+      sendResponse({ ok: false, error: '当前页面未找到可匹配的输入框' })
+      return
+    }
+    highlightSubmit(state)
+    const hasPasswordFilled = filled.includes('password')
+    // 多步：页面仍有已识别但本次未填充的字段（如密码框尚未出现）→ 等待补填
+    const remaining = state.fieldKeys.filter((k) => !filled.includes(k))
+    waitingFields = remaining.length ? filled : null
+    sendResponse({ ok: true, filled, filledPassword: hasPasswordFilled })
+    return
+  }
+
   // 完整填充（用户名 + 密码），兼容旧路径
   if (msg.type === 'LP_FILL') {
     const { entry, password } = msg
@@ -239,8 +356,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       highlightSubmit(state)
       sendResponse({ ok: true, filledPassword: true })
     } else {
-      // 多步登录第一步：只有用户名框，填入后等待密码框
-      waitingPassword = true
+      // 多步登录第一步：只有用户名框，填入后等待后续字段（密码/邮箱/验证码）
+      waitingFields = ['username']
       sendResponse({ ok: true, filledPassword: false })
     }
     return
@@ -257,7 +374,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (entry.username) {
       setNativeValue(state.usernameInput, entry.username)
     }
-    waitingPassword = true
+    waitingFields = ['username']
     sendResponse({ ok: true })
     return
   }
@@ -276,7 +393,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     setNativeValue(state.passwordInput, password)
     highlightSubmit(state)
-    waitingPassword = false
+    waitingFields = null
     sendResponse({ ok: true })
     return
   }
