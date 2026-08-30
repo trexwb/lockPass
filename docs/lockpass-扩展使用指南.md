@@ -279,5 +279,3 @@ curl -s -H "Authorization: Bearer <token>" "http://127.0.0.1:33555/credentials?d
 ---
 
 配套文档：`extension/README.md`（扩展开发说明）、`docs/tauri.md`（桌面封装说明）、`docs/spec.md`（产品规格）。
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*

@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 16825e3339a4e87ec3619b4c10842061_6733b90ea43211f1abe1525400e6dd8f
-    ReservedCode1: ZSnsNt5BtpH2i1xCuWiUaOZtm7tL4hMzS42ETDVOY4lbfp8xSH8rVK5Dc5r5aybBWW3K9PDs8f4BUmAPx8yemceXRNsGvE7kiyhzKxTQ3fcbf+e6DRlFGeEI/6I9ZK0tiCjyvRvm5vFGT4933JJgCVQXR7YXl/ijaRppI/NlFa/EsTegCYQWQvBKtdU=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 16825e3339a4e87ec3619b4c10842061_6733b90ea43211f1abe1525400e6dd8f
-    ReservedCode2: ZSnsNt5BtpH2i1xCuWiUaOZtm7tL4hMzS42ETDVOY4lbfp8xSH8rVK5Dc5r5aybBWW3K9PDs8f4BUmAPx8yemceXRNsGvE7kiyhzKxTQ3fcbf+e6DRlFGeEI/6I9ZK0tiCjyvRvm5vFGT4933JJgCVQXR7YXl/ijaRppI/NlFa/EsTegCYQWQvBKtdU=
----
-
 # LockPass 版本日志 · v1.1
 
 > v1.1.x 全部迭代记录（最新在前）
@@ -16,7 +5,7 @@ AIGC:
 > 收敛说明：以下版本号无独立分节，内容并入相邻分节——
 > `v1.1.1`（并入 v1.1.0，多语言残留清偿）· `v1.1.2`（并入 v1.1.0，Tauri 脚本性能与健壮性深化）· `v1.1.3`（并入 v1.1.0，点击可达性专项审计）
 
-### v1.1.0 (2026-08-30) 📝 待发布
+### v1.1.0 (2026-08-30) 
 
 多语言 i18n 上线（升级方案 §6.5，I1~I5 + B1~B4 分批迁移）+ 残留清偿 + Tauri 性能深化 + 点击可达性专项审计（v1.1.1 ~ v1.1.3 同批收敛）：
 
@@ -75,4 +64,3 @@ AIGC:
 - ✅ en 全流程无中文残留（除用户数据）：组件功能性文案全 key 化；剩余中文为注释/console 日志/数据兜底字段
 - ✅ 构建体积增量：HEAD 基线 126.83 kB → 当前 150.58 kB（gzip），增量 23.75 kB < 25 kB 达标
 - ✅ `vite build` 0 error 0 warning
-*（内容由AI生成，仅供参考）*
