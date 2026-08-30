@@ -1057,18 +1057,35 @@ export function useVault() {
     // 密码显隐按条目 ID 记忆（独立于 entry 数据对象，不随加密 vault 持久化）
     if (!vaultState.selectedEntry) return
     const id = vaultState.selectedEntry
-    vaultState.showPasswordMap[id] = !vaultState.showPasswordMap[id]
-    // 显示时启动 5 秒自动隐藏计时器
+    const wasVisible = !!vaultState.showPasswordMap[id]
+    vaultState.showPasswordMap[id] = !wasVisible
     if (vaultState.showPasswordMap[id]) {
+      // 切换到显示：启动 / 重置 5 秒自动隐藏计时器
       if (_pwHideTimers[id]) clearTimeout(_pwHideTimers[id])
       _pwHideTimers[id] = setTimeout(() => {
         vaultState.showPasswordMap[id] = false
         delete _pwHideTimers[id]
       }, PW_AUTO_HIDE_MS)
+      window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
     } else {
       // 手动隐藏时清除计时器
       if (_pwHideTimers[id]) { clearTimeout(_pwHideTimers[id]); delete _pwHideTimers[id] }
     }
+  }
+
+  /**
+   * 临时显示详情面板秘密字段（右键调用，已显示时重置计时 + 弹提示）
+   */
+  function revealDetailPasswordOnce() {
+    if (!vaultState.selectedEntry) return
+    const id = vaultState.selectedEntry
+    vaultState.showPasswordMap[id] = true
+    if (_pwHideTimers[id]) clearTimeout(_pwHideTimers[id])
+    _pwHideTimers[id] = setTimeout(() => {
+      vaultState.showPasswordMap[id] = false
+      delete _pwHideTimers[id]
+    }, PW_AUTO_HIDE_MS)
+    window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
   }
 
   /* ── 模态框 ────────────────────────────────── */
@@ -1307,6 +1324,7 @@ export function useVault() {
     copyPassword,
     copyField,
     toggleDetailPassword,
+    revealDetailPasswordOnce,
     openEntryModal,
     openModal,
     closeModal,

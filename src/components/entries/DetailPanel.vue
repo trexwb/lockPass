@@ -12,7 +12,7 @@ const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
   softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
   rollbackEntry, snapDiffers, describeHistoryFields, saveVault,
-  toggleDetailPassword,
+  toggleDetailPassword, revealDetailPasswordOnce,
 } = useVault()
 
 const Icons = window.Utils?.SvgIcons
@@ -196,10 +196,8 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       const { label, value, secret, url } = payload
       if (action === 'copy-field') copyField(value || '')
       else if (action === 'reveal-once' && secret) {
-        // 复用 toggleDetailPassword 的计时器管理（统一 5 秒自动隐藏）
-        if (!vaultState.showPasswordMap[id]) toggleDetailPassword()
-        else { toggleDetailPassword(); toggleDetailPassword() } // 先关再开，重置计时
-        window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
+        // 已显示时重置计时，始终弹提示（使用独立函数避免翻转逻辑干扰）
+        revealDetailPasswordOnce()
       }
       else if (action === 'open-url' && url) {
         let u = value || ''

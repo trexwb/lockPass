@@ -148,7 +148,10 @@ function _scheduleAutoHide(k) {
 
 function toggleSecret(k) {
   showFields[k] = !showFields[k]
-  if (showFields[k]) _scheduleAutoHide(k)
+  if (showFields[k]) {
+    _scheduleAutoHide(k)
+    window.Utils.showToast('已临时显示（5 秒后自动隐藏）', 'info')
+  }
 }
 
 // 复制文本到剪贴板（P2-9 修复：走 useVault 统一安全链路——
