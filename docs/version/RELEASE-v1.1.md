@@ -5,6 +5,73 @@
 > 收敛说明：以下版本号无独立分节，内容并入相邻分节——
 > `v1.1.1`（并入 v1.1.0，多语言残留清偿）· `v1.1.2`（并入 v1.1.0，Tauri 脚本性能与健壮性深化）· `v1.1.3`（并入 v1.1.0，点击可达性专项审计）· `v1.1.4`（并入 v1.1.0，密码生成器取消生成记录）
 
+### v1.1.11 (2026-08-30)
+
+修复：登录时卡片操作按钮「一闪而过」（FOUC）
+
+## 修复
+
+- **根因（双重 FOUC）**：`.entry-actions` 依赖 `opacity:0` 过渡 + 媒体查询隐藏——CSS 解析前首帧按默认 `opacity:1` 渲染可见按钮；移动端隐藏策略依赖媒体查询延迟生效，iPad/触屏首帧同样显示出大号按钮
+- **修复**：`.entry-actions` 基础默认 `display:none`（DOM 解析第一状态即不渲染），仅 `@media (min-width:1025px) and (hover:hover) and (pointer:fine)` 桌面端启用内联按钮（`opacity/visibility/translateX` 渐显 + 6px 滑入，hover/focus-within 触发，回收站卡片常显）
+- **删除冗余规则**：`@media (max-width:1024px)` 与 `@media (hover:none)` 下的 `display:none !important`、`@media (max-width:480px)` 内联按钮尺寸/间距规则一并清理
+
+## 验证
+
+- `vite:build` 69 modules 0 error 0 warning（633.30 kB / gzip 176.07 kB）
+- `version:check` 11 处一致（v1.1.11）
+
+### v1.1.10 (2026-08-30)
+
+条目卡片左滑显示操作（移动端 swipe-to-reveal，iOS / Gmail 风格）：
+
+## 新能力
+
+- **双层卡片结构**：`.entry-card-wrap` + 背景操作层 `.card-actions-backdrop`（收藏/复制/删除 或 恢复/复制/彻底删除）+ 前景滑动层 `.entry-card`
+- **左滑手势**：手指左滑前景卡片跟随位移露出右侧操作层；超过 35% 阈值吸附打开，否则回弹关闭；互斥单开、水平橡皮筋（120% 过载）、快速右滑关闭；长按菜单兼容（水平锁定后取消长按计时）
+- **入口策略**：触屏（≤1024px 或 `pointer: coarse`）隐藏内联 `.entry-actions`，左滑为唯一入口；桌面端（>1024px 且可 hover）隐藏背景层，保留 hover 内联按钮
+- `prefers-reduced-motion`：关闭 transition / animation / hover 位移
+
+## 文件
+
+- `src/composables/useSwipeActions.js`（新建）、`src/components/AppShell.vue`、`src/styles/entries.css`
+
+## 验证
+
+- `vite:build` 69 modules 0 error 0 warning（633.11 kB / gzip 176.02 kB）
+- `version:check` 11 处一致（v1.1.10）
+
+### v1.1.9 (2026-08-30)
+
+移动端删除确认 + 触控交互优化：
+
+## 修复
+
+- **softDelete 确认弹窗**：移入回收站统一加 `confirm` 二次确认（卡片删除按钮、卡片长按菜单、详情页底部按钮、详情页右键菜单四个入口全覆盖），移动端防误触；`zh.json` / `en.json` 新增 `vault.confirm.softDelete.*` 中英双语
+
+## 新能力
+
+- **触控目标尺寸**：`@media (max-width:480px)` 卡片操作按钮 28px → 44px（Apple HIG 触控下限），`.entry-actions` gap 4px → 6px；详情页底部按钮 `min-height: 44px`
+- **长按视觉反馈**：`.entry-card.long-pressing`（scale 0.97 + 强调色边框 + 光环）+ 轻/强两级振动反馈；`touch-action: manipulation` 禁用双击缩放
+
+## 验证
+
+- `version:set 1.1.9` + `version:check` 11 处一致；i18n JSON 校验通过
+
+### v1.1.8 (2026-08-30)
+
+移动端抽屉滑动关闭手势：
+
+## 新能力
+
+- **`src/composables/useSwipeClose.js`（新建）**：通用水平滑动关闭 composable——水平/垂直主导锁定（水平位移 > 垂直 + 6px 死区）、超阈值（80px）或快速滑动（<300ms 且 >40px）触发关闭、`dragOffset` 跟随手指位移
+- **详情面板右滑关闭**（`DetailPanel.vue`，仅移动端抽屉模式）+ **侧边栏左滑关闭**（`SidebarNav.vue`），面板 `transform` 跟随、松手 CSS transition 回弹
+- `.swipe-hint` 边缘细条 + 脉冲动画视觉暗示（仅 ≤1024px 显示）；`touch-action: pan-y` 保证垂直滚动优先；`prefers-reduced-motion` 降级
+
+## 验证
+
+- `vite:build` 67 modules 0 error 0 warning（618.19 kB / gzip 172.66 kB）
+- `version:check` 11 处一致（v1.1.8）
+
 ### v1.1.7 (2026-08-30)
 
 移动端图标/文字对齐专项修复（触屏优化收口）：
