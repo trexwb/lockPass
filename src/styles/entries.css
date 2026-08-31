@@ -225,6 +225,12 @@
 
 /* ── 桌面端（宽屏 + 可 hover + 精细指针）：启用内联按钮 hover 显示 ── */
 @media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  /* hover 上浮（translateY(-2px)）时放开外层裁剪：
+     wrap 的 overflow:hidden 为左滑裁剪而设，若一直裁剪会把上浮卡片的
+     顶部边框裁掉，表现为上边框残缺/消失。hover 期间放开即可完整显示。 */
+  .entry-card-wrap:hover {
+    overflow: visible;
+  }
   .entry-actions {
     display: flex;
     gap: 4px;

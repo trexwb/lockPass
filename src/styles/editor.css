@@ -358,7 +358,8 @@ select.form-input:focus {
   gap: 8px;
   margin-bottom: 8px;
 }
-.cf-add-row .cf-type-select {
+/* BaseSelect 的 class 经 $attrs 透传到内部 trigger，宽度约束必须作用于 .base-select 容器 */
+.cf-add-row > .base-select {
   flex: 0 0 96px;
 }
 .cf-add-row input {
@@ -415,6 +416,7 @@ select.form-input:focus {
 }
 .cf-row-main {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -433,7 +435,7 @@ select.form-input:focus {
 .cf-row-value .pw-gen-btn {
   flex: 0 0 auto;
 }
-.cf-row-main .cf-type-select {
+.cf-row-main > .base-select {
   flex: 0 0 96px;
 }
 .cf-sensitive-toggle {
@@ -445,7 +447,13 @@ select.form-input:focus {
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
+  /* 防止行内空间紧张时整块开关被 flex 压缩，导致勾选框被压扁 */
+  flex-shrink: 0;
 }
 .cf-sensitive-toggle input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
   accent-color: var(--accent, #3fb950);
 }
