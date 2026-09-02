@@ -8,6 +8,7 @@ import { APP_VERSION } from '../../core/version.js'
 import { buildShortcutDefs } from '../../composables/useShortcuts'
 import { useTheme } from '../../composables/useTheme'
 import { useI18n } from '../../composables/useI18n'
+import { usePasskey } from '../../composables/usePasskey'
 import ModalBase from '../common/ModalBase.vue'
 import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
@@ -35,28 +36,8 @@ const clipboardClear = ref(vaultState.clipboardClearMs)
 const recycleTtl = ref(vaultState.recycleTtlDays)
 
 /* ── 生物识别解锁（Passkey，macOS 桌面单端 MVP） ── */
-const bioSupported = ref(false)
-const bioEnabled = ref(false)
+const { supported: bioSupported, enabled: bioEnabled, refresh: refreshBioStatus } = usePasskey()
 const bioBusy = ref(false)
-
-/** 刷新生物识别解锁状态（仅桌面 macOS 显示该行） */
-async function refreshBioStatus() {
-  const okEnv = isDesktopApp.value && isMac &&
-    window.LockPasskey && window.LockPasskey.isDesktopMac
-  if (!okEnv) {
-    bioSupported.value = false
-    bioEnabled.value = false
-    return
-  }
-  try {
-    const st = await window.LockPasskey.status()
-    bioSupported.value = !!st.available
-    bioEnabled.value = !!st.enabled
-  } catch (e) {
-    bioSupported.value = false
-    bioEnabled.value = false
-  }
-}
 
 /**
  * 启用/停用生物识别解锁。

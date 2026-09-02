@@ -2,6 +2,7 @@
 /* LockPass — 认证视图（创建 / 解锁 / 锁定屏） */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
+import { usePasskey } from '../../composables/usePasskey'
 
 const { handleUnlock, handleBiometricUnlock, openRestoreFilePicker, handleRestoreFileSelect, bindRestoreFromDirectory } = useVault()
 
@@ -17,36 +18,22 @@ const showPw = ref(false)
 const blocked = ref(false)
 
 // 生物识别解锁（Passkey，macOS 桌面）：仅当 Rust 状态查询返回可用且已启用时显示
-const passkeySupported = ref(false)
-const passkeyEnabled = ref(false)
-const bioBusy = ref(false)
+const { supported: passkeySupported, enabled: passkeyEnabled, refresh: queryPasskeyStatus } = usePasskey()
 
-/** 查询生物识别解锁状态（非桌面 macOS / 未启用均不显示按钮） */
+/** 查询生物识别解锁状态：创建模式无保险箱，强制隐藏并复位；否则拉取 Rust 状态 */
 async function refreshPasskey() {
-  if (isCreateMode.value || !window.LockPasskey || !window.LockPasskey.isDesktopMac) {
+  if (isCreateMode.value) {
     passkeySupported.value = false
     passkeyEnabled.value = false
     return
   }
-  try {
-    const st = await window.LockPasskey.status()
-    passkeySupported.value = !!st.available
-    passkeyEnabled.value = !!st.enabled
-  } catch (e) {
-    passkeySupported.value = false
-    passkeyEnabled.value = false
-  }
+  await queryPasskeyStatus()
 }
 
 /** 生物解锁入口：全部失败/取消均由 handleBiometricUnlock 回写 lockError，不静默降级 */
 async function onBioUnlock() {
-  if (bioBusy.value || vaultState.lockBusy) return
-  bioBusy.value = true
-  try {
-    await handleBiometricUnlock()
-  } finally {
-    bioBusy.value = false
-  }
+  if (vaultState.lockBusy) return
+  await handleBiometricUnlock()
 }
 
 const isCreateMode = computed(() => !vaultState.initialized)
@@ -275,12 +262,12 @@ onBeforeUnmount(() => {
           id="bio-unlock-btn"
           class="btn btn-ghost btn-full"
           type="button"
-          :disabled="bioBusy || vaultState.lockBusy || cooldownRemain > 0"
+          :disabled="vaultState.lockBusy || cooldownRemain > 0"
           tabindex="4"
           @click="onBioUnlock"
         >
           <span v-html="Icons.shield(13)"></span>
-          {{ bioBusy || vaultState.lockBusy ? '…' : t('lock.bioUnlock') }}
+          {{ vaultState.lockBusy ? '…' : t('lock.bioUnlock') }}
         </button>
 
         <!-- 忘记主密码：离线加密无找回可能，主动管理预期并引导备份恢复/销毁重建 -->
