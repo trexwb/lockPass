@@ -10,6 +10,9 @@ import SecretFieldRow from './SecretFieldRow.vue'
 import CustomFieldRow from './CustomFieldRow.vue'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
+// S1 修复（分级缓存）：复制入口的预填草稿改走分级 store（内存全量明文，
+// sessionStorage 仅落非敏感脱敏子集），不再把含密码明文 JSON 直写 sessionStorage
+import { saveDraft as memSaveDraft } from '../../composables/editorDraftStore.js'
 
 const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
@@ -171,9 +174,10 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
     case 'title': {
       if (action === 'edit') openEntryModal(id)
       else if (action === 'duplicate') {
-        // 先写 sessionStorage 草稿，再打开编辑器（onMounted 会立即读取）
+        // S1 修复（分级缓存）：先写分级草稿（内存全量明文 + 脱敏 storage），
+        // 再打开编辑器 —— onMounted 从内存即时读到完整副本；不再直写明文 sessionStorage
         try {
-          sessionStorage.setItem('lockpass_draft_new', JSON.stringify({
+          memSaveDraft('new', {
             title: (e.title || t('detail.untitled')) + ' ' + t('detail.copySuffix'),
             entryType: e.entryType || 'website',
             tags: e.tags || [],
@@ -184,9 +188,11 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
               privateKey: e.privateKey || '',
               rootUser: e.root?.username || '', rootPwd: e.root?.password || '',
             },
-          }))
-        } catch (_e) {}
-        openEntryModal(null)
+          })
+        } catch (_e) { /* 草稿写入失败不阻断打开编辑器 */ }
+        // 草稿生命周期 v1.1.12b：复制为新条目的意图明确（立即编辑副本），
+        // 传 draftAction:'use' 让编辑器直接应用草稿，不再重复弹「是否使用草稿」询问
+        openEntryModal(null, { draftAction: 'use' })
         window.Utils.showToast(t('detail.toastCopiedDraft'), 'info')
       }
       else if (action === 'fav') toggleFavorite(id)

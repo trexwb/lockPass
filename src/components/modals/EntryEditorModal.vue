@@ -15,6 +15,9 @@ import {
   loadDraft as memLoadDraft,
   saveDraft as memSaveDraft,
   clearDraft as memClearDraft,
+  hasInMemoryDraft as memHasInMemoryDraft,
+  isEmptyDraft as memIsEmptyDraft,
+  draftsEqual as memDraftsEqual,
 } from '../../composables/editorDraftStore.js'
 
 const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal, openPasswordGenerator } = useVault()
@@ -120,7 +123,9 @@ const isSecretField = (k) => k === 'password' || k === 'privateKey'
 // S1 修复：草稿从 sessionStorage 实时落盘改为内存驻留（editorDraftStore.js）。
 // 不再把含明文（password/privateKey/rootPwd/Token 等）的完整表单对象
 // JSON.stringify 后写入 sessionStorage；改为模块级 Map 内存驻留（刷新即失）。
-// 清理时机：保存成功 / 放弃关闭 / 右键「清空草稿」 / 锁定 / 退出登录（见 useVault.clearEditorDrafts）。
+// 草稿生命周期 v1.1.12b：清理时机收窄为「提交并保存成功」/ 用户显式清空 /
+// 锁定 / 退出登录（useVault.clearEditorDrafts 仅清内存明文、保留脱敏骨架）；
+// 任何关闭 / 刷新 / 跳转均不清空草稿。
 const DRAFT_NEW_KEY = 'new'
 
 function draftKey() {
@@ -131,15 +136,24 @@ function loadDraft() {
   return memLoadDraft(draftKey())
 }
 
+// 草稿生命周期 v1.1.12b：挂载装载阶段置 true，期间不把「已保存内容 / 类型预选」
+// 误当成用户编辑写入草稿；真实交互（input/watch）才触发 persistDraft
+let _mounting = true
+
 function persistDraft() {
-  memSaveDraft(draftKey(), {
+  if (_mounting) return
+  memSaveDraft(draftKey(), currentFormObject())
+}
+
+function currentFormObject() {
+  return {
     title: title.value,
     entryType: entryType.value,
     fields: { ...fields },
     tags: selectedTags.value.slice(),
     notes: notes.value,
     customFields: customFields.value.map(cf => ({ ...cf })),
-  })
+  }
 }
 
 function clearDraft() {
@@ -147,8 +161,94 @@ function clearDraft() {
 }
 
 /**
+ * 装载已保存条目内容到表单（编辑模式初始画面）。
+ * 保持 _mounting=true，避免装载动作被 watch(persistDraft) 写成草稿。
+ */
+function fillFromEntry(e) {
+  title.value = e.title || ''
+  entryType.value = e.entryType || 'website'
+  currentKeys.value.forEach(k => { fields[k] = legacyValue(e, k) })
+  if (e.root) {
+    fields.rootUser = e.root.username || ''
+    fields.rootPwd = e.root.password || ''
+  }
+  selectedTags.value = (e.tags || []).slice()
+  notes.value = e.notes || ''
+  customFields.value = (e.customFields || []).map(cf => ({ ...cf }))
+}
+
+/**
+ * 把草稿内容填入当前表单。
+ * 自定义字段恢复规则（S1 分级缓存）：
+ *   内存全量草稿（同会话，含完整敏感字段）→ 整组替换；
+ *   sessionStorage 脱敏子集（跨刷新，仅安全骨架）→ 按 id 合并，
+ *   不清除编辑条目已保存的敏感自定义项（pin/otp/机密 label 等不落盘项）。
+ */
+function applyDraft(draft) {
+  if (!draft || typeof draft !== 'object') return
+  if (draft.title != null) title.value = draft.title
+  if (draft.entryType) entryType.value = draft.entryType
+  Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
+  selectedTags.value = (draft.tags || []).slice()
+  if (draft.notes != null) notes.value = draft.notes
+  if (Array.isArray(draft.customFields)) {
+    if (memHasInMemoryDraft(draftKey())) {
+      customFields.value = draft.customFields.map(cf => ({ ...cf }))
+    } else {
+      const byId = new Map(customFields.value.map(cf => [cf.id, cf]))
+      for (const cf of draft.customFields) {
+        const old = byId.get(cf.id)
+        if (old) Object.assign(old, { ...cf })
+        else customFields.value.push({ ...cf })
+      }
+    }
+  }
+}
+
+/** 挂载装载收尾：预置空字段、更新强度条、记录初始快照，并解除装载保护 */
+function finalizeMount() {
+  currentKeys.value.forEach(k => {
+    if (fields[k] === undefined) fields[k] = ''
+  })
+  if (entryType.value === 'server') {
+    if (fields.rootUser === undefined) fields.rootUser = ''
+    if (fields.rootPwd === undefined) fields.rootPwd = ''
+  }
+  _mounting = false
+  updateStrength()
+  _initialSnapshot = snapshotForm()
+}
+
+/**
+ * 草稿询问弹窗（新建/编辑共用）：
+ *   confirm = 使用草稿（自动填入继续编辑）
+ *   cancel  = 不使用并清空草稿（新建场景展示空白表单；编辑场景以已保存内容继续）
+ * 返回 true=使用草稿；false=不使用（草稿已被清空）
+ */
+async function askDraftUse(draft, isEditMode) {
+  const ok = await window.Utils.confirm({
+    title: t('editor.confirmDraftTitle'),
+    message: isEditMode
+      ? t('editor.confirmDraftMsgEdit')
+      : t('editor.confirmDraftMsgNew'),
+    confirmText: t('editor.confirmDraftUse'),
+    cancelText: t('editor.confirmDraftDiscard'),
+  })
+  if (ok) {
+    applyDraft(draft)
+    window.Utils.showToast(t('editor.toastDraftRestored'), 'info')
+    return true
+  }
+  // 用户明确不使用 → 清空草稿（新建：空白表单；编辑：保持已保存内容）
+  clearDraft()
+  window.Utils.showToast(t('editor.toastDraftCleared'), 'info')
+  return false
+}
+
+/**
  * S1 兜底清理：删除旧版本可能残留在 sessionStorage 的 lockpass_draft_* 明文草稿。
  * 在编辑器挂载时执行一次，兼容旧版浏览器会话 / 扩展页写入的同前缀残留。
+ * 新版脱敏草稿键空间为 lockpass_safe_draft_*，与此处无交集，不会被误清。
  */
 function clearLegacySessionDrafts() {
   try {
@@ -306,13 +406,14 @@ async function onSave() {
     // 自定义字段扩展（upgrade-design.md §1.1）：深拷贝避免引用 vault 数据
     customFields: customFields.value.map(cf => ({ ...cf })),
   }
-  const ok = await saveEntry(payload)
-  if (ok) clearDraft()
+  // 草稿生命周期 v1.1.12b：草稿清理统一由 useVault.saveEntry 在真实落盘成功后执行
+  //（编辑器不再自行清理，避免 closeModal 已清 editingEntryId 后用 'new' 键误删）
+  await saveEntry(payload)
 }
 
-/* ── 关闭时未保存警告 ─────────────────────────── */
+/* ── 初始快照记录（装载收尾时生成，供草稿一致性判断使用） ──── */
 
-// 记录初始快照，用于判断是否有未保存修改
+// 记录初始快照（finalizeMount 中写入）
 let _initialSnapshot = null
 
 function snapshotForm() {
@@ -326,23 +427,11 @@ function snapshotForm() {
   })
 }
 
-function hasUnsavedChanges() {
-  if (!_initialSnapshot) return false
-  return snapshotForm() !== _initialSnapshot
-}
-
 async function handleClose() {
-  if (hasUnsavedChanges()) {
-    const ok = await window.Utils.confirm({
-      title: t('editor.confirmUnsavedTitle'),
-      message: t('editor.confirmUnsavedMsg'),
-      confirmText: t('editor.confirmDiscard'),
-      cancelText: t('editor.confirmKeepEditing'),
-      danger: true,
-    })
-    if (!ok) return
-  }
-  clearDraft()
+  // 草稿生命周期 v1.1.12b：除「提交并保存成功」/ 用户显式清空外，
+  // 任何关闭 / 刷新 / 跳转 / 切换都不清空草稿。
+  // 草稿实时更新并持续保留：同一会话重开编辑器可完整恢复（含内存敏感字段），
+  // 刷新前由 editorDraftStore.flushDrafts 兜底落盘非敏感骨架。
   closeModal()
 }
 
@@ -355,56 +444,47 @@ function legacyValue(e, k) {
   return e[k] ?? ''
 }
 
-onMounted(() => {
+onMounted(async () => {
   // S1 修复：升级后首次打开编辑器，清理旧版遗留的 sessionStorage 明文草稿
   clearLegacySessionDrafts()
-  if (isEdit.value) {
-    const e = getEntryById(vaultState.editingEntryId)
-    if (e) {
-      title.value = e.title || ''
-      entryType.value = e.entryType || 'website'
-      currentKeys.value.forEach(k => { fields[k] = legacyValue(e, k) })
-      if (e.root) {
-        fields.rootUser = e.root.username || ''
-        fields.rootPwd = e.root.password || ''
-      }
-      selectedTags.value = (e.tags || []).slice()
-      notes.value = e.notes || ''
-      customFields.value = (e.customFields || []).map(cf => ({ ...cf }))
+  // 草稿生命周期 v1.1.12b：消费打开意图（presetType / draftAction），
+  // 单次打开后即失效（关闭模态框时 editorOpenOpts 置空）
+  const opts = vaultState.editorOpenOpts || {}
+  const e = isEdit.value ? getEntryById(vaultState.editingEntryId) : null
 
-      // 恢复未保存的编辑草稿（v1.0.25：此前编辑模式草稿只写不读）
-      const draft = loadDraft()
-      if (draft) {
-        title.value = draft.title || title.value
-        if (draft.entryType) entryType.value = draft.entryType
-        Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
-        selectedTags.value = (draft.tags || []).slice()
-        if (draft.notes != null) notes.value = draft.notes
-        if (Array.isArray(draft.customFields)) customFields.value = draft.customFields.map(cf => ({ ...cf }))
-        window.Utils.showToast(t('editor.toastDraftRestored'), 'info')
-      }
+  if (isEdit.value) {
+    if (!e) {
+      // 条目已被删除（异常路径）：直接关闭，不写任何草稿
+      closeModal()
+      return
     }
-  } else {
+    // 1. 先装载已保存内容作为初始画面
+    fillFromEntry(e)
+    // 2. 再判定该条目的未提交修改草稿（规则③）
     const draft = loadDraft()
-    if (draft) {
-      title.value = draft.title || ''
-      entryType.value = draft.entryType || 'website'
-      Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
-      selectedTags.value = (draft.tags || []).slice()
-      notes.value = draft.notes || ''
-      if (Array.isArray(draft.customFields)) customFields.value = draft.customFields.map(cf => ({ ...cf }))
+    if (draft && !memIsEmptyDraft(draft) && !memDraftsEqual(draft, currentFormObject())) {
+      // 草稿与已保存内容不一致（存在未提交修改）→ 弹提示询问是否恢复
+      await askDraftUse(draft, true)
+    }
+    // 草稿为空骨架 / 与已保存内容一致 → 不打扰，保持已保存内容
+    finalizeMount()
+    return
+  }
+
+  // 新建条目表单（规则②）
+  if (opts.presetType) entryType.value = opts.presetType
+  const draft = loadDraft()
+  if (draft && !memIsEmptyDraft(draft)) {
+    if (opts.draftAction === 'use') {
+      // 复制为新条目流：意图明确，直接应用刚写入的草稿，不询问
+      applyDraft(draft)
+      window.Utils.showToast(t('editor.toastDraftRestored'), 'info')
+    } else {
+      // 存在未提交草稿 → 弹提示询问是否使用；不使用才清空并展示空白表单
+      await askDraftUse(draft, false)
     }
   }
-  // 预置空字段
-  currentKeys.value.forEach(k => {
-    if (fields[k] === undefined) fields[k] = ''
-  })
-  if (entryType.value === 'server') {
-    if (fields.rootUser === undefined) fields.rootUser = ''
-    if (fields.rootPwd === undefined) fields.rootPwd = ''
-  }
-  updateStrength()
-  _initialSnapshot = snapshotForm()
+  finalizeMount()
 })
 
 watch([title, entryType, fields, selectedTags, notes, customFields], () => persistDraft(), { deep: true })
@@ -476,12 +556,13 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
       if (payload.target === 'save') {
         if (action === 'save-close') await onSave()
         else if (action === 'clear-draft') {
+          // 用户显式「清空草稿」仍保留（唯一除提交外的显式清空通道）
           clearDraft()
           window.Utils.showToast?.(t('editor.toastDraftCleared'), 'info')
         }
       } else if (payload.target === 'cancel') {
-        if (action === 'close-discard') await handleClose()
-        else if (action === 'keep-draft') { closeModal() }
+        // 草稿生命周期 v1.1.12b：取消/关闭一律不清草稿
+        closeModal()
       }
       return
     }
@@ -530,10 +611,10 @@ const editorCtxItems = computed(() => {
     case 'footer-btn': {
       if (p.target === 'save') {
         list.push({ key: 'save-close', label: t('editor.ctx.saveAndClose'), iconHtml: I?.edit?.(14), accent: true })
-        list.push({ key: 'clear-draft', label: t('editor.ctx.clearDraft'), iconHtml: I?.trash?.(14) })
+        list.push({ key: 'clear-draft', label: t('editor.ctx.clearDraft'), iconHtml: I?.trash?.(14), danger: true })
       } else {
-        list.push({ key: 'close-discard', label: t('editor.ctx.discardClose'), iconHtml: I?.close?.(14), accent: true })
-        list.push({ key: 'keep-draft', label: t('editor.ctx.keepDraftClose'), iconHtml: I?.copy?.(14) })
+        // 草稿生命周期 v1.1.12b：取消仅关闭，草稿持续保留
+        list.push({ key: 'keep-draft', label: t('editor.ctx.keepDraftClose'), iconHtml: I?.close?.(14) })
       }
       return list
     }
