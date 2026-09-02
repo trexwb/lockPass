@@ -2,6 +2,17 @@
 
 本文件记录 LockPass 各版本的变更内容。版本号遵循语义化版本（Semantic Versioning）。
 
+## v1.0.1 (2026-09-02)
+
+### 修复
+
+- 修复生物识别解锁按钮引用不存在的 `SvgIcons.shield` 图标方法，导致 macOS 桌面已启用生物识别时锁屏渲染崩溃（在 `SvgIcons` 补齐 `shield` 方法）
+- 移除 `AuthView` 冗余的 `bioBusy` 忙碌锁，统一走 `vaultState.lockBusy`（`handleBiometricUnlock` 内部已置位/复位）
+
+### 重构
+
+- 抽出 `usePasskey` composable，统一生物识别解锁（Passkey）的状态查询与平台判定：消除 `AuthView` 与 `SettingsModal` 重复的 status 查询逻辑，平台判定统一到 `window.LockPasskey.isDesktopMac`
+
 ## v1.0.0 (2026-09-02)
 
 > 全新起点：版本号整体重置为 v1.0.0，重新生成更新签名密钥对，从 v1.0.0 重新发布。

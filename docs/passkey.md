@@ -1,6 +1,6 @@
 # LockPass 生物识别解锁（Passkey · macOS 单端 MVP）
 
-> 版本基线：v1.1.12（未升级 MINOR，本次为新增功能，升版由用户决定） | 更新日期：2026-09-02
+> 版本基线：v1.0.1（项目版本整体重置至 v1.0.0 后，随功能修复 PATCH 自增） | 更新日期：2026-09-02
 
 「方案 A：设备生物识别解锁」—— 允许在 macOS 桌面端用系统生物识别（面容 ID / 触控 ID，或系统密码回退）代替主密码解锁本机保险箱。**主密码仍为根信任**：生物识别只是本机解锁的便利通道，不引入新的信任根。
 
@@ -35,5 +35,6 @@
 ## 验证
 
 - `cargo check` 0 error / 0 warning
-- `vite build` 0 error（71 modules）
-- 未执行 `version:set`（保持 v1.1.12）与任何 git 操作。
+- `vite build` 0 error（72 modules，含 usePasskey composable）
+- 代码审查修复：补 `SvgIcons.shield` 方法（原生物解锁按钮引用不存在图标致渲染崩溃）；抽 `usePasskey` 统一状态查询与平台判定。
+- 版本号随项目整体重置后自增至 v1.0.1；未执行任何 git 操作。
