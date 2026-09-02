@@ -13,7 +13,7 @@ import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 
-const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl } = useVault()
+const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession } = useVault()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -33,6 +33,87 @@ const SETTINGS_TABS = [
 const lockTimeout = ref(vaultState.lockTimeoutMs)
 const clipboardClear = ref(vaultState.clipboardClearMs)
 const recycleTtl = ref(vaultState.recycleTtlDays)
+
+/* ── 生物识别解锁（Passkey，macOS 桌面单端 MVP） ── */
+const bioSupported = ref(false)
+const bioEnabled = ref(false)
+const bioBusy = ref(false)
+
+/** 刷新生物识别解锁状态（仅桌面 macOS 显示该行） */
+async function refreshBioStatus() {
+  const okEnv = isDesktopApp.value && isMac &&
+    window.LockPasskey && window.LockPasskey.isDesktopMac
+  if (!okEnv) {
+    bioSupported.value = false
+    bioEnabled.value = false
+    return
+  }
+  try {
+    const st = await window.LockPasskey.status()
+    bioSupported.value = !!st.available
+    bioEnabled.value = !!st.enabled
+  } catch (e) {
+    bioSupported.value = false
+    bioEnabled.value = false
+  }
+}
+
+/**
+ * 启用/停用生物识别解锁。
+ * 启用（enroll）：仅在当前主密码会话可用——用会话主密码按保险箱同一盐值/
+ * 迭代参数派生 32B raw Vault Key（deriveKeyBytes，仅内存）交 Rust 封装；
+ * 停用（remove）：删除 Keychain item 与 guard 文件，不触碰保险箱数据。
+ */
+async function toggleBioEnabled(next) {
+  if (bioBusy.value) return
+  bioBusy.value = true
+  try {
+    if (next) {
+      if (!vaultState.isUnlocked) {
+        bioEnabled.value = false
+        window.Utils.showToast(t('settings.security.bioNeedsUnlocked'), 'error')
+        return
+      }
+      const master = getSession()
+      if (!master) {
+        bioEnabled.value = false
+        window.Utils.showToast(t('settings.security.bioNeedsMasterSession'), 'error')
+        return
+      }
+      // 与 useVault.unlockVault 同一派生参数，产出 32B Vault Key raw
+      const saltRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'salt')
+      if (!saltRecord) throw new Error('salt missing')
+      const iterRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'iterations')
+      const iterations = iterRecord
+        ? (Number(iterRecord.value) || window.CryptoUtils.LEGACY_ITERATIONS)
+        : window.CryptoUtils.LEGACY_ITERATIONS
+      const salt = new Uint8Array(window.CryptoUtils.base64ToArrayBuffer(saltRecord.value))
+      const raw = await window.CryptoUtils.deriveKeyBytes(master, salt, iterations)
+      const res = await window.LockPasskey.enroll(window.CryptoUtils.bytesToHex(raw))
+      if (!res.ok) {
+        bioEnabled.value = false
+        window.Utils.showToast(t('settings.security.bioErr.' + (res.code || 'UNKNOWN')), 'error')
+        return
+      }
+      bioEnabled.value = true
+      window.Utils.showToast(t('settings.security.bioOnSuccess'), 'success')
+    } else {
+      const res = await window.LockPasskey.remove()
+      if (!res.ok) {
+        bioEnabled.value = true
+        window.Utils.showToast(t('settings.security.bioErr.' + (res.code || 'UNKNOWN')), 'error')
+        return
+      }
+      bioEnabled.value = false
+      window.Utils.showToast(t('settings.security.bioOffSuccess'), 'success')
+    }
+  } catch (e) {
+    bioEnabled.value = false
+    window.Utils.showToast(t('settings.security.bioErr.UNKNOWN', { detail: String(e && e.message || e) }), 'error')
+  } finally {
+    bioBusy.value = false
+  }
+}
 
 /* ── 浏览器扩展：在线扩展包下载 + 使用指南 ── */
 
@@ -489,6 +570,7 @@ onMounted(() => {
   shortcuts.value = buildShortcutDefs()
   refreshFileSyncStatus()
   refreshDataInfo()
+  refreshBioStatus()
 })
 
 function shortcutKeyText(def) {
@@ -711,6 +793,26 @@ const settingsCtxItems = computed(() => {
             @change="updateRecycleTtl()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: recycleTtl, label: t('settings.security.recycleTtl') }, { w: 220, h: 120 })"
           />
+        </div>
+        <!-- 生物识别解锁（Passkey）：桌面 macOS 显示；启用需主密码会话，失败/停用随时回退主密码 -->
+        <div
+          v-if="bioSupported"
+          class="settings-row"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', desc: t('settings.security.bioDesc'), tab: 'security', tabLabel: t('settings.tab.security'), runLabel: t('settings.security.bio') + t('settings.ctx.toggleSuffix') }, { w: 260, h: 180 })"
+        >
+          <div>
+            <div class="settings-label">{{ t('settings.security.bio') }}</div>
+            <div class="settings-desc">{{ t('settings.security.bioDesc') }}</div>
+          </div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              v-model="bioEnabled"
+              :disabled="bioBusy || !vaultState.isUnlocked"
+              @change="toggleBioEnabled(bioEnabled)"
+            />
+            <span class="switch-slider"></span>
+          </label>
         </div>
       </div>
 

@@ -7,6 +7,8 @@ use tauri::Manager;
 use tauri::{DragDropEvent, WindowEvent};
 
 mod server;
+mod passkey;
+use passkey::{passkey_enroll, passkey_remove, passkey_status, passkey_unlock};
 
 /// 拖放读取白名单（R3 修复）
 /// 记录最近一次拖放到窗口内的文件路径，read_text_file_any 仅允许读取白名单中的文件。
@@ -480,6 +482,10 @@ pub fn run() {
             server_get_pending_pair,
             server_pair_confirm,
             server_pair_reject,
+            passkey_status,
+            passkey_enroll,
+            passkey_unlock,
+            passkey_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockPass tauri application");

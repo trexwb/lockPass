@@ -138,11 +138,70 @@ function generateSalt() {
   return crypto.getRandomValues(new Uint8Array(32));
 }
 
+/**
+ * 从主密码派生 32 字节原始密钥（生物识别解锁 enroll 专用）
+ * 与 deriveKey 同参数同算法（PBKDF2-SHA256 → 256bit），仅输出 raw bytes
+ * 而非 CryptoKey，供 Rust 侧封装为 Device Unlock Key 加密保存。
+ * @param {string} password - 用户主密码
+ * @param {Uint8Array} salt - 盐值（32字节）
+ * @param {number} [iterations=DEFAULT_ITERATIONS] - PBKDF2 迭代次数
+ * @returns {Promise<ArrayBuffer>} 32 字节原始密钥（仅内存，不落盘）
+ */
+async function deriveKeyBytes(password, salt, iterations = DEFAULT_ITERATIONS) {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  return crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: salt,
+      iterations: iterations,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    256
+  );
+}
+
+/**
+ * 以原始字节导入 AES-256-GCM 密钥（生物识别解锁后还原 Vault Key 专用）
+ * extractable=false：密钥永不可导出，仅本次会话内存可用。
+ * @param {BufferSource} bytes - 32 字节原始密钥
+ * @returns {Promise<CryptoKey>} AES-256-GCM 会话密钥
+ */
+async function importRawAesKey(bytes) {
+  return crypto.subtle.importKey(
+    'raw',
+    bytes,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * 字节数组转小写 hex 字符串（enroll 传参用；不落盘）
+ * @param {BufferSource} buf - 任意字节缓冲区
+ * @returns {string} hex 字符串
+ */
+function bytesToHex(buf) {
+  return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // 导出模块
 window.CryptoUtils = {
   DEFAULT_ITERATIONS,
   LEGACY_ITERATIONS,
   deriveKey,
+  deriveKeyBytes,
+  importRawAesKey,
+  bytesToHex,
   encrypt,
   decrypt,
   arrayBufferToBase64,
