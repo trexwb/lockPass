@@ -497,6 +497,73 @@ export function useVault() {
     }
   }
 
+  /* ── 生物识别解锁（Passkey，macOS 桌面单端 MVP） ───────
+     与 handleUnlock 的「已初始化解锁」分支等价，但主密码不经手：
+     Rust 侧生物验证通过后返回 Device Key hex（Secure Enclave 解密
+     guard），前端仅在内存 importKey 还原 Vault Key 并解密保险箱。
+     会话语义：不写入 sessionPassword（生物会话无主密码），锁屏/
+     登出后本会话密钥随 cryptoKey 一并清空；依赖主密码的功能（如
+     QR 分享/导入）会提示先以主密码解锁，符合安全基线。 */
+
+  async function handleBiometricUnlock() {
+    if (vaultState.lockBusy) return
+    if (!window.LockPasskey || !window.LockPasskey.isDesktopMac) return
+    vaultState.lockBusy = true
+    vaultState.lockError = ''
+
+    try {
+      const res = await window.LockPasskey.unlock()
+      if (!res.ok) {
+        vaultState.lockError = t('vault.lock.errBio.' + (res.code || 'UNKNOWN'))
+        return
+      }
+      if (!res.value || !/^[0-9a-fA-F]{64}$/.test(res.value)) {
+        vaultState.lockError = t('vault.lock.errBio.CRYPTO_ERR')
+        return
+      }
+
+      // 还原 Vault Key（仅内存，extractable=false）
+      const raw = new Uint8Array(res.value.match(/.{2}/g).map(b => parseInt(b, 16)))
+      const key = await window.CryptoUtils.importRawAesKey(raw)
+
+      // 解密保险箱主数据（与 unlockVault 同一数据源/校验）
+      const vaultRecord = await window.DBUtils.dbGet(window.DBUtils.STORE_VAULT, 'main')
+      if (!vaultRecord) throw new Error(t('vault.err.noEntries'))
+      let data
+      try {
+        data = await window.CryptoUtils.decrypt(vaultRecord.data, vaultRecord.iv, key)
+      } catch (e) {
+        // guard 内 Device Key 与当前保险箱密钥不匹配（如改主密码/重建/导入新库）
+        vaultState.lockError = t('vault.lock.errBio.KEY_MISMATCH')
+        return
+      }
+
+      vaultState.cryptoKey = key
+      const migrated = migrateVaultData(data)
+      vaultState.entries = migrated.entries
+      vaultState.history = migrated.history
+      vaultState.tagDefs = migrated.tagDefs
+      vaultState.tags = migrated.tags
+      vaultState.deleted = migrated.deleted
+      if (migrated.changed) await saveVault()
+
+      // 生物会话：不保留主密码（saveSession('')），依赖主密码功能走提示
+      saveSession('')
+      vaultState.isUnlocked = true
+      purgeExpiredRecycle()
+      startRecycleTimer()
+      try { window.ExtBridge && window.ExtBridge.ready() } catch (e) {}
+      try { window.TauriServer && window.TauriServer.ready() } catch (e) {}
+      await afterUnlock()
+      await showBindBannerIfNeeded()
+    } catch (e) {
+      if (e && e.name === 'AbortError') return
+      vaultState.lockError = e.message || t('vault.lock.unlockFailed')
+    } finally {
+      vaultState.lockBusy = false
+    }
+  }
+
   async function afterUnlock() {
     closeModal()
     // 同步明文条目到 Tauri 本地服务（桌面版扩展自动填充用；内存级，不落盘）
@@ -1486,6 +1553,7 @@ export function useVault() {
     unlockVault,
     saveVault,
     handleUnlock,
+    handleBiometricUnlock,
     afterUnlock,
     showBindBannerIfNeeded,
     lockVault,

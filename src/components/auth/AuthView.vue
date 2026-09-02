@@ -3,7 +3,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 
-const { handleUnlock, openRestoreFilePicker, handleRestoreFileSelect, bindRestoreFromDirectory } = useVault()
+const { handleUnlock, handleBiometricUnlock, openRestoreFilePicker, handleRestoreFileSelect, bindRestoreFromDirectory } = useVault()
 
 // P3-4：图标统一走 Utils.SvgIcons（消除与图标库的重复定义）
 const Icons = window.Utils.SvgIcons
@@ -15,6 +15,39 @@ const confirmPassword = ref('')
 const showPw = ref(false)
 // D9 修复：非安全上下文（http 非 localhost）下 Web Crypto 不可用，阻断并禁用解锁按钮
 const blocked = ref(false)
+
+// 生物识别解锁（Passkey，macOS 桌面）：仅当 Rust 状态查询返回可用且已启用时显示
+const passkeySupported = ref(false)
+const passkeyEnabled = ref(false)
+const bioBusy = ref(false)
+
+/** 查询生物识别解锁状态（非桌面 macOS / 未启用均不显示按钮） */
+async function refreshPasskey() {
+  if (isCreateMode.value || !window.LockPasskey || !window.LockPasskey.isDesktopMac) {
+    passkeySupported.value = false
+    passkeyEnabled.value = false
+    return
+  }
+  try {
+    const st = await window.LockPasskey.status()
+    passkeySupported.value = !!st.available
+    passkeyEnabled.value = !!st.enabled
+  } catch (e) {
+    passkeySupported.value = false
+    passkeyEnabled.value = false
+  }
+}
+
+/** 生物解锁入口：全部失败/取消均由 handleBiometricUnlock 回写 lockError，不静默降级 */
+async function onBioUnlock() {
+  if (bioBusy.value || vaultState.lockBusy) return
+  bioBusy.value = true
+  try {
+    await handleBiometricUnlock()
+  } finally {
+    bioBusy.value = false
+  }
+}
 
 const isCreateMode = computed(() => !vaultState.initialized)
 // 浏览器环境（非 Tauri）且支持文件系统 API 时，提供「绑定已有数据目录」恢复
@@ -132,6 +165,7 @@ watch(
     confirmPassword.value = ''
     vaultState.lockError = ''
     resetBackoff()
+    refreshPasskey()
   },
 )
 
@@ -146,6 +180,7 @@ onMounted(() => {
       : t('lock.envHttp')
     return
   }
+  refreshPasskey()
   // D11 修复：创建模式防浏览器密码管理器异步自动填充（对齐原版 main.js init），
   // 等浏览器完成自动填充后清空密码框，避免主密码被错误预填
   if (isCreateMode.value) {
@@ -232,6 +267,20 @@ onBeforeUnmount(() => {
 
         <button id="unlock-btn" class="btn btn-primary btn-full" type="submit" :disabled="blocked || vaultState.lockBusy || cooldownRemain > 0" tabindex="3">
           {{ cooldownRemain > 0 ? t('lock.errorBackoffBtn', { sec: cooldownRemain }) : btnText }}
+        </button>
+
+        <!-- 生物识别解锁（Passkey）：已启用时免输主密码，失败/取消仍回退主密码输入 -->
+        <button
+          v-if="!isCreateMode && passkeySupported && passkeyEnabled"
+          id="bio-unlock-btn"
+          class="btn btn-ghost btn-full"
+          type="button"
+          :disabled="bioBusy || vaultState.lockBusy || cooldownRemain > 0"
+          tabindex="4"
+          @click="onBioUnlock"
+        >
+          <span v-html="Icons.shield(13)"></span>
+          {{ bioBusy || vaultState.lockBusy ? '…' : t('lock.bioUnlock') }}
         </button>
 
         <!-- 忘记主密码：离线加密无找回可能，主动管理预期并引导备份恢复/销毁重建 -->
