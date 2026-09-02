@@ -779,10 +779,11 @@
   transform: rotate(180deg);
 }
 .btn-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  /* 菜单 Teleport 到 <body> 并以 fixed 定位（与 CtxMenu/BaseSelect 同款方案）：
+     left/top/width 由组件按触发按钮 getBoundingClientRect 内联提供，
+     脱离 #sidebar(overflow:hidden) / .sidebar-scroll(overflow-y:auto) 裁切与遮挡 */
+  position: fixed;
+  max-width: calc(100vw - 16px);
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

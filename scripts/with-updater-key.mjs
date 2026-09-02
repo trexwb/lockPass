@@ -15,9 +15,14 @@
    签名私钥。CI 经 GitHub Secrets 注入；本地若未设置环境变量会报
    "A public key has been found, but no private key"。
    本包装器规则：
-     1) 已设置 TAURI_SIGNING_PRIVATE_KEY / _PATH（CI 或手动）→ 原样透传
-     2) 未设置且 ~/.tauri/lockpass-updater.key 存在 → 注入 _PATH 指向它
-     3) 都没有 → 原样透传（由 Tauri 给出明确的缺钥报错）
+     1) 已设置 TAURI_SIGNING_PRIVATE_KEY（CI 或手动内联）→ 原样透传
+     2) 未设置 → 按 TAURI_SIGNING_PRIVATE_KEY_PATH（.env.local / 手动 export）
+        与 ~/.tauri/lockpass-updater.key 顺序找到私钥文件，读入为内联值
+     3) 都没有 → 原样透传并打印指引（由 Tauri 给出明确的缺钥报错）
+   ⚠️ 关键事实：tauri build 的打包签名只认 TAURI_SIGNING_PRIVATE_KEY
+   （值可以是私钥内容，也可以是指向私钥文件的路径，打包器会自动识别）；
+   TAURI_SIGNING_PRIVATE_KEY_PATH 仅 `tauri signer` 子命令支持，
+   打包器完全不读取——因此这里一律把私钥转换成内联形式再透传。
    ═══════════════════════════════════════════════════════════════════ */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -52,42 +57,59 @@ function loadEnvFile(file) {
 
 ENV_FILES.forEach(loadEnvFile)
 
-// 关键：统一走内联 TAURI_SIGNING_PRIVATE_KEY，并删除 _PATH 变量——
-// ① tauri build 的更新产物签名只认内联形式（_PATH 仅 signer 子命令支持）；
+// 关键：统一转成内联 TAURI_SIGNING_PRIVATE_KEY 后透传——
+// ① 打包签名只认该变量（_PATH 仅 tauri signer 子命令支持，打包器不读取）；
 // ② CLI 中 --private-key 与 --private-key-path 互斥，同时设置会被拒绝。
-// 读取优先级：.env.local / 旧 env 文件的 PATH 指针 → 默认 ~/.tauri 私钥。
+// 候选顺序：.env.local / 旧 env 文件 / 手动 export 的 PATH 指针 → 默认 ~/.tauri 私钥。
 if (!process.env.TAURI_SIGNING_PRIVATE_KEY) {
-  const cand = process.env.TAURI_SIGNING_PRIVATE_KEY_PATH || KEY_PATH
-  if (cand && existsSync(cand)) {
+  const pathPtr = process.env.TAURI_SIGNING_PRIVATE_KEY_PATH
+  const candidates = pathPtr ? [pathPtr, KEY_PATH] : [KEY_PATH]
+  let injected = false
+  for (const cand of candidates) {
+    // ~ 前缀展开（与 fastenerTradeWorkbench 同款）：Node 的 existsSync 不解析波浪号，
+    // 不展开会让 .env.local 的 ~/.tauri/... 永远命中失败，静默跳过下游报缺钥
+    const expanded = cand && cand.startsWith('~')
+      ? path.join(os.homedir(), cand.slice(1))
+      : cand
+    if (!existsSync(expanded)) {
+      // 显式暴露"指针存在但文件缺失"，避免静默跳过导致下游只见打包器缺钥报错
+      if (cand === pathPtr) {
+        console.warn(`[with-updater-key] 警告：TAURI_SIGNING_PRIVATE_KEY_PATH 指向的文件不存在：${expanded}`)
+      }
+      continue
+    }
     try {
-      process.env.TAURI_SIGNING_PRIVATE_KEY = readFileSync(cand, 'utf8')
+      process.env.TAURI_SIGNING_PRIVATE_KEY = readFileSync(expanded, 'utf8')
       const head = Buffer.from(
         process.env.TAURI_SIGNING_PRIVATE_KEY.split(/\r?\n/)[0].replace('untrusted comment: ', ''),
         'base64'
       ).toString('utf8')
-      if (head.includes('encrypted') && !process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
-        console.warn('[with-updater-key] 警告：私钥为加密态但未提供密码，签名将失败（检查 .env.local 的 PASSWORD）')
+      if (head.includes('encrypted')) {
+        if (!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+          console.warn('[with-updater-key] 警告：私钥为加密态但未提供密码，签名将失败（检查 .env.local 的 PASSWORD）')
+        }
+      } else if (!('TAURI_SIGNING_PRIVATE_KEY_PASSWORD' in process.env)) {
+        // 无密码密钥也必须显式置空值：未设置时 CLI 在无 TTY 环境会尝试交互式
+        // 询问密码并以 "Device not configured (os error 6)" 失败
+        process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
       }
-      console.log('[with-updater-key] 已注入内联签名私钥（来自', path.basename(cand) + '）')
+      console.log('[with-updater-key] 已注入内联签名私钥（来自', path.basename(expanded) + '）')
+      injected = true
+      break
     } catch (e) {
       console.warn('[with-updater-key] 读取私钥失败:', e && e.message)
     }
   }
+  if (!injected) {
+    console.warn(
+      '[with-updater-key] 未找到可用私钥。tauri build 只认 TAURI_SIGNING_PRIVATE_KEY' +
+      '（内容或私钥文件路径），不读 TAURI_SIGNING_PRIVATE_KEY_PATH；' +
+      '请使用 npm run tauri:build 走本包装器，或自行 export TAURI_SIGNING_PRIVATE_KEY'
+    )
+  }
 }
 // 互斥规避：内联与路径不可同时存在
 delete process.env.TAURI_SIGNING_PRIVATE_KEY_PATH
-
-const hasKey = !!(process.env.TAURI_SIGNING_PRIVATE_KEY || process.env.TAURI_SIGNING_PRIVATE_KEY_PATH)
-
-if (!hasKey && existsSync(KEY_PATH)) {
-  process.env.TAURI_SIGNING_PRIVATE_KEY_PATH = KEY_PATH
-  // 空密码密钥也必须显式置空值：未设置时 CLI 在无 TTY 环境会尝试交互式
-  // 询问密码并以 "Device not configured (os error 6)" 失败
-  if (!('TAURI_SIGNING_PRIVATE_KEY_PASSWORD' in process.env)) {
-    process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
-  }
-  console.log('[with-updater-key] 已注入本地签名私钥:', KEY_PATH)
-}
 
 const cmd = process.argv.slice(2)
 if (!cmd.length) {
