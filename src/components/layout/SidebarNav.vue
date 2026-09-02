@@ -18,6 +18,24 @@ const {
 } = useVault()
 
 const addDropdownOpen = ref(false)
+const addDropdownStyle = ref(null)
+// 下拉菜单 Teleport 到 body + fixed：菜单挂 body 顶层渲染，
+// 不再被 #sidebar(overflow:hidden) / .sidebar-scroll(overflow-y:auto) 裁切或遮挡
+function toggleAddDropdown() {
+  if (addDropdownOpen.value) { addDropdownOpen.value = false; return }
+  const host = document.getElementById('add-entry-dropdown')
+  if (!host) return
+  const r = host.getBoundingClientRect()
+  const gap = 6
+  // 向下展开，底部空间不足时上翻（菜单高度按两行按钮估算，最小留 8px 边距）
+  const menuH = 96
+  const top = (r.bottom + gap + menuH <= window.innerHeight)
+    ? r.bottom + gap
+    : Math.max(8, r.top - gap - menuH)
+  addDropdownStyle.value = { left: `${r.left}px`, top: `${top}px`, width: `${r.width}px` }
+  addDropdownOpen.value = true
+}
+function closeAddDropdown() { addDropdownOpen.value = false }
 const tagSectionOpen = ref((() => { try { return localStorage.getItem('lockpass_tags_collapsed') !== '1' } catch (e) { return true } })())
 
 const stats = computed(() => computeSidebarStats())
@@ -58,7 +76,7 @@ function onNavKey(e, f) {
 }
 
 function onDocClick(e) {
-  if (addDropdownOpen.value && !e.target.closest('#add-entry-dropdown')) {
+  if (addDropdownOpen.value && !e.target.closest('#add-entry-dropdown') && !e.target.closest('.btn-dropdown-menu')) {
     addDropdownOpen.value = false
   }
 }
@@ -402,7 +420,7 @@ async function handleLogout(action) {
         <div class="btn-dropdown" id="add-entry-dropdown">
           <button
             class="btn btn-primary btn-full btn-dropdown-main"
-            @click="openEntryModal()"
+            @click="openEntryModal(); closeAddDropdown()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'add' }, { w: 230, h: 160 })"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -412,29 +430,31 @@ async function handleLogout(action) {
             {{ t('side.addPassword') }}
           </button>
           <button class="btn btn-primary btn-dropdown-toggle" :aria-label="t('side.moreAdd')" :title="t('side.moreAdd')"
-            @click="addDropdownOpen = !addDropdownOpen"
+            @click="toggleAddDropdown()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'add' }, { w: 230, h: 160 })"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          <div class="btn-dropdown-menu" :class="{ hidden: !addDropdownOpen }">
-            <button @click="openModal('qr-import'); addDropdownOpen = false">
+        </div>
+        <Teleport to="body">
+          <div v-if="addDropdownOpen" class="btn-dropdown-menu" :style="addDropdownStyle">
+            <button @click="openModal('qr-import'); closeAddDropdown()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
                 <path d="M14 14h3v3h-3z" /><path d="M21 14v3h-3" />
               </svg>
               {{ t('qrimport.add') }}
             </button>
-            <button @click="openModal('import'); addDropdownOpen = false">
+            <button @click="openModal('import'); closeAddDropdown()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               {{ t('import.batch') }}
             </button>
           </div>
-        </div>
+        </Teleport>
       </div>
 
       <div class="sidebar-section">

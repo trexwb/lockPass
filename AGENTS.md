@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.0.1`
+**当前版本**：`v1.0.2`
 
 ---
 
@@ -66,7 +66,7 @@
 1. 确定版本号增量类型（遵守上方 MAJOR/MINOR 用户硬性约束，仅 PATCH 自增）
 2. 运行 `npm run version:set x.y.z` 统一更新版本号（运行时代码由构建自动注入，无需手改）
 3. 运行 `npm run version:check` 确认全部一致
-4. 在 `memory/YYYY-MM-DD.md` 中记录变更内容和版本号
+4. 在 `docs/memory/YYYY-MM-DD.md` 中记录变更内容和版本号
 
 ---
 
@@ -185,7 +185,7 @@ LockPass/
 │                          # 注：copy-frontend.mjs 为 CI 兼容壳（内部 vite build）；serve.mjs 遗留未引用
 ├── dist/                  # 构建产物（vite build 生成，不手动修改）
 ├── docs/                  # 文档中心（spec / tauri / 迁移设计，见 docs/README.md）
-├── memory/                # 工作记录（按日期 YYYY-MM-DD.md）
+│   └── memory/            # AI 工作记录（按日期 YYYY-MM-DD.md）
 ├── README.md              # 使用说明（仓库首页）
 └── AGENTS.md              # 本文件（Agent 开发规范，约定置于根目录）
 ```
