@@ -225,6 +225,9 @@ mod imp {
     /* ── Keychain 辅助 ────────────────────────────────────── */
 
     /// 按 ApplicationTag 检索 Secure Enclave 私钥（SecKeyRef，+1 所有权）
+    /// 存量修复：查询必须带 kSecUseDataProtectionKeychain=true —— item 由
+    /// create_se_key 写入数据保护钥匙串，查询/删除字典缺该 flag 会查不到
+    /// （status.enabled 恒 false → 锁屏 AuthView 无生物入口；unlock/remove 亦失败）。
     fn find_private_key() -> Result<CFType, String> {
         unsafe {
             let query = CFDictionary::from_CFType_pairs(&[
@@ -238,6 +241,10 @@ mod imp {
                 ),
                 (
                     CFString::new(RETURN_REF).as_CFType(),
+                    CFBoolean::true_value().as_CFType(),
+                ),
+                (
+                    CFString::new(USE_DP_KEYCHAIN).as_CFType(),
                     CFBoolean::true_value().as_CFType(),
                 ),
             ]);
@@ -265,6 +272,10 @@ mod imp {
                 (
                     CFString::new(ATTR_APP_TAG).as_CFType(),
                     CFData::from_buffer(KEY_APP_TAG).as_CFType(),
+                ),
+                (
+                    CFString::new(USE_DP_KEYCHAIN).as_CFType(),
+                    CFBoolean::true_value().as_CFType(),
                 ),
             ]);
             let status = SecItemDelete(query.as_concrete_TypeRef() as CFTypeRef);

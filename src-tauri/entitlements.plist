@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- LockPass 生物识别解锁（Passkey 方案 A）所需钥匙串访问组：
+	     Secure Enclave 密钥 + kSecUseDataProtectionKeychain=true 的 Keychain item
+	     要求 app 具备 keychain-access-groups entitlement，否则返回
+	     errSecMissingEntitlement (-34018)，enroll/status 全链不可用。
+	     $(AppIdentifierPrefix) 由 codesign 在签名时替换为 Team ID 前缀。 -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.lockpass</string>
+	</array>
+</dict>
+</plist>

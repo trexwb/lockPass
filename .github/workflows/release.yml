@@ -14,7 +14,7 @@
 # 自动更新（v1.0.11 起）：
 #   • bundle.createUpdaterArtifacts 生成更新产物与 .sig 签名
 #     （Windows: NSIS setup.exe；macOS: LockPass.app.tar.gz）
-#   • 签名私钥存 GitHub Secrets：TAURI_SIGNING_PRIVATE_KEY
+#   • 签名私钥存 GitHub Variables：TAURI_SIGNING_PRIVATE_KEY
 #     （私钥密码为空，无需 PASSWORD 变量；本地私钥 ~/.tauri/lockpass-updater.key）
 #   • update-manifest job 汇总产物生成 latest.json 随 Release 发布，
 #     客户端经 plugins.updater.endpoints 指向 releases/latest/download/latest.json
@@ -60,8 +60,8 @@ jobs:
       - name: 构建 Tauri 应用
         run: npm run tauri:build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ variables.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ variables.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 上传产物到 Actions Artifact
         uses: actions/upload-artifact@v7
@@ -117,8 +117,8 @@ jobs:
       - name: 构建 Tauri 应用（仅 .app）
         run: npm run tauri:build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ variables.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ variables.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: 生成 .dmg（hdiutil，CI 可用）
         run: npm run make-dmg
