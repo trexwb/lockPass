@@ -168,16 +168,23 @@ async function deleteDatabase() {
   });
 }
 
-// 导出模块
-window.DBUtils = {
-  openDB,
-  dbGet,
-  dbPut,
-  dbDelete,
-  dbGetAll,
-  dbClear,
-  deleteDatabase,
-  // 常量导出
-  STORE_META,
-  STORE_VAULT
-};
+// A2 修复：显式环境条件分发（原实现无条件挂载 IndexedDB 版，靠 main.js
+// import 顺序在 Tauri 下被 core/file-store.js 覆盖，形成隐式时序耦合）。
+// 现在 Tauri 桌面由 file-store.js 负责挂载文件版；浏览器环境才挂载本版，
+// 两者互斥，不再依赖 import 顺序（tauri-env.js 在 main.js 中先于本模块执行）。
+const LT = window.LockTauri || {};
+if (!LT.isTauri) {
+  // 浏览器版 IndexedDB 存储（纯 Web 环境）
+  window.DBUtils = {
+    openDB,
+    dbGet,
+    dbPut,
+    dbDelete,
+    dbGetAll,
+    dbClear,
+    deleteDatabase,
+    // 常量导出
+    STORE_META,
+    STORE_VAULT
+  };
+}

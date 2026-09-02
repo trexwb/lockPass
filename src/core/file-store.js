@@ -163,7 +163,9 @@
     }
   };
 
-  // 替换 IndexedDB 版，后续业务代码（app / settings / import-export / file-sync）全部走文件
+  // A2 修复：database.js 已按 isTauri 互斥，Tauri 下这里属于「首次挂载」
+  // 文件版 DBUtils 而非覆盖 IndexedDB 版；后续业务代码（app / settings /
+  // import-export / file-sync）统一走文件存储，零 import 顺序依赖。
   window.DBUtils = DBUtilsFile;
 
   /* ── 5. 历史数据一次性迁移：IndexedDB（浏览器误判期产物）→ 文件存储 ──

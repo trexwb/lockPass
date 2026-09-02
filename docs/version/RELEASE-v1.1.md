@@ -5,6 +5,27 @@
 > 收敛说明：以下版本号无独立分节，内容并入相邻分节——
 > `v1.1.1`（并入 v1.1.0，多语言残留清偿）· `v1.1.2`（并入 v1.1.0，Tauri 脚本性能与健壮性深化）· `v1.1.3`（并入 v1.1.0，点击可达性专项审计）· `v1.1.4`（并入 v1.1.0，密码生成器取消生成记录）
 
+### v1.1.12 (2026-09-02)
+
+五轴代码审计（correctness / readability / architecture / security / performance）修复版本：S1 编辑器草稿分级缓存（敏感不落盘）、C1 database 表单补齐、C2+A1 死代码清理、A2 全局桥一致性、S2 锁定清剪贴板、S3 文件权限 0600 加固
+
+## 修复
+
+- **S1 编辑器草稿分级缓存（安全）**：新建 `src/composables/editorDraftStore.js` 分级草稿存储——非敏感元数据字段（title / username / url / port / dbType / dbName / tags 等，含自定义字段中经白名单+强正则判定安全的项）300ms 防抖写入 sessionStorage（`lockpass_safe_draft_*`，误关/误切/刷新后可恢复表单骨架）；password / rootPwd / privateKey / apiKey / token / seed / recovery / OTP 等敏感字段（含自定义字段名命中与敏感标记项）一律不落盘、仅内存驻留（pagehide/beforeunload 兜底 flush 亦只落脱敏骨架）；恢复逻辑拒读任何含敏感载荷或旧格式残留。**草稿生命周期 v1.1.12b 行为规则**：草稿随编辑实时更新并持续保留——除「提交且真实保存成功」外，任何关闭 / 刷新 / 跳转 / 切换均不清空草稿（取消按钮仅关闭，右键「清空草稿」为显式清空通道）；进入新建表单检测到未提交草稿时弹提示询问是否使用（使用则继续编辑、不使用才清空并展示空白表单）；编辑已有条目存在未提交修改草稿时可提示恢复，草稿与已保存内容一致时不打扰；提交失败保留草稿以便重试（saveVault 真实落盘失败时内存回滚）；锁屏 / 登出维持既定基线——仅清内存明文、保留脱敏骨架供解锁后恢复。复制为草稿（DetailPanel / AppShell）与按类型新建预选（SidebarNav）三个明文预填入口同步收敛到分级存储（复制意图经 `draftAction:'use'` 直用、类型预选经 `editorOpenOpts.presetType` 传参，均不重复弹询问）
+- **C1 database 类型表单补齐**：编辑器 database 模板块新增「数据库类型 dbType」「数据库名 dbName」可编辑控件（含复制按钮与右键菜单），详情面板同步新增两个 FieldRow 展示，schema 与 UI 全链路闭合
+- **C2+A1 死代码清理**：删除 `src/core/related.js` 中未消费的 `renderRelatedSection`（其内联 onclick 引用未挂载 `window.selectEntry` 的隐患一并消除），保留 `getRelatedEntries` 等被组件消费的纯函数查询
+- **A2 全局桥一致性（架构）**：`database.js`（IndexedDB 版）挂载加 `if (!window.LockTauri.isTauri)` 互斥条件，`main.js` 以显式条件分发替代「靠 import 顺序覆盖」挂载双存储；`related.js` 裸引用全局 App 改为显式判空的 `getVaultState()`
+- **S2 锁定/登出即清剪贴板（安全）**：`useVault.js` 新增 `clearClipboardNow()`——幂等拆除自清定时器/倒计时胶囊链路并向系统剪贴板写空串，lockVault / logout 均改调，与 30s 自清去重
+- **S3 文件写入权限加固（安全）**：`src-tauri/src/lib.rs` 的 `atomic_write`（vault.json / meta.json 落盘通道）与 `export_text_file`（导出备份）写文件后显式 `#[cfg(unix)] fs::set_permissions(0o600)`，防同机其他用户读取加密数据文件
+
+## 验证
+
+- `vite:build` 70 modules transformed 0 error（built in ~300ms，覆盖新增/改动 SFC 编译）
+- 改动 JS `node --check` 全过（editorDraftStore / related / database / file-store / main / useVault）；Rust `cargo check` 0 error
+- S1 分级缓存行为脚本全链路断言通过：敏感不落盘 / 元数据可恢复 / 旧格式含明文拒读 / 防抖与 clear 无脏写残留
+- 草稿生命周期（v1.1.12b）store 级断言通过：内存全量含敏感、storage 仅脱敏子集、flushDrafts 兜底最新骨架、closeModal 不清空可恢复、clearDraft 后置空、空骨架/一致草稿不打扰、clearAllDrafts 锁屏仅清内存明文并保留脱敏骨架、旧明文键空间隔离
+- `version:check` 11 处一致（v1.1.12）
+
 ### v1.1.11 (2026-08-30)
 
 修复：登录时卡片操作按钮「一闪而过」（FOUC）

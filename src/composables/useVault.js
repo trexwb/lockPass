@@ -7,6 +7,12 @@
 import { reactive, nextTick } from 'vue'
 // 自定义字段类型枚举（core/templates.js，upgrade-design.md §1.2）
 import { CUSTOM_FIELD_TYPES } from '../core/templates.js'
+// S1 修复（分级缓存）：editorDraftStore.js —— 锁定/登出时清空内存全量明文；
+// 保存成功路径按 key 清内存+脱敏 storage（saveEntry 内调用 clearDraft）
+import {
+  clearAllDrafts as memClearAllEditorDrafts,
+  clearDraft as memClearEditorDraft,
+} from './editorDraftStore.js'
 
 /* i18n：Toast 在调用时求值（window.I18n 由 core/i18n.js 挂载） */
 const t = (k, p) => window.I18n.t(k, p)
@@ -82,6 +88,10 @@ export const vaultState = reactive({
   // 模态框状态（activeModal: 'entry' | 'settings' | 'import' | 'export' | 'qr-import' | 'qr-share' | 'change-pw' | 'tags'）
   activeModal: null,
   editingEntryId: null,
+  // 编辑器打开意图（草稿生命周期 v1.1.12b）：openEntryModal 第二参写入，编辑器挂载即消费
+  //   { presetType: 'website'|... } → 新建预选类型（不写草稿，避免空骨架误触发询问）
+  //   { draftAction: 'use' }        → 复制为新条目流：跳过询问直接恢复刚写入的草稿
+  editorOpenOpts: null,
   // 密码生成器独立弹窗（不占用 activeModal，可叠加在 EntryEditorModal 之上）
   // target: null=无目标字段（仅复制） | { source: 'entry', field: 'password'|'rootPwd' }
   pwGenVisible: false,
@@ -144,10 +154,14 @@ function clearSession() {
 }
 
 /**
- * 清空 sessionStorage 中全部编辑器草稿（lockpass_draft_*）。
- * 草稿含明文密码，锁定/退出登录时必须一并清除，避免安全边界被打破（P1-2 修复）。
+ * 清空全部编辑器草稿（锁定 / 退出登录时调用）。
+ * S1 分级策略：此处调用 memClearAllEditorDrafts 只清空「内存全量明文」
+ * （含 password/privateKey/rootPwd 等敏感字段，驻留即刻终止）；sessionStorage
+ * 中仅存脱敏元数据子集（lockpass_safe_draft_*，无机密语义），可保留供下次
+ * 解锁后恢复表单骨架。同时兜底清除旧版本可能残留的 lockpass_draft_* 明文草稿。
  */
 function clearEditorDrafts() {
+  try { memClearAllEditorDrafts() } catch (e) { /* 内存清理异常不影响主流程 */ }
   try {
     const staleKeys = []
     for (let i = 0; i < sessionStorage.length; i++) {
@@ -313,6 +327,8 @@ export function useVault() {
   let saveTimer = null
   let saveChain = Promise.resolve()
   let saveResolvers = []
+  // 最近一次真实写入是否成功（草稿生命周期 v1.1.12b：保存失败须保留草稿可重试）
+  let lastSaveOk = true
 
   async function doSave() {
     const { iv, data } = await window.CryptoUtils.encrypt(
@@ -334,19 +350,27 @@ export function useVault() {
   function flushSaveResolvers() {
     const list = saveResolvers
     saveResolvers = []
-    list.forEach((r) => r())
+    list.forEach((r) => r(lastSaveOk))
   }
 
+  /**
+   * 防抖合并写盘。返回 Promise<boolean>：true=真实落盘成功；
+   * false=写入失败（doSave 抛错，失败 toast 已在此弹出）。
+   * 现有调用方 `await saveVault()` 忽略返回值的行为不受影响。
+   */
   function saveVault() {
-    if (!vaultState.cryptoKey) return Promise.resolve()
+    if (!vaultState.cryptoKey) return Promise.resolve(true)
     if (saveTimer) clearTimeout(saveTimer)
     return new Promise((resolve) => {
       saveResolvers.push(resolve)
       saveTimer = setTimeout(() => {
         saveTimer = null
+        lastSaveOk = false
         saveChain = saveChain
           .then(() => doSave())
+          .then(() => { lastSaveOk = true })
           .catch((e) => {
+            lastSaveOk = false
             console.error('保存失败:', e)
             window.Utils.showToast(t('toast.saveFailed', { msg: e.message || t('toast.unknownError') }), 'error')
           })
@@ -667,12 +691,8 @@ export function useVault() {
     vaultState.showPasswordMap = {}
     // P1-2 修复：锁定即安全边界，编辑器草稿（含明文）一并清除
     clearEditorDrafts()
-    // 清除复制倒计时胶囊（锁定时剪贴板可能仍含明文，胶囊不应残留）
-    if (activeCopyTipTimer) {
-      clearInterval(activeCopyTipTimer)
-      activeCopyTipTimer = null
-    }
-    vaultState.clipboardCountdown = { active: false, remaining: 0, total: 0 }
+    // S2 修复：锁定即主动清空系统剪贴板明文（不等 30s 自清定时器）
+    clearClipboardNow()
   }
 
   function logout() {
@@ -702,12 +722,8 @@ export function useVault() {
     vaultState.showPasswordMap = {}
     // P1-2 修复：退出登录清除编辑器草稿（含明文）
     clearEditorDrafts()
-    // 清除复制倒计时胶囊
-    if (activeCopyTipTimer) {
-      clearInterval(activeCopyTipTimer)
-      activeCopyTipTimer = null
-    }
-    vaultState.clipboardCountdown = { active: false, remaining: 0, total: 0 }
+    // S2 修复：退出登录即主动清空系统剪贴板明文（不等 30s 自清定时器）
+    clearClipboardNow()
     if (vaultState.lockTimer) {
       clearTimeout(vaultState.lockTimer)
       vaultState.lockTimer = null
@@ -1113,6 +1129,30 @@ export function useVault() {
     return true
   }
 
+  /**
+   * S2 修复：锁定 / 退出登录时主动立即清空系统剪贴板（不等 30s 自清定时器）。
+   * 与既有的自清定时器链路共享 clipboardCleanupFn，先拆除定时器与倒计时胶囊，
+   * 再向系统剪贴板写入空串；重复调用幂等，可与倒计时到点回调互相去重。
+   */
+  async function clearClipboardNow() {
+    // 1) 拆除「自动清除定时器 + 倒计时胶囊」链路（幂等，重复调用安全）
+    if (vaultState.clipboardTimer) {
+      clearTimeout(vaultState.clipboardTimer)
+      vaultState.clipboardTimer = null
+    }
+    const prevCleanup = clipboardCleanupFn
+    clipboardCleanupFn = null
+    if (prevCleanup) prevCleanup() // 内部会清 interval 并关闭胶囊状态
+    // 2) 主动向系统剪贴板写入空串，立即清空明文（失败则静默降级，已拆除自清链）
+    try {
+      if (window.LockClipboard && typeof window.LockClipboard.write === 'function') {
+        await window.LockClipboard.write('')
+      } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText('')
+      }
+    } catch (e) { /* 剪贴板写权限被拒时静默降级 */ }
+  }
+
   async function copyPassword(id, btnEl = null) {
     const entry = getEntryById(id)
     if (!entry) return
@@ -1167,9 +1207,12 @@ export function useVault() {
 
   /* ── 模态框 ────────────────────────────────── */
 
-  function openEntryModal(entryId = null) {
+  function openEntryModal(entryId = null, opts = null) {
     vaultState.sidebarOpen = false
     vaultState.editingEntryId = entryId
+    // 草稿生命周期 v1.1.12b：打开意图（presetType / draftAction）随模态框传递，
+    // 由 EntryEditorModal 挂载时消费一次后置空（见 closeModal）
+    vaultState.editorOpenOpts = opts || null
     vaultState.activeModal = 'entry'
   }
 
@@ -1181,6 +1224,7 @@ export function useVault() {
   function closeModal() {
     vaultState.activeModal = null
     vaultState.editingEntryId = null
+    vaultState.editorOpenOpts = null
   }
 
   /* ── 密码生成器独立弹窗（方案 C，不占用 activeModal） ───── */
@@ -1373,6 +1417,14 @@ export function useVault() {
         type: CF_TYPES.includes(cf.type) ? cf.type : 'text',
       }))
 
+    // 变更落地前快照（草稿生命周期 v1.1.12b：写盘失败时回滚内存，
+    // 使「提交失败保留草稿以便重试」不产生重复条目/重复历史）
+    let mutateKind = '' // 'edit' | 'new'
+    let mutateIdx = -1
+    let mutateOldEntry = null
+    let mutateHistBefore = undefined
+    const histHadKey = Object.prototype.hasOwnProperty.call(vaultState.history, id)
+
     if (vaultState.editingEntryId) {
       const idx = vaultState.entries.findIndex(e => e.id === vaultState.editingEntryId)
       if (idx === -1) {
@@ -1382,17 +1434,43 @@ export function useVault() {
         return false
       }
       const oldEntry = vaultState.entries[idx]
+      mutateKind = 'edit'
+      mutateIdx = idx
+      mutateOldEntry = oldEntry
+      mutateHistBefore = histHadKey ? vaultState.history[id] : undefined
       // 任意内容字段有变更都生成历史记录（默认保留最近 5 版）
       recordEntryHistory(entry.id, oldEntry, entry, now)
       vaultState.entries[idx] = entry
-      // 保存成功后清除草稿缓存
+    } else {
+      mutateKind = 'new'
+      vaultState.entries.unshift(entry)
+    }
+
+    // 真实落盘成功才清草稿、关闭并提示成功；失败保留草稿供重试
+    const persistOk = await saveVault()
+    if (!persistOk) {
+      // 回滚内存状态（doSave 失败 toast 已在 saveVault 弹出）
+      if (mutateKind === 'edit') {
+        if (mutateIdx >= 0 && mutateOldEntry) vaultState.entries[mutateIdx] = mutateOldEntry
+        if (histHadKey) vaultState.history[id] = mutateHistBefore
+        else delete vaultState.history[id]
+      } else if (mutateKind === 'new') {
+        const dropped = vaultState.entries.indexOf(entry)
+        if (dropped >= 0) vaultState.entries.splice(dropped, 1)
+      }
+      return false
+    }
+
+    // 保存成功 → 清空对应草稿（内存 + 脱敏 storage 由 store.clearDraft 统一处理；
+    // 旧版 lockpass_draft_edit_* / lockpass_draft_new 明文残留一并兜底移除）
+    if (vaultState.editingEntryId) {
+      try { memClearEditorDraft('edit:' + vaultState.editingEntryId) } catch (e) {}
       try { sessionStorage.removeItem('lockpass_draft_edit_' + vaultState.editingEntryId) } catch (e) {}
     } else {
-      vaultState.entries.unshift(entry)
+      try { memClearEditorDraft('new') } catch (e) {}
       try { sessionStorage.removeItem('lockpass_draft_new') } catch (e) {}
     }
 
-    await saveVault()
     closeModal()
     window.Utils.showToast(t('toast.saved'), 'success')
     return true

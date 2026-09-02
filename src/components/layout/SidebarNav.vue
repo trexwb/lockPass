@@ -195,14 +195,10 @@ async function handlePersonal(action, filter) {
 async function handleType(action, typeId) {
   if (action === 'jump') { selectFilter('type:' + typeId); return }
   if (action === 'new-entry') {
-    openEntryModal()
-    // 通过草稿预选类型（EntryEditor 打开后会读取 lockpass_draft_new）
-    try {
-      const cur = JSON.parse(sessionStorage.getItem('lockpass_draft_new') || '{}')
-      cur.type = typeId
-      if (!cur.fields) cur.fields = {}
-      sessionStorage.setItem('lockpass_draft_new', JSON.stringify(cur))
-    } catch (_e) {}
+    // 草稿生命周期 v1.1.12b：类型预选改为打开意图传参（editorOpenOpts.presetType），
+    // 不再写入 'new' 草稿 —— 空骨架草稿会误触发「是否使用草稿」询问，且与
+    // 「任何关闭不清空」的持续保留语义冲突
+    openEntryModal(null, { presetType: typeId })
     window.Utils.showToast(t('side.toastTypePreselected', { label: t(typeLabels[typeId] || typeId) }), 'info')
   }
 }

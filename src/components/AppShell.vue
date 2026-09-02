@@ -9,6 +9,8 @@ import CopyCountdownPill from './common/CopyCountdownPill.vue'
 import { useI18n } from '../composables/useI18n'
 import CtxMenu from './common/CtxMenu.vue'
 import { useSwipeActions } from '../composables/useSwipeActions'
+// S1 修复（分级缓存）：复制入口的预填草稿改走分级 store，不再直写明文 sessionStorage
+import { saveDraft as memSaveDraft } from '../composables/editorDraftStore.js'
 
 // 模板中直接引用 window 会被 Vue 编译为 _ctx.window（undefined）而抛错，
 // 故在 setup 作用域暴露 Utils，模板统一使用 Utils.xxx
@@ -291,9 +293,9 @@ async function onEntryCtxAction(action) {
     if (action === 'edit') openEntryModal(id)
     else if (action === 'duplicate') {
       // 深拷贝一条：新 id，保留字段，原 createdAt 不保留
-      // 先写 sessionStorage 草稿，再打开编辑器（onMounted 会立即读取）
+      // S1 修复（分级缓存）：先写分级草稿再打开编辑器（onMounted 从内存即时读到完整副本）
       try {
-        sessionStorage.setItem('lockpass_draft_new', JSON.stringify({
+        memSaveDraft('new', {
           title: e.title ? e.title + ' ' + t('detail.copySuffix') : t('detail.untitled') + ' ' + t('detail.copySuffix'),
           entryType: e.entryType || 'website',
           tags: e.tags || [],
@@ -305,9 +307,11 @@ async function onEntryCtxAction(action) {
             rootUser: e.root?.username || '',
             rootPwd: e.root?.password || '',
           },
-        }))
+        })
       } catch (_err) { /* 草稿写入失败不阻断打开编辑器 */ }
-      openEntryModal(null)
+      // 草稿生命周期 v1.1.12b：复制为新条目的意图明确（立即编辑副本），
+      // 传 draftAction:'use' 让编辑器直接应用草稿，不再重复弹「是否使用草稿」询问
+      openEntryModal(null, { draftAction: 'use' })
       window.Utils.showToast(t('toast.duplicateDraft'), 'info')
     }
     else if (action === 'fav') toggleFavorite(id)
