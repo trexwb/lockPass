@@ -21,3 +21,4 @@
 - [在线版](https://trexwb.github.io/lockPass/)
 - [Releases 下载](https://github.com/trexwb/lockPass/releases)
 - [仓库源码](https://github.com/trexwb/lockPass)
+*（内容由AI生成，仅供参考）*
