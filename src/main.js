@@ -10,6 +10,9 @@ import './core/tauri-env.js'
 import './core/updater.js'
 // 核心逻辑层：原样迁移，保持 window.* 挂载，零算法改动
 import './core/crypto.js'
+// A2 修复：双存储显式条件分发（database.js 仅在浏览器挂载 IndexedDB 版；
+// file-store.js 仅在 Tauri 挂载文件版）。两模块互斥，不再依赖 import 顺序
+// 实现「后挂载覆盖前者」，消除隐式时序耦合。
 import './core/database.js'
 import './core/file-store.js'
 import './core/file-sync.js'

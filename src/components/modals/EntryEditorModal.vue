@@ -10,6 +10,12 @@ import CtxMenu from '../common/CtxMenu.vue'
 import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 import { CUSTOM_FIELD_TYPES, FIELD_TEMPLATES, createCustomField } from '../../core/templates'
+// S1 修复：草稿内存存储（明文禁止实时写 sessionStorage / localStorage）
+import {
+  loadDraft as memLoadDraft,
+  saveDraft as memSaveDraft,
+  clearDraft as memClearDraft,
+} from '../../composables/editorDraftStore.js'
 
 const { getEntryById, saveEntry, closeModal, copyToClipboard, openModal, openPasswordGenerator } = useVault()
 const { t } = useI18n()
@@ -111,36 +117,48 @@ const windowEyeClosed = window.Utils?.SvgIcons?.eyeClosedPaths || ''
 
 const isSecretField = (k) => k === 'password' || k === 'privateKey'
 
-const DRAFT_NEW_KEY = 'lockpass_draft_new'
+// S1 修复：草稿从 sessionStorage 实时落盘改为内存驻留（editorDraftStore.js）。
+// 不再把含明文（password/privateKey/rootPwd/Token 等）的完整表单对象
+// JSON.stringify 后写入 sessionStorage；改为模块级 Map 内存驻留（刷新即失）。
+// 清理时机：保存成功 / 放弃关闭 / 右键「清空草稿」 / 锁定 / 退出登录（见 useVault.clearEditorDrafts）。
+const DRAFT_NEW_KEY = 'new'
 
 function draftKey() {
-  return vaultState.editingEntryId ? `lockpass_draft_edit_${vaultState.editingEntryId}` : DRAFT_NEW_KEY
+  return vaultState.editingEntryId ? `edit:${vaultState.editingEntryId}` : DRAFT_NEW_KEY
 }
 
 function loadDraft() {
-  try {
-    const raw = sessionStorage.getItem(draftKey())
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch (e) {
-    return null
-  }
+  return memLoadDraft(draftKey())
 }
 
 function persistDraft() {
-  try {
-    sessionStorage.setItem(draftKey(), JSON.stringify({
-      title: title.value,
-      entryType: entryType.value,
-      fields: { ...fields },
-      tags: selectedTags.value,
-      notes: notes.value,
-    }))
-  } catch (e) {}
+  memSaveDraft(draftKey(), {
+    title: title.value,
+    entryType: entryType.value,
+    fields: { ...fields },
+    tags: selectedTags.value.slice(),
+    notes: notes.value,
+    customFields: customFields.value.map(cf => ({ ...cf })),
+  })
 }
 
 function clearDraft() {
-  try { sessionStorage.removeItem(draftKey()) } catch (e) {}
+  memClearDraft(draftKey())
+}
+
+/**
+ * S1 兜底清理：删除旧版本可能残留在 sessionStorage 的 lockpass_draft_* 明文草稿。
+ * 在编辑器挂载时执行一次，兼容旧版浏览器会话 / 扩展页写入的同前缀残留。
+ */
+function clearLegacySessionDrafts() {
+  try {
+    const stale = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i)
+      if (k && k.indexOf('lockpass_draft_') === 0) stale.push(k)
+    }
+    stale.forEach(k => sessionStorage.removeItem(k))
+  } catch (e) {}
 }
 
 // 标签 chip 图标：复用旧版 getCategoryIcon
@@ -338,6 +356,8 @@ function legacyValue(e, k) {
 }
 
 onMounted(() => {
+  // S1 修复：升级后首次打开编辑器，清理旧版遗留的 sessionStorage 明文草稿
+  clearLegacySessionDrafts()
   if (isEdit.value) {
     const e = getEntryById(vaultState.editingEntryId)
     if (e) {
@@ -739,6 +759,40 @@ const editorCtxItems = computed(() => {
 
       <!-- ══ database ══ -->
       <template v-else-if="entryType === 'database'">
+        <!-- C1 修复：补齐 dbType/dbName 可编辑控件，使 schema（TYPE_FIELD_KEYS.database）与 UI 一致 -->
+        <div class="form-group">
+          <label class="form-label">{{ t('editor.label.dbType') }}</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input
+                v-model="fields.dbType"
+                class="form-input mono"
+                type="text"
+                :placeholder="t('editor.ph.dbType')"
+                autocomplete="off"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'dbType', label: t('editor.label.dbType'), value: fields.dbType }, { w: 240, h: 170 })"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('editor.label.dbName') }}</label>
+          <div class="input-row">
+            <div class="input-row-main">
+              <input
+                v-model="fields.dbName"
+                class="form-input mono"
+                type="text"
+                :placeholder="t('editor.ph.dbName')"
+                autocomplete="off"
+                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'dbName', label: t('editor.label.dbName'), value: fields.dbName }, { w: 240, h: 170 })"
+              />
+            </div>
+            <button class="pw-gen-btn" type="button" :title="t('editor.tipCopy')" @click="copyText(fields.dbName, $event.currentTarget)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            </button>
+          </div>
+        </div>
         <div class="form-group">
           <label class="form-label">{{ t('editor.label.dbHost') }}</label>
           <div class="input-row">

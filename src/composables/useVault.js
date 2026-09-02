@@ -7,6 +7,8 @@
 import { reactive, nextTick } from 'vue'
 // 自定义字段类型枚举（core/templates.js，upgrade-design.md §1.2）
 import { CUSTOM_FIELD_TYPES } from '../core/templates.js'
+// S1 修复：编辑器草稿内存存储（锁定 / 退出登录时整体清空）
+import { clearAllDrafts as memClearAllEditorDrafts } from './editorDraftStore.js'
 
 /* i18n：Toast 在调用时求值（window.I18n 由 core/i18n.js 挂载） */
 const t = (k, p) => window.I18n.t(k, p)
@@ -144,10 +146,13 @@ function clearSession() {
 }
 
 /**
- * 清空 sessionStorage 中全部编辑器草稿（lockpass_draft_*）。
- * 草稿含明文密码，锁定/退出登录时必须一并清除，避免安全边界被打破（P1-2 修复）。
+ * 清空全部编辑器草稿。
+ * S1 修复后草稿主体为内存驻留（editorDraftStore.js），此处统一清空内存；
+ * 同时兜底清除旧版本可能残留在 sessionStorage 的 lockpass_draft_* 明文草稿。
+ * 草稿含明文密码，锁定/退出登录时必须一并清除，避免安全边界被打破（P1-2 / S1 修复）。
  */
 function clearEditorDrafts() {
+  try { memClearAllEditorDrafts() } catch (e) { /* 内存清理异常不影响主流程 */ }
   try {
     const staleKeys = []
     for (let i = 0; i < sessionStorage.length; i++) {
@@ -667,12 +672,8 @@ export function useVault() {
     vaultState.showPasswordMap = {}
     // P1-2 修复：锁定即安全边界，编辑器草稿（含明文）一并清除
     clearEditorDrafts()
-    // 清除复制倒计时胶囊（锁定时剪贴板可能仍含明文，胶囊不应残留）
-    if (activeCopyTipTimer) {
-      clearInterval(activeCopyTipTimer)
-      activeCopyTipTimer = null
-    }
-    vaultState.clipboardCountdown = { active: false, remaining: 0, total: 0 }
+    // S2 修复：锁定即主动清空系统剪贴板明文（不等 30s 自清定时器）
+    clearClipboardNow()
   }
 
   function logout() {
@@ -702,12 +703,8 @@ export function useVault() {
     vaultState.showPasswordMap = {}
     // P1-2 修复：退出登录清除编辑器草稿（含明文）
     clearEditorDrafts()
-    // 清除复制倒计时胶囊
-    if (activeCopyTipTimer) {
-      clearInterval(activeCopyTipTimer)
-      activeCopyTipTimer = null
-    }
-    vaultState.clipboardCountdown = { active: false, remaining: 0, total: 0 }
+    // S2 修复：退出登录即主动清空系统剪贴板明文（不等 30s 自清定时器）
+    clearClipboardNow()
     if (vaultState.lockTimer) {
       clearTimeout(vaultState.lockTimer)
       vaultState.lockTimer = null
@@ -1111,6 +1108,30 @@ export function useVault() {
       }
     } catch (e) { /* CSS.escape 或 querySelector 异常不影响复制结果 */ }
     return true
+  }
+
+  /**
+   * S2 修复：锁定 / 退出登录时主动立即清空系统剪贴板（不等 30s 自清定时器）。
+   * 与既有的自清定时器链路共享 clipboardCleanupFn，先拆除定时器与倒计时胶囊，
+   * 再向系统剪贴板写入空串；重复调用幂等，可与倒计时到点回调互相去重。
+   */
+  async function clearClipboardNow() {
+    // 1) 拆除「自动清除定时器 + 倒计时胶囊」链路（幂等，重复调用安全）
+    if (vaultState.clipboardTimer) {
+      clearTimeout(vaultState.clipboardTimer)
+      vaultState.clipboardTimer = null
+    }
+    const prevCleanup = clipboardCleanupFn
+    clipboardCleanupFn = null
+    if (prevCleanup) prevCleanup() // 内部会清 interval 并关闭胶囊状态
+    // 2) 主动向系统剪贴板写入空串，立即清空明文（失败则静默降级，已拆除自清链）
+    try {
+      if (window.LockClipboard && typeof window.LockClipboard.write === 'function') {
+        await window.LockClipboard.write('')
+      } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText('')
+      }
+    } catch (e) { /* 剪贴板写权限被拒时静默降级 */ }
   }
 
   async function copyPassword(id, btnEl = null) {

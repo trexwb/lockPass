@@ -157,7 +157,16 @@ fn export_text_file(path: String, contents: String) -> Result<(), String> {
             fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
         }
     }
-    fs::write(&full, contents).map_err(|e| format!("写入文件失败: {e}"))
+    fs::write(&full, contents).map_err(|e| format!("写入文件失败: {e}"))?;
+    // S3 修复：导出备份同样含加密保险箱数据，权限设 0600，
+    // 防止导出到共享目录后被同机其他用户读取。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&full, fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("设置文件权限失败: {e}"))?;
+    }
+    Ok(())
 }
 
 /// 授予拖放文件的读取权限（S2 修复：已移除）

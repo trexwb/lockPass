@@ -484,6 +484,11 @@ const detailCtxItems = computed(() => {
 
           <!-- 数据库 -->
           <template v-else-if="entry.entryType === 'database'">
+            <!-- C1 修复：展示 dbType/dbName（与编辑器 schema 对齐） -->
+            <FieldRow v-if="entry.dbType" :label="t('detail.field.dbType')" :value="entry.dbType" copyable
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'field', label: t('detail.field.dbType'), value: entry.dbType }, { w: 220, h: 120 })" />
+            <FieldRow v-if="entry.dbName" :label="t('detail.field.dbName')" :value="entry.dbName" copyable
+              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'field', label: t('detail.field.dbName'), value: entry.dbName }, { w: 220, h: 120 })" />
             <FieldRow
               v-if="entry.url"
               :label="t('detail.field.dbHost')"

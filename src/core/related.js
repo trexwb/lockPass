@@ -158,18 +158,30 @@ function buildRelatedReason(key) {
 }
 
 /**
+ * 显式获取 Vue 状态桥（A2 修复）
+ * 原实现函数内裸引用全局标识符 App，隐式依赖 boot 先注入 window.App 的
+ * 时序；现改为经 window.App 显式判空访问，消除该隐式时序依赖。
+ * @returns {Object|null} vaultState（不可用时返回 null）
+ */
+function getVaultState() {
+  return (typeof window !== 'undefined' && window.App && window.App.state) ? window.App.state : null;
+}
+
+/**
  * 获取与指定条目关联的其他密码条目
  * @param {Object} entry - 当前条目
  * @returns {Array<{entry: Object, reasons: Array<{type,label,detail}>}>} 按原因数、更新时间排序
  */
 function getRelatedEntries(entry) {
-  if (!entry || !App.state.entries) return [];
+  const state = getVaultState();
+  const entries = state && Array.isArray(state.entries) ? state.entries : [];
+  if (!entry || entries.length === 0) return [];
 
   const self = collectEntryKeys(entry);
   if (self.urlKeys.size === 0 && self.usernameKeys.size === 0) return [];
 
   const related = [];
-  App.state.entries.forEach(other => {
+  entries.forEach(other => {
     if (other.id === entry.id) return;
 
     const keys = collectEntryKeys(other);
@@ -202,55 +214,11 @@ function getRelatedEntries(entry) {
   return related;
 }
 
-/**
- * 渲染详情面板中的「关联密码」区块（无关联时返回空字符串）
- * @param {Object} entry - 当前条目
- * @returns {string} HTML
- */
-function renderRelatedSection(entry) {
-  const related = getRelatedEntries(entry);
-  if (related.length === 0) return '';
-
-  const tagDefs = App.state.tagDefs || {};
-  const items = related.map(item => {
-    // 使用 entryType 显示正确的类型图标
-    const type = item.entry.entryType || 'website';
-    const typeIcon = Utils.SvgIcons.typeIcon(12, type);
-
-    const reasonTags = item.reasons.map(reason =>
-      `<span class="related-reason ${reason.type}" title="${Utils.escHtml(reason.detail)}">${reason.label}</span>`
-    ).join('');
-
-    return `
-      <div class="related-item" onclick="selectEntry('${Utils.escHtml(item.entry.id)}', event)">
-        <div class="entry-icon">${typeIcon}</div>
-        <div class="entry-info">
-          <div class="entry-title">${Utils.escHtml(item.entry.title)}</div>
-          <div class="entry-meta">
-            ${item.entry.username ? `<span>${Utils.escHtml(item.entry.username)}</span>` : ''}
-            <span class="entry-date">${Utils.formatDate(item.entry.updatedAt || item.entry.createdAt)}</span>
-          </div>
-        </div>
-        <div class="related-reasons">${reasonTags}</div>
-      </div>
-    `;
-  }).join('');
-
-  return `
-    <div class="detail-field related-section">
-      <div class="detail-field-label">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        ${window.I18n ? window.I18n.t('related.sectionTitle', { count: related.length }) : ('关联密码（' + related.length + '）')}
-      </div>
-      <div class="related-list">${items}</div>
-    </div>
-  `;
-}
-
-// 导出模块
+// 导出模块（C2+A1 修复：renderRelatedSection 死代码已删除 —— 其内联
+// onclick 引用从未挂载的 window.selectEntry，属于详情面板不再消费的
+// 旧渲染路径；Vue 侧 DetailPanel 只消费下方纯函数 getRelatedEntries）
 window.RelatedEntries = {
   parseUrlHost,
   getRootDomain,
-  getRelatedEntries,
-  renderRelatedSection
+  getRelatedEntries
 };
