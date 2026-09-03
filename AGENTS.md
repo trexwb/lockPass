@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.0.2`
+**当前版本**：`v1.0.3`
 
 ---
 
@@ -185,7 +185,8 @@ LockPass/
 │                          # 注：copy-frontend.mjs 为 CI 兼容壳（内部 vite build）；serve.mjs 遗留未引用
 ├── dist/                  # 构建产物（vite build 生成，不手动修改）
 ├── docs/                  # 文档中心（spec / tauri / 迁移设计，见 docs/README.md）
-│   └── memory/            # AI 工作记录（按日期 YYYY-MM-DD.md）
+│   ├── memory/            # AI 工作记录（按日期 YYYY-MM-DD.md）
+│   └── wiki/              # GitHub Wiki 发布源（拷贝推送至 lockPass.wiki 仓库）
 ├── README.md              # 使用说明（仓库首页）
 └── AGENTS.md              # 本文件（Agent 开发规范，约定置于根目录）
 ```

@@ -11,6 +11,7 @@ LockPass 项目文档按主题整理于此目录。**根目录的 `AGENTS.md`（
 | [superpowers/specs/2026-08-23-vue3-migration-design.md](./superpowers/specs/2026-08-23-vue3-migration-design.md) | Vue 3 + Vite 迁移设计方案（superpowers 工作流产出） | 架构 / 开发 |
 | [../extension/README.md](../extension/README.md) | 浏览器扩展使用指南：安装、填充流程、无痕模式、安全模型 | 扩展用户 / 开发 |
 | [memory/](./memory/) | AI 工作记录（按日期 YYYY-MM-DD.md，自根目录 memory/ 迁入） | AI Agent |
+| [wiki/](./wiki/) | GitHub Wiki 发布源（Home + _Sidebar + 6 个内容页，拷贝推送至 lockPass.wiki 仓库） | 全体用户 / 维护者 |
 
 ## 根目录约定文件
 

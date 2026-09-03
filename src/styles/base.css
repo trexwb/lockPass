@@ -80,7 +80,8 @@
   --z-modal: 200;            /* 模态框遮罩 */
   --z-detail: 200;           /* 详情面板（桌面端） */
   --z-detail-fullscreen: 300;/* 详情面板（移动端全屏） */
-  --z-dropdown: 300;         /* 下拉菜单 */
+  --z-dropdown: 305;         /* 下拉菜单（Teleport 挂 body）：必须高于移动端弹窗遮罩(301)，
+                                否则弹窗内下拉被遮罩盖住，表现为"点击后不显示" */
   --z-toast: 300;            /* Toast 通知 */
   --z-float-tip: 350;        /* 瞬时浮动提示（复制倒计时胶囊），盖 toast 但低于 confirm */
   --z-confirm: 400;          /* 确认弹窗（盖过 modal / detail） */
