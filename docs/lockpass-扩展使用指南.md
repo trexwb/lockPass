@@ -88,7 +88,7 @@ LockPass 密码保险箱的浏览器伴侣扩展（Manifest V3）。解锁 LockP
 
 以下截图按实际操作顺序展示从解锁到自动填充的完整链路：
 
-![整体场景：百度统计登录弹窗 + 扩展自动填充 + 扩展程序列表](images/guide-01.png)
+![整体场景：百度统计登录弹窗 + 扩展自动填充 + 扩展程序列表](https://wiki.edtib.com/static/tmp/lockPass/guide-01.png)
 
 *图 1 整体场景：百度统计登录弹窗中，扩展在浏览器内自动填充 LockPass 凭据，工具栏可见扩展程序列表。*
 
@@ -96,28 +96,28 @@ LockPass 密码保险箱的浏览器伴侣扩展（Manifest V3）。解锁 LockP
 2. 打开目标登录页，点击工具栏 LockPass 图标
 3. popup 显示 **「连接桌面版 LockPass」** 按钮（未配对时）→ 点击
 
-![扩展提示桌面版已解锁，点击「连接桌面版」](images/guide-02.png)
+![扩展提示桌面版已解锁，点击「连接桌面版」](https://wiki.edtib.com/static/tmp/lockPass/guide-02.png)
 
 *图 2 配对第 1 步：扩展提示「桌面版已解锁」，点击连接发起配对。*
 
 4. 扩展调用 `POST /pair`，桌面端**弹出配对确认框**，展示 6 位数字 nonce；扩展 popup 同步显示该 nonce
 
-![扩展显示「正在等待桌面端确认配对」，展示数字验证码](images/guide-03.png)
+![扩展显示「正在等待桌面端确认配对」，展示数字验证码](https://wiki.edtib.com/static/tmp/lockPass/guide-03.png)
 
-![桌面应用弹窗展示配对请求，需核对 nonce 后选择「允许配对」](images/guide-04.png)
+![桌面应用弹窗展示配对请求，需核对 nonce 后选择「允许配对」](https://wiki.edtib.com/static/tmp/lockPass/guide-04.png)
 
 *图 3 / 图 4 等待与确认：扩展侧展示验证码等待桌面端确认；桌面应用弹窗展示同一 nonce，比对一致后点击「允许配对」。*
 
 5. **比对两处数字一致** → 在桌面端点击 **「允许配对」**
 6. 扩展轮询 `GET /pair/poll` 领取 token 并保存，popup 自动进入就绪列表
 
-![扩展内搜索匹配的登录信息](images/guide-05.png)
+![扩展内搜索匹配的登录信息](https://wiki.edtib.com/static/tmp/lockPass/guide-05.png)
 
 *图 5 配对完成后，扩展在密码库中搜索匹配当前网站的登录信息。*
 
 7. 此后打开任意登录页：检测到密码框即自动取数填充；也可点 popup 条目手动填充
 
-![扩展自动填充百度统计登录表单](images/guide-06.png)
+![扩展自动填充百度统计登录表单](https://wiki.edtib.com/static/tmp/lockPass/guide-06.png)
 
 *图 6 自动填充：扩展将账号密码填入百度统计登录表单，提交按钮短暂高亮。*
 

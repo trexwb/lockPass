@@ -6,6 +6,20 @@
 
 ---
 
+## v1.0.5 (2026-09-04) 📝 待发布
+
+### 修复
+
+- **修复桌面端（Tauri）打开后样式全部失效**（浏览器端正常）：vite `^5.4.2 → ^8.2.2` 升级后默认打包内核换为 rolldown，在 `output.format: 'iife'` 下不再产出外置 CSS——构建静默成功，但 `dist/assets/css/` 缺失、`index.html` 无 `<link rel="stylesheet">`，CSS 体积被并入 `index.js` 且未挂载，导致界面以无样式状态渲染（内容堆叠、双向滚动条、白底黑字）。新增 `build.cssCodeSplit: false` 强制 CSS 以独立资源产出，vite 8.2.2 实测恢复 `assets/css/style.css` + stylesheet link 注入。与启动屏图标（雪碧图）改动无关，仅因当日重新打包首次暴露
+- 修复桌面端窗口右侧滚动条：锁屏容器 `#lock-screen` 改为 `position: fixed + inset: 0` 脱离文档流，卡片超高时改为 `.lock-box` 内部滚动，不再把内容高度冒泡到 body 产生整页滚动条
+
+### 改进
+
+- 启动屏退场零残留：Vue 挂载淡出后同步移除 `#splash` DOM 节点与 head 内联样式 `#splash-style`（含全部 @keyframes / 媒体查询），避免残留样式影响主界面
+- PWA `manifest.json` 背景色 `#0f172a → #0d1524`，与启动屏渐变起始色对齐
+
+---
+
 ## v1.0.4 (2026-09-04) 📝 待发布
 
 ### 修复
