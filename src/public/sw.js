@@ -32,16 +32,22 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // 导航请求：网络优先，失败回退缓存首页
+  // 导航请求：缓存优先（命中立即渲染，消除弱网下网络优先的长时间等待），
+  // 后台 fetch 刷新缓存（stale-while-revalidate）；缓存未命中回退网络。
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((resp) => {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return resp;
-        })
-        .catch(() => caches.match(request))
+      caches.match(request).then((cached) => {
+        const network = fetch(request)
+          .then((resp) => {
+            if (resp && resp.status === 200) {
+              const clone = resp.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return resp;
+          })
+          .catch(() => cached);
+        return cached || network;
+      })
     );
     return;
   }

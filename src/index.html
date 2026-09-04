@@ -15,6 +15,62 @@
     }
   </script>
   <meta name="theme-color" content="#0f172a" />
+  <style>
+    /* ═══ 启动屏（Splash Screen）═══
+       内联于 index.html：在 JS / CSS 变量 / 组件加载完成前立即渲染，
+       替代白屏等待。Vue mount 时用 App 内容整体替换 #app，本层自动移除。
+       仅 CSS 动画（无 JS）：Tauri CSP script-src 'self' 禁内联脚本，
+       style-src 'unsafe-inline' 允许内联样式。色值硬编码对齐锁屏渐变
+       （--lock-bg-1/2/3），因 CSS 变量此时尚未加载。 */
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background:
+        radial-gradient(1100px 700px at 50% 28%, rgba(88, 166, 255, 0.10) 0%, rgba(88, 166, 255, 0) 60%),
+        radial-gradient(1400px 900px at 85% 110%, rgba(88, 166, 255, 0.06) 0%, rgba(88, 166, 255, 0) 55%),
+        linear-gradient(180deg, #0d1524 0%, #0a0e16 55%, #060910 100%);
+    }
+    #splash .splash-logo {
+      width: 84px;
+      height: 84px;
+      animation: splash-float 2.6s ease-in-out infinite;
+    }
+    #splash .splash-title {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #e6edf3;
+      letter-spacing: 0.02em;
+    }
+    #splash .splash-dots { display: flex; gap: 8px; }
+    #splash .splash-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #46e2c2;
+      animation: splash-dot 1.2s ease-in-out infinite;
+    }
+    #splash .splash-dots span:nth-child(2) { animation-delay: 0.15s; }
+    #splash .splash-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes splash-float {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-6px); }
+    }
+    @keyframes splash-dot {
+      0%, 100% { opacity: 0.25; transform: scale(0.8); }
+      50%      { opacity: 1;    transform: scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #splash .splash-logo,
+      #splash .splash-dots span { animation: none; }
+    }
+  </style>
   <link rel="icon" type="image/svg+xml" href="./assets/icons/favicon.svg" />
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -22,7 +78,58 @@
   <meta name="apple-mobile-web-app-title" content="密码保险箱" />
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <!-- 启动屏：Vue mount 时被 App 根组件替换 -->
+    <div id="splash" aria-hidden="true">
+      <svg class="splash-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="splash-bg" x1="0" y1="0" x2="0.25" y2="1">
+            <stop offset="0" stop-color="#46e2c2"/>
+            <stop offset="0.45" stop-color="#1ed0ab"/>
+            <stop offset="1" stop-color="#0b9c82"/>
+          </linearGradient>
+          <linearGradient id="splash-sheen" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.5"/>
+            <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="splash-ring" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#f6fcfb"/>
+            <stop offset="0.5" stop-color="#d3e2df"/>
+            <stop offset="1" stop-color="#9db8b4"/>
+          </linearGradient>
+          <radialGradient id="splash-dial" cx="0.38" cy="0.32" r="0.95">
+            <stop offset="0" stop-color="#4ee6c8"/>
+            <stop offset="1" stop-color="#0aa588"/>
+          </radialGradient>
+          <linearGradient id="splash-bolt" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#35d8b6"/>
+            <stop offset="0.55" stop-color="#12b397"/>
+            <stop offset="1" stop-color="#0a8a76"/>
+          </linearGradient>
+          <linearGradient id="splash-shadow" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#0a8a76" stop-opacity="0"/>
+            <stop offset="1" stop-color="#06493e" stop-opacity="0.55"/>
+          </linearGradient>
+        </defs>
+        <rect width="100" height="100" rx="22" fill="url(#splash-bg)"/>
+        <path d="M22 12 L78 12 Q90 12 90 24 L90 34 Q90 26 82 26 L18 26 Q10 26 10 34 L10 24 Q10 12 22 12 Z" fill="url(#splash-sheen)"/>
+        <rect x="17" y="31" width="10" height="16" rx="3" fill="url(#splash-bolt)"/>
+        <rect x="17" y="31" width="10" height="4.5" rx="2.2" fill="#ffffff" opacity="0.4"/>
+        <rect x="17" y="58" width="10" height="16" rx="3" fill="url(#splash-bolt)"/>
+        <rect x="17" y="58" width="10" height="4.5" rx="2.2" fill="#ffffff" opacity="0.4"/>
+        <ellipse cx="56" cy="54.5" rx="19.5" ry="19.5" fill="#0a8a76" opacity="0.28"/>
+        <circle cx="55" cy="52" r="19" fill="url(#splash-ring)"/>
+        <circle cx="55" cy="52" r="19" fill="none" stroke="#8fb5b0" stroke-width="1"/>
+        <circle cx="55" cy="52" r="13.5" fill="url(#splash-dial)"/>
+        <circle cx="51.3" cy="47.2" r="4.2" fill="#ffffff" opacity="0.55"/>
+        <circle cx="55" cy="54" r="3.2" fill="#0d3b33"/>
+        <rect x="52.9" y="53.6" width="4.2" height="5.2" rx="2" fill="#0d3b33"/>
+        <rect x="10" y="78" width="80" height="14" rx="7" fill="url(#splash-shadow)"/>
+      </svg>
+      <div class="splash-title">密码保险箱</div>
+      <div class="splash-dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
   <script type="module" src="./main.js"></script>
 </body>
 </html>
