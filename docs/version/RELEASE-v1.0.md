@@ -6,6 +6,40 @@
 
 ---
 
+## v1.0.4 (2026-09-04) 📝 待发布
+
+### 修复
+
+- 修复 PWA「添加到主屏幕后点击长时间白屏」：Service Worker 导航请求由「网络优先」改为「缓存优先 + 后台刷新（stale-while-revalidate）」，弱网下不再等待网络超时导致白屏
+- install 阶段预缓存 `assets/js/index.js`（主逻辑 JS），消除冷启动重新下载主逻辑导致的首屏等待
+- 修复启动屏「网络好时瞬间消失」：`#splash` 由 `#app` 内部移到 `<body>`（脱离 Vue mount 替换范围），挂载完成后按「从导航开始至少停留 1s」再淡出（`transition: opacity .4s`），替代原先的瞬间消失
+
+### 新增
+
+- 启动屏 Splash Screen：内联于 `index.html` 的纯 HTML+CSS 加载画面，在 Vue/JS/CSS 加载前立即渲染，替代白屏等待
+
+### 改进
+
+- 启动屏图标：由手绘保险箱内联 SVG 替换为 `SvgIcons.shield` 盾牌线性图标（Lucide 风格 24×24），与项目统一图标体系一致
+- 启动屏背景：新增 `#splash::before` 流动氛围光层（蓝 + 青两层 radial-gradient，`splash-aurora` 缓慢漂移），替换原先静态渐变
+- 盾牌图标配圆形青绿光晕（`splash-glow` 呼吸）+ `drop-shadow` 柔光；`prefers-reduced-motion` 下全部动画降级
+- 品牌图标统一：`favicon.svg` 由保险箱改为白色盾牌（保留青绿渐变方块底），与启动屏、`SvgIcons.shield` 视觉一致
+
+---
+
+## v1.0.3 (2026-09-03) 📝 待发布
+
+### 修复
+
+- 修复移动端 `BaseSelect` 下拉「点击后不显示」：`--z-dropdown` 由 `300` 提升至 `305`，高于移动端遮罩层级（301）
+- 修复触屏设备条目卡片 hover 导致选中态上边框缺失：触屏设备取消 `.entry-card:hover` 上浮/阴影
+
+### 新增
+
+- 新增 Wiki 文档与常见问题解答
+
+---
+
 ## v1.0.2 (2026-09-02) 📝 待发布
 
 ### 修复

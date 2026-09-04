@@ -51,4 +51,24 @@ import { useTheme } from './composables/useTheme'
 
 useTheme().init()
 
+// 启动屏（#splash）原本位于 #app 内，mount 会用 App 内容整体替换 #app，
+// 导致 splash 瞬间消失。这里先把它移到 <body> 下（脱离 mount 替换范围），
+// 再在挂载完成后淡出移除，实现「加载快时至少停留 1s」的平滑过渡。
+// 移动是同步 DOM 操作（同帧完成，用户无感知），fixed 定位不受父容器影响。
+const splashEl = document.getElementById('splash')
+if (splashEl) document.body.appendChild(splashEl)
+
 createApp(App).mount('#app')
+
+// 淡出启动屏：从页面导航开始计时（performance.now 相对 timeOrigin），
+// 网络好时 mount 很快，补足到 1s 再淡出；网络慢时已超 1s，立即淡出。
+const SPLASH_MIN_MS = 1000
+const splashDelay = Math.max(0, SPLASH_MIN_MS - performance.now())
+setTimeout(() => {
+  const el = document.getElementById('splash')
+  if (!el) return
+  el.classList.add('splash-exit')
+  el.addEventListener('transitionend', () => el.remove(), { once: true })
+  // 兜底：transition 未触发（如 reduced-motion 或浏览器异常）时强制移除
+  setTimeout(() => el.remove(), 500)
+}, splashDelay)
