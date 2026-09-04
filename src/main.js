@@ -64,11 +64,18 @@ createApp(App).mount('#app')
 // 网络好时 mount 很快，补足到 1s 再淡出；网络慢时已超 1s，立即淡出。
 const SPLASH_MIN_MS = 1000
 const splashDelay = Math.max(0, SPLASH_MIN_MS - performance.now())
+const removeSplash = () => {
+  // 彻底消除 splash：DOM 节点与 head 内联样式（含全部 @keyframes / 媒体查询）一并移除，零残留
+  const el = document.getElementById('splash')
+  if (el) el.remove()
+  const styleEl = document.getElementById('splash-style')
+  if (styleEl) styleEl.remove()
+}
 setTimeout(() => {
   const el = document.getElementById('splash')
   if (!el) return
   el.classList.add('splash-exit')
-  el.addEventListener('transitionend', () => el.remove(), { once: true })
+  el.addEventListener('transitionend', removeSplash, { once: true })
   // 兜底：transition 未触发（如 reduced-motion 或浏览器异常）时强制移除
-  setTimeout(() => el.remove(), 500)
+  setTimeout(removeSplash, 500)
 }, splashDelay)

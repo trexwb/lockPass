@@ -118,24 +118,24 @@
 
   <h3>一键配对流程</h3>
   <p>以下截图按实际操作顺序展示从解锁到自动填充的完整链路:</p>
-  <img class="screenshot" src="images/guide-01.png" alt="整体场景:百度统计登录弹窗 + 扩展自动填充 + 扩展程序列表">
+  <img class="screenshot" src="https://wiki.edtib.com/static/tmp/lockPass/guide-01.png" alt="整体场景:百度统计登录弹窗 + 扩展自动填充 + 扩展程序列表">
   <p class="img-caption">图 1 整体场景:百度统计登录弹窗中,扩展在浏览器内自动填充 LockPass 凭据,工具栏可见扩展程序列表。</p>
   <div class="step"><span class="step-num">1</span><p><strong>打开桌面版 LockPass 并解锁</strong>(解锁后本地服务即就绪)</p></div>
   <div class="step"><span class="step-num">2</span><p>打开目标登录页,点击工具栏 LockPass 图标</p></div>
   <div class="step"><span class="step-num">3</span><p>popup 显示 <strong>「连接桌面版 LockPass」</strong>(未配对时)→ 点击</p></div>
-  <img class="screenshot" src="images/guide-02.png" alt="扩展提示桌面版已解锁,点击连接">
+  <img class="screenshot" src="https://wiki.edtib.com/static/tmp/lockPass/guide-02.png" alt="扩展提示桌面版已解锁,点击连接">
   <p class="img-caption">图 2 配对第 1 步:扩展提示「桌面版已解锁」,点击连接发起配对。</p>
   <div class="step"><span class="step-num">4</span><p>扩展调用 <code>POST /pair</code>,桌面端<strong>弹出配对确认框</strong>,展示 6 位数字 nonce;扩展 popup 同步显示该 nonce</p></div>
-  <img class="screenshot" src="images/guide-03.png" alt="扩展显示正在等待桌面端确认配对">
+  <img class="screenshot" src="https://wiki.edtib.com/static/tmp/lockPass/guide-03.png" alt="扩展显示正在等待桌面端确认配对">
   <p class="img-caption">图 3 扩展显示「正在等待桌面端确认配对」,并展示数字验证码。</p>
-  <img class="screenshot" src="images/guide-04.png" alt="桌面应用弹窗展示配对请求确认">
+  <img class="screenshot" src="https://wiki.edtib.com/static/tmp/lockPass/guide-04.png" alt="桌面应用弹窗展示配对请求确认">
   <p class="img-caption">图 4 桌面应用弹窗展示配对请求:核对 nonce 一致后,点击「允许配对」。</p>
   <div class="step"><span class="step-num">5</span><p><strong>比对两处数字一致</strong> → 在桌面端点击「允许配对」</p></div>
   <div class="step"><span class="step-num">6</span><p>扩展轮询 <code>GET /pair/poll</code> 领取 token 并保存,popup 自动进入就绪列表</p></div>
-  <img class="screenshot" src="images/guide-05.png" alt="扩展内搜索匹配的登录信息">
+  <img class="screenshot" src="https://wiki.edtib.com/static/tmp/lockPass/guide-05.png" alt="扩展内搜索匹配的登录信息">
   <p class="img-caption">图 5 配对完成后,扩展在密码库中搜索匹配当前网站的登录信息。</p>
   <div class="step"><span class="step-num">7</span><p>此后打开任意登录页:检测到密码框即自动取数填充;也可点 popup 条目手动填充</p></div>
-  <img class="screenshot" src="images/guide-06.png" alt="扩展自动填充百度统计登录表单">
+  <img class="screenshot" src="https://wiki.edtib.com/static/tmp/lockPass/guide-06.png" alt="扩展自动填充百度统计登录表单">
   <p class="img-caption">图 6 自动填充:扩展将账号密码填入百度统计登录表单,提交按钮短暂高亮。</p>
   <div class="card ok">
     <div class="card-title">配对只需一次</div>

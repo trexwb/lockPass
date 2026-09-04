@@ -46,6 +46,8 @@ function injectSwVersion(outDir) {
 // 构建后把 index.html 的 `<script type="module" crossorigin src=...>` 降级为普通
 // `<script src=...>`：产物为 iife（无 import/export），普通脚本在 file:// 下可被
 // Chrome 加载，而 module 脚本受 CORS 限制（origin 'null'）会被拦截。
+// 同时剥掉 stylesheet link 的 crossorigin：file:// 下 CORS 模式的样式请求会被
+// Chrome 拦截（实测样式不生效），与 module script 同族问题；同源场景去后排版无害。
 function demoteModuleScripts() {
   return {
     name: 'lockpass-demote-module-scripts',
@@ -53,10 +55,15 @@ function demoteModuleScripts() {
       const htmlPath = resolve(import.meta.dirname, 'dist/index.html')
       try {
         const html = readFileSync(htmlPath, 'utf8')
-        const out = html.replace(
-          /<script type="module" crossorigin src="([^"]+)"><\/script>/g,
-          '<script defer src="$1"></script>',
-        )
+        const out = html
+          .replace(
+            /<script type="module" crossorigin src="([^"]+)"><\/script>/g,
+            '<script defer src="$1"></script>',
+          )
+          .replace(
+            /<link rel="stylesheet" crossorigin( href="[^"]*">)/g,
+            '<link rel="stylesheet"$1',
+          )
         if (out !== html) writeFileSync(htmlPath, out)
       } catch {
         // 忽略：未生成 html 时跳过
@@ -74,6 +81,11 @@ export default defineConfig({
     emptyOutDir: true,
     assetsInlineLimit: 4096,
     chunkSizeWarningLimit: 1500,
+    // rolldown（vite 8 默认内核）在 iife 输出格式下会静默丢弃 CSS 资源：
+    // 不产出 assets/css/、index.html 不注入 stylesheet link（构建仍报成功）。
+    // 关闭 CSS code split 强制 CSS 以独立资源产出，恢复「CSS 外置到 dist/assets/css/」设计。
+    // 修复背景见 docs/version/RELEASE-v1.0.md 的 v1.0.5 分节（vite ^5.4.2 → ^8.2.2 升级引入的回归）。
+    cssCodeSplit: false,
     rollupOptions: {
       output: {
         // iife（非 module）：file:// 下可加载，避免 module script 的 CORS 拦截
