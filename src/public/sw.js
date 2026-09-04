@@ -1,13 +1,21 @@
 /* ═══════════════════════════════════════════════════════════════════
    LockPass — Service Worker（Vue/Vite 构建产物适配版）
-   策略：导航请求网络优先、离线回退 index.html；静态资源 stale-while-revalidate
+   策略：导航请求缓存优先（秒开）+ 后台刷新；静态资源 stale-while-revalidate；
+        install 阶段预缓存首屏关键路径（index.html + 主逻辑 JS，CSS 已内联其中）
    注意：仅标准构建产物（HTTP 部署/Tauri WebView）生效；file:// 双击模式浏览器禁用 SW
    ═══════════════════════════════════════════════════════════════════ */
 
 const CACHE_NAME = 'lockpass-__APP_VERSION__';
 // 相对路径：随 SW 脚本解析到部署子路径（如 GitHub Pages 的 /lockPass/），
 // 避免在子路径部署时请求站点根目录导致预缓存 404 错误页
-const PRECACHE_URLS = ['./', './index.html'];
+// 首屏关键路径：iife 单 chunk 产物（vite entryFileNames 固定 assets/js/index.js、
+// 无 hash、CSS 内联其中），故可安全硬编码预缓存，消除「首日 JS 未入缓存导致
+// 次日冷启动/弱网下重新下载 650KB 主逻辑」的白屏等待。
+const PRECACHE_URLS = [
+  './',
+  './index.html',
+  './assets/js/index.js',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
