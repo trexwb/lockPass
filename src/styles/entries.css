@@ -1030,6 +1030,14 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  /* 触屏点击后 sticky hover 同样会匹配 :hover：上浮 translateY(-2px) 会把卡片顶部
+     顶出 .entry-card-wrap 的 overflow:hidden 裁剪区，表现为选中态上边框缺失。
+     桌面端在 (hover:hover) and (pointer:fine) 下用 wrap:hover overflow:visible 兜底，
+     触屏无 hover 语义，直接取消上浮与抬升阴影（保留 :active 按压反馈）。 */
+  .entry-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
   /* P3-8：触屏设备（含平板/触屏笔记本）同样启用左滑背景操作层，
      即便屏幕宽度 >1024px，也为无 hover 的触屏用户提供手势入口
      （内联操作按钮已在基础样式中 display:none，无需重复隐藏） */
