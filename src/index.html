@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<html lang="zh-CN" data-page-node-id="kThXsCs3dv3yYLi7r6mR1V">
+<head data-page-node-id="vWYSjd2OVzhZ01uws0YfNp">
+  <meta charset="UTF-8" data-page-node-id="VzX01BzJF1CA8UbGlqiFmj" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" data-page-node-id="IljT3qdsmaXhJVdjGQBS9j" />
   <title>密码保险箱</title>
   <script>
     // file:// 下 manifest 加载会触发 CORS 拦截（'file:' unique origin），
@@ -14,15 +14,125 @@
       document.head.appendChild(m)
     }
   </script>
-  <meta name="theme-color" content="#0f172a" />
-  <link rel="icon" type="image/svg+xml" href="./assets/icons/favicon.svg" />
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="密码保险箱" />
+  <meta name="theme-color" content="#0f172a" data-page-node-id="fC2rXXCL6jRJe88ANtxawS" />
+  <style>
+    /* ═══ 启动屏（Splash Screen）═══
+       内联于 index.html：在 JS / CSS 变量 / 组件加载完成前立即渲染，
+       替代白屏等待。Vue mount 时用 App 内容整体替换 #app，本层自动移除。
+       仅 CSS 动画（无 JS）：Tauri CSP script-src 'self' 禁内联脚本，
+       style-src 'unsafe-inline' 允许内联样式。色值硬编码对齐锁屏渐变
+       （--lock-bg-1/2/3），因 CSS 变量此时尚未加载。 */
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background:
+        radial-gradient(1100px 700px at 50% 28%, rgba(88, 166, 255, 0.10) 0%, rgba(88, 166, 255, 0) 60%),
+        radial-gradient(1400px 900px at 85% 110%, rgba(88, 166, 255, 0.06) 0%, rgba(88, 166, 255, 0) 55%),
+        linear-gradient(180deg, #0d1524 0%, #0a0e16 55%, #060910 100%);
+      /* 淡出过渡：main.js 在 App 挂载后添加 .splash-exit 触发，避免「瞬间消失」 */
+      transition: opacity 0.4s ease;
+    }
+    #splash.splash-exit {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #splash::before {
+      content: '';
+      position: absolute;
+      inset: -25%;
+      background:
+        radial-gradient(720px 480px at 32% 30%, rgba(88, 166, 255, 0.14) 0%, rgba(88, 166, 255, 0) 60%),
+        radial-gradient(640px 420px at 72% 68%, rgba(70, 226, 194, 0.10) 0%, rgba(70, 226, 194, 0) 58%);
+      animation: splash-aurora 9s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+    #splash .splash-logo {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      display: grid;
+      place-items: center;
+      animation: splash-float 2.6s ease-in-out infinite;
+    }
+    #splash .splash-logo::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(70, 226, 194, 0.20) 0%, rgba(70, 226, 194, 0) 70%);
+      animation: splash-glow 2.6s ease-in-out infinite;
+    }
+    #splash .splash-icon {
+      width: 54px;
+      height: 54px;
+      color: #46e2c2;
+      filter: drop-shadow(0 0 12px rgba(70, 226, 194, 0.45));
+    }
+    #splash .splash-title {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #e6edf3;
+      letter-spacing: 0.02em;
+    }
+    #splash .splash-dots { display: flex; gap: 8px; }
+    #splash .splash-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #46e2c2;
+      animation: splash-dot 1.2s ease-in-out infinite;
+    }
+    #splash .splash-dots span:nth-child(2) { animation-delay: 0.15s; }
+    #splash .splash-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes splash-float {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-6px); }
+    }
+    @keyframes splash-dot {
+      0%, 100% { opacity: 0.25; transform: scale(0.8); }
+      50%      { opacity: 1;    transform: scale(1); }
+    }
+    @keyframes splash-glow {
+      0%, 100% { opacity: 0.55; transform: scale(0.92); }
+      50%      { opacity: 1;    transform: scale(1.08); }
+    }
+    @keyframes splash-aurora {
+      0%   { transform: translate3d(-4%, -2%, 0) scale(1);   opacity: 0.7; }
+      100% { transform: translate3d(4%, 3%, 0)  scale(1.12); opacity: 1;   }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #splash::before,
+      #splash .splash-logo,
+      #splash .splash-logo::before,
+      #splash .splash-dots span { animation: none; }
+    }
+  </style>
+  <link rel="icon" type="image/svg+xml" href="./assets/icons/favicon.svg" data-page-node-id="S7cWnkZAVZOhrTI8DEJ1Ws" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png" data-page-node-id="mWdSAaSfHY9msXrCeGYmsy" />
+  <meta name="apple-mobile-web-app-capable" content="yes" data-page-node-id="ECOfl236dej2S0CqCTtSnz" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" data-page-node-id="0hJDfmE5maulAAsrWHq5o1" />
+  <meta name="apple-mobile-web-app-title" content="密码保险箱" data-page-node-id="MC4chZvr3ELhPJ6hdSNnpV" />
 </head>
-<body>
-  <div id="app"></div>
+<body data-page-node-id="RhrkfriFMQyEku9Y6VwQ9d">
+  <div id="app" data-page-node-id="h1uoZxaWE7fh5xO1ediP7Q">
+    <!-- 启动屏：Vue mount 时被 App 根组件替换 -->
+    <div id="splash" aria-hidden="true" data-page-node-id="k9UVP9pef96kUZ0PnYekVM">
+      <div class="splash-logo" data-page-node-id="dUl39EDCSUqwdda9oDAbT4">
+        <svg class="splash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <div class="splash-title" data-page-node-id="IMLRcGvm4i1UCMEfC08DvK">密码保险箱</div>
+      <div class="splash-dots" data-page-node-id="LuBHXbueshYRQwdNwRBjua"><span data-page-node-id="u4qzunfLarxRqevWrPddnm"></span><span data-page-node-id="WB4Fl0E8VCHxGHDjn9JS9H"></span><span data-page-node-id="FbHT9lCDrmbQn2oaPsO62J"></span></div>
+    </div>
+  </div>
   <script type="module" src="./main.js"></script>
 </body>
 </html>
