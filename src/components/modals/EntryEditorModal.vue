@@ -318,10 +318,12 @@ function toggleSecret(k) {
 }
 
 // 密码生成器「填入」回填：弹窗 requestPwGenFill 递增 nonce 后，回填目标字段并 5s 自动隐藏
+// 读 pwGenFillTarget 快照而非 pwGenTarget：closePasswordGenerator 已把 pwGenTarget 清空，
+// 而 watch 在下一 tick 才异步触发，需用快照保证回填链路不被中断
 watch(() => vaultState.pwGenFillNonce, (n) => {
   if (!n) return
   const val = vaultState.pwGenFillValue
-  const field = vaultState.pwGenTarget?.field
+  const field = vaultState.pwGenFillTarget?.field
   if (!val || !field || !(field in fields)) return
   fields[field] = val
   showFields[field] = true
@@ -643,7 +645,7 @@ const editorCtxItems = computed(() => {
           type="button"
           :title="t('editor.tipTypeTab', { type: t(ty.labelKey) })"
           @click="entryType = ty.id"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'type-tab', type: ty.id }, { w: 220, h: 100 })"
+          @contextmenu="handleCtxMenu($event, { kind: 'type-tab', type: ty.id }, { w: 220, h: 100 })"
         >
           <span class="type-tab-icon" v-html="typeIconSvg(ty.id)"></span>
           <span>{{ t(ty.labelKey) }}</span>
@@ -660,7 +662,7 @@ const editorCtxItems = computed(() => {
           :placeholder="t('editor.ph.title')"
           maxlength="100"
           autocomplete="off"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__title', label: t('editor.label.title'), value: title }, { w: 240, h: 170 })"
+          @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__title', label: t('editor.label.title'), value: title }, { w: 240, h: 170 })"
         />
       </div>
 
@@ -674,14 +676,14 @@ const editorCtxItems = computed(() => {
             type="text"
             placeholder="username@example.com"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.username'), value: fields.username }, { w: 240, h: 170 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.username'), value: fields.username }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
           <label class="form-label">{{ t('editor.label.password') }} <span class="text-danger">*</span></label>
           <div
             class="input-affix"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
           >
             <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.password')" autocomplete="off" @input="updateStrength()" />
             <div class="input-affix-btns">
@@ -710,7 +712,7 @@ const editorCtxItems = computed(() => {
             type="url"
             placeholder="https://example.com"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.websiteUrl'), value: fields.url }, { w: 240, h: 170 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.websiteUrl'), value: fields.url }, { w: 240, h: 170 })"
           />
         </div>
       </template>
@@ -727,7 +729,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 :placeholder="t('editor.ph.host')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.host'), value: fields.url }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.host'), value: fields.url }, { w: 240, h: 170 })"
               />
             </div>
             <input
@@ -738,7 +740,7 @@ const editorCtxItems = computed(() => {
               min="1"
               max="65535"
               autocomplete="off"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: t('editor.label.port'), value: fields.port }, { w: 240, h: 170 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: t('editor.label.port'), value: fields.port }, { w: 240, h: 170 })"
             />
           </div>
         </div>
@@ -752,7 +754,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 :placeholder="t('editor.ph.account')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.loginAccount'), value: fields.username }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.loginAccount'), value: fields.username }, { w: 240, h: 170 })"
               />
             </div>
             <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyAccount')" @click="copyText(fields.username, $event.currentTarget)">
@@ -765,7 +767,7 @@ const editorCtxItems = computed(() => {
           <div class="input-row">
             <div
               class="input-row-main"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
             >
               <div class="input-affix">
                 <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.password')" autocomplete="off" @input="updateStrength()" />
@@ -802,7 +804,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 placeholder="root"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'rootUser', label: t('editor.label.rootUser'), value: fields.rootUser }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'rootUser', label: t('editor.label.rootUser'), value: fields.rootUser }, { w: 240, h: 170 })"
               />
             </div>
             <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyAccount')" @click="copyText(fields.rootUser, $event.currentTarget)">
@@ -815,7 +817,7 @@ const editorCtxItems = computed(() => {
           <div class="input-row">
             <div
               class="input-row-main"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'rootPwd' }, { w: 260, h: 220 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'rootPwd' }, { w: 260, h: 220 })"
             >
               <div class="input-affix">
                 <input v-model="fields.rootPwd" class="form-input mono" :type="showFields.rootPwd ? 'text' : 'password'" :placeholder="t('editor.label.rootPwd')" autocomplete="off" />
@@ -851,7 +853,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 :placeholder="t('editor.ph.dbType')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'dbType', label: t('editor.label.dbType'), value: fields.dbType }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'dbType', label: t('editor.label.dbType'), value: fields.dbType }, { w: 240, h: 170 })"
               />
             </div>
           </div>
@@ -866,7 +868,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 :placeholder="t('editor.ph.dbName')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'dbName', label: t('editor.label.dbName'), value: fields.dbName }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'dbName', label: t('editor.label.dbName'), value: fields.dbName }, { w: 240, h: 170 })"
               />
             </div>
             <button class="pw-gen-btn" type="button" :title="t('editor.tipCopy')" @click="copyText(fields.dbName, $event.currentTarget)">
@@ -884,7 +886,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 :placeholder="t('editor.ph.dbHost')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.dbHost'), value: fields.url }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.dbHost'), value: fields.url }, { w: 240, h: 170 })"
               />
             </div>
             <input
@@ -895,7 +897,7 @@ const editorCtxItems = computed(() => {
               min="1"
               max="65535"
               autocomplete="off"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: t('editor.label.port'), value: fields.port }, { w: 240, h: 170 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'port', label: t('editor.label.port'), value: fields.port }, { w: 240, h: 170 })"
             />
           </div>
         </div>
@@ -909,7 +911,7 @@ const editorCtxItems = computed(() => {
                 type="text"
                 :placeholder="t('editor.ph.dbUsername')"
                 autocomplete="off"
-                @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.username'), value: fields.username }, { w: 240, h: 170 })"
+                @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.username'), value: fields.username }, { w: 240, h: 170 })"
               />
             </div>
             <button class="pw-gen-btn" type="button" :title="t('editor.tipCopyUsername')" @click="copyText(fields.username, $event.currentTarget)">
@@ -922,7 +924,7 @@ const editorCtxItems = computed(() => {
           <div class="input-row">
             <div
               class="input-row-main"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
             >
               <div class="input-affix">
                 <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.dbPassword')" autocomplete="off" @input="updateStrength()" />
@@ -961,7 +963,7 @@ const editorCtxItems = computed(() => {
             type="text"
             :placeholder="t('editor.ph.serviceName')"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.serviceName'), value: fields.username }, { w: 240, h: 170 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.serviceName'), value: fields.username }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
@@ -972,14 +974,14 @@ const editorCtxItems = computed(() => {
             type="url"
             placeholder="https://api.deepseek.com / https://api.openai.com"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.apiHost'), value: fields.url }, { w: 240, h: 170 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'url', label: t('editor.label.apiHost'), value: fields.url }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
           <label class="form-label">Token <span class="text-danger">*</span></label>
           <div
             class="input-affix"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password' }, { w: 260, h: 220 })"
           >
             <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.token')" autocomplete="off" />
             <div class="input-affix-btns">
@@ -1001,14 +1003,14 @@ const editorCtxItems = computed(() => {
             type="text"
             :placeholder="t('editor.ph.appId')"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'appId', label: 'App ID', value: fields.appId }, { w: 240, h: 170 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'appId', label: 'App ID', value: fields.appId }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
           <label class="form-label">{{ t('editor.label.publicKey') }}</label>
           <div
             class="input-affix mono-textarea-wrap"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: t('editor.label.publicKey') }, { w: 260, h: 220 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: t('editor.label.publicKey') }, { w: 260, h: 220 })"
           >
             <textarea v-model="fields.password" class="form-input mono mono-textarea" rows="3" :placeholder="t('editor.ph.publicKey')" autocomplete="off"></textarea>
             <div class="input-affix-btns">
@@ -1025,7 +1027,7 @@ const editorCtxItems = computed(() => {
           <label class="form-label">{{ t('editor.label.privateKey') }}</label>
           <div
             class="input-affix mono-textarea-wrap"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'privateKey', label: t('editor.label.privateKey') }, { w: 260, h: 220 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'privateKey', label: t('editor.label.privateKey') }, { w: 260, h: 220 })"
           >
             <textarea v-model="fields.privateKey" class="form-input mono mono-textarea" rows="3" :placeholder="t('editor.ph.privateKey')" autocomplete="off"></textarea>
             <div class="input-affix-btns">
@@ -1050,14 +1052,14 @@ const editorCtxItems = computed(() => {
             type="text"
             :placeholder="t('editor.ph.credName')"
             autocomplete="off"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.credName'), value: fields.username }, { w: 240, h: 170 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: 'username', label: t('editor.label.credName'), value: fields.username }, { w: 240, h: 170 })"
           />
         </div>
         <div class="form-group">
           <label class="form-label">{{ t('editor.label.credValue') }} <span class="text-danger">*</span></label>
           <div
             class="input-affix"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: t('editor.label.credValue') }, { w: 260, h: 220 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'pw-input', fieldKey: 'password', label: t('editor.label.credValue') }, { w: 260, h: 220 })"
           >
             <input v-model="fields.password" class="form-input mono" :type="showFields.password ? 'text' : 'password'" :placeholder="t('editor.ph.credValue')" autocomplete="off" />
             <div class="input-affix-btns">
@@ -1078,7 +1080,7 @@ const editorCtxItems = computed(() => {
             :key="'s-' + name"
             class="tag-chip"
             @click="toggleTag(name)"
-            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag-chip', name }, { w: 220, h: 140 })"
+            @contextmenu="handleCtxMenu($event, { kind: 'tag-chip', name }, { w: 220, h: 140 })"
           >
             <span v-html="tagIconSvg(name)"></span>
             {{ name }}
@@ -1091,7 +1093,7 @@ const editorCtxItems = computed(() => {
               id="e-tag-input"
               :placeholder="t('editor.ph.tagInput')"
               @keydown.enter.prevent="addNewTag()"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__newTag', label: t('editor.label.tagInput'), value: newTag }, { w: 240, h: 170 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__newTag', label: t('editor.label.tagInput'), value: newTag }, { w: 240, h: 170 })"
             />
           </div>
           <div v-if="availableTags.length" class="tag-suggestions">
@@ -1101,7 +1103,7 @@ const editorCtxItems = computed(() => {
               type="button"
               class="tag-option"
               @click="addNewTagByName(name)"
-              @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag-option', name }, { w: 220, h: 140 })"
+              @contextmenu="handleCtxMenu($event, { kind: 'tag-option', name }, { w: 220, h: 140 })"
             >
               <span v-html="tagIconSvg(name)"></span>
               <span>{{ name }}</span>
@@ -1120,7 +1122,7 @@ const editorCtxItems = computed(() => {
           rows="3"
           maxlength="256"
           :placeholder="t('editor.ph.notes')"
-          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__notes', label: t('editor.label.notes'), value: notes }, { w: 240, h: 170 })"
+          @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__notes', label: t('editor.label.notes'), value: notes }, { w: 240, h: 170 })"
         ></textarea>
       </div>
 
@@ -1212,13 +1214,13 @@ const editorCtxItems = computed(() => {
       <button
         class="btn btn-secondary"
         @click="handleClose()"
-        @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'footer-btn', target: 'cancel' }, { w: 200, h: 100 })"
+        @contextmenu="handleCtxMenu($event, { kind: 'footer-btn', target: 'cancel' }, { w: 200, h: 100 })"
       >{{ t('editor.btnCancel') }}</button>
       <button
         id="entry-editor-save"
         class="btn btn-primary"
         @click="onSave()"
-        @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'footer-btn', target: 'save' }, { w: 200, h: 100 })"
+        @contextmenu="handleCtxMenu($event, { kind: 'footer-btn', target: 'save' }, { w: 200, h: 100 })"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
         {{ t('editor.btnSave') }}

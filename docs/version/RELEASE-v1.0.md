@@ -6,12 +6,16 @@
 
 ---
 
-## v1.0.5 (2026-09-04) 📝 待发布
+## v1.0.5 (2026-09-04 · 2026-09-08 追加) 📝 待发布
+
+> 2026-09-08 追加修复（不推进版本号）：v1.0.5 仍处「待发布」状态，密码生成器填入与移动端粘贴两个修复并入本分节一起发布。
 
 ### 修复
 
 - **修复桌面端（Tauri）打开后样式全部失效**（浏览器端正常）：vite `^5.4.2 → ^8.2.2` 升级后默认打包内核换为 rolldown，在 `output.format: 'iife'` 下不再产出外置 CSS——构建静默成功，但 `dist/assets/css/` 缺失、`index.html` 无 `<link rel="stylesheet">`，CSS 体积被并入 `index.js` 且未挂载，导致界面以无样式状态渲染（内容堆叠、双向滚动条、白底黑字）。新增 `build.cssCodeSplit: false` 强制 CSS 以独立资源产出，vite 8.2.2 实测恢复 `assets/css/style.css` + stylesheet link 注入。与启动屏图标（雪碧图）改动无关，仅因当日重新打包首次暴露
 - 修复桌面端窗口右侧滚动条：锁屏容器 `#lock-screen` 改为 `position: fixed + inset: 0` 脱离文档流，卡片超高时改为 `.lock-box` 内部滚动，不再把内容高度冒泡到 body 产生整页滚动条
+- **修复密码生成器「填入」按钮无法回填到编辑器输入框**（2026-09-08 追加）：`requestPwGenFill` 递增 nonce 后立即调用 `closePasswordGenerator` 清空了 `vaultState.pwGenTarget`，而 `EntryEditorModal` 的 watch 在下一 tick 才异步触发，读到 `pwGenTarget.field` 为 `null` 导致回填链路中断。`useVault` 新增 `pwGenFillTarget` 快照字段，`requestPwGenFill` 在清空前对 `pwGenTarget` 拍快照，watch 改读快照字段，保证填入按钮点击后密码能正确写入目标输入框
+- **修复移动端（触屏设备）密码输入框无法粘贴**（2026-09-08 追加）：`EntryEditorModal` 所有 input 上的 `@contextmenu.prevent.stop` 修饰符在 capture 阶段阻止了原生 contextmenu，iOS Safari 长按不派发 contextmenu 而是直接弹原生粘贴菜单，但 `useCtxMenu.handleCtxMenu` 又会 preventDefault，导致移动端 input 长按既不弹自定义菜单也无法呼出系统 paste/copy/select 入口。改为：模板侧去除 `.prevent.stop` 修饰符，由 `useCtxMenu.handleCtxMenu` 内部按场景决定——触屏设备 + 可编辑元素（input/textarea/contenteditable）放行原生菜单（含 paste），其余场景（桌面右键、卡片、标签等）仍走自定义菜单
 
 ### 改进
 

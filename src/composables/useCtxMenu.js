@@ -68,10 +68,21 @@ export function useCtxMenu(actionHandler) {
   }
 
   /**
-   * 便捷封装：用于模板 @contextmenu.prevent.stop="handleCtxMenu(e, payload)"
+   * 便捷封装：用于模板 @contextmenu="handleCtxMenu(e, payload)"
+   * 注：模板侧不要再用 .prevent.stop 修饰符——这里按场景决定是否阻止默认菜单。
+   *    触屏设备 + 可编辑元素（input/textarea/contenteditable）放行原生菜单，
+   *    让移动端长按可呼出系统 paste/copy/select 等原生入口；
+   *    其余场景（桌面端右键、卡片、标签等）走自定义菜单。
    */
   function handleCtxMenu(e, payload, sizeHint) {
     if (!e) return
+    // 触屏 + 可编辑元素：放行原生菜单（含 paste），不弹自定义菜单
+    const isTouch = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    if (isTouch) {
+      const t = e.target
+      if (t && t.closest && t.closest('input, textarea, [contenteditable="true"]')) return
+    }
     e.preventDefault?.()
     e.stopPropagation?.()
     const x = e.clientX

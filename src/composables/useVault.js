@@ -97,8 +97,11 @@ export const vaultState = reactive({
   pwGenVisible: false,
   pwGenTarget: null,
   // 填入回填请求：EntryEditorModal watch 到非ce 递增后回填字段并自动隐藏
+  // pwGenFillTarget：requestPwGenFill 时对 pwGenTarget 拍快照，避免 closePasswordGenerator
+  // 清空 pwGenTarget 后 watch 异步触发读到 null 导致回填中断
   pwGenFillNonce: 0,
   pwGenFillValue: '',
+  pwGenFillTarget: null,
   // 详情面板收回再弹出动画状态（P2-6 修复：由 DetailPanel 类绑定响应式驱动）
   // detailAnim: null（静止打开）| 'collapse'（收回中，open 暂时挂起）| 'reopen'（弹出中）
   detailAnim: null,
@@ -1308,6 +1311,9 @@ export function useVault() {
 
   function requestPwGenFill(value) {
     vaultState.pwGenFillValue = value || ''
+    // 拍快照：closePasswordGenerator 会清空 pwGenTarget，但 watch 在下一 tick
+    // 才异步触发，需保证 watch 触发时仍能取到目标字段（修复"填入"按钮无效）
+    vaultState.pwGenFillTarget = vaultState.pwGenTarget ? { ...vaultState.pwGenTarget } : null
     vaultState.pwGenFillNonce++
   }
 
