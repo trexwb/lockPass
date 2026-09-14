@@ -56,4 +56,3 @@ LockPass 提供四种使用形态，数据模型完全一致，可互相迁移�
 - 📦 安装包下载：<https://github.com/trexwb/lockPass/releases>
 - 💻 仓库源码：<https://github.com/trexwb/lockPass>
 - 📚 开发者文档：仓库 `docs/` 目录（[索引](https://github.com/trexwb/lockPass/blob/dev/docs/README.md)）
-*（内容由AI生成，仅供参考）*
