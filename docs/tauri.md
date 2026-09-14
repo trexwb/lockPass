@@ -76,7 +76,7 @@ npm run version:check    # 校验版本号一致性
 - `windows-latest` → NSIS(.exe) + MSI(.msi)
 - `macos-latest`（arm64 原生）→ `.app` zip + `.dmg`（`npm run make-dmg`，hdiutil）
 - 产物先传 Actions Artifact，再上传到 **Draft Release**，人工确认后 Publish
-- macOS 产物为 ad-hoc 签名（未配证书），用户首次打开需右键 → 打开；Windows 有 SmartScreen 提示
+- macOS 产物为 ad-hoc 签名（未配证书），用户首次打开会被 Gatekeeper 拦截（提示「已损坏，无法打开」）；解除方式：终端执行 `xattr -dr com.apple.quarantine "/Applications/LockPass.app"`；Windows 有 SmartScreen 提示
 
 ### `.github/workflows/pages.yml` — 在线版部署 GitHub Pages
 
