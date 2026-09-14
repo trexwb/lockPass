@@ -198,7 +198,7 @@ npm run build</code></pre>
   </div>
 
   <h3>安装</h3>
-  <p>· <strong>macOS</strong>:打开 <code>LockPass.dmg</code>,将 <code>LockPass.app</code> 拖入「应用程序」。首次打开若提示「无法验证开发者」:右键 → 打开 → 仍要打开(或系统设置 → 隐私与安全性 → 仍要打开)<br>
+  <p>· <strong>macOS</strong>:打开 <code>LockPass.dmg</code>,将 <code>LockPass.app</code> 拖入「应用程序」。首次打开若提示「已损坏,无法打开」或「无法验证开发者」,可在终端执行 <code>xattr -dr com.apple.quarantine "/Applications/LockPass.app"</code> 解除隔离后重新打开<br>
   · <strong>Windows</strong>:双击 <code>.msi</code> 或 <code>-setup.exe</code> 按向导安装(WebView2 缺失时安装包会引导下载)<br>
   · <strong>Linux</strong>:<code>sudo apt install ./LockPass_x.x.x_amd64.deb</code> 或 <code>sudo dpkg -i LockPass_x.x.x_amd64.deb</code></p>
 
