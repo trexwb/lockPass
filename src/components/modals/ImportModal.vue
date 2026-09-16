@@ -247,6 +247,7 @@ async function importCSV(text, mapping) {
   const appIdIdx = idx.appid !== undefined ? idx.appid : -1
   const privateKeyIdx = idx.privatekey !== undefined ? idx.privatekey : -1
   const portIdx = idx.port !== undefined ? idx.port : -1
+  const customFieldsIdx = idx.customfields !== undefined ? idx.customfields : -1
 
   if (titleIdx === -1 || passwordIdx === -1) {
     throw new Error(t('import.errCsvRequiredCols'))
@@ -291,6 +292,14 @@ async function importCSV(text, mapping) {
       url: urlIdx !== -1 ? (cols[urlIdx] || '').trim() : '',
       notes: notesIdx !== -1 ? (cols[notesIdx] || '').trim() : '',
       tags: csvTags,
+    }
+
+    // 数据完整性修复：解析 customFields 列（JSON 数组字符串，可空/损坏时忽略）
+    if (customFieldsIdx !== -1 && cols[customFieldsIdx]) {
+      try {
+        const arr = JSON.parse(cols[customFieldsIdx])
+        if (Array.isArray(arr)) fields.customFields = arr
+      } catch (e) { /* 忽略格式错误的 customFields 列 */ }
     }
 
     // server / database：携带 port
@@ -416,6 +425,10 @@ async function importEncryptedVault(data) {
       Object.keys(decrypted.tagDefs).forEach(name => mergeTagDef(name, decrypted.tagDefs[name]))
     }
 
+    // 数据完整性修复：恢复回收站（deleted）与编辑历史（history），
+    // 与 .vault 导出负载对齐；兼容旧备份缺失字段时保持现状
+    restoreDeletedAndHistory(decrypted.deleted, decrypted.history)
+
     progress.value = { pct: 100, text: t('import.doneRecords', { added }) }
     window.Utils.showToast(t('import.importedN', { added }), 'success')
   } catch (e) {
@@ -451,8 +464,46 @@ async function importPlaintextVault(data) {
     Object.keys(tagDefs).forEach(name => mergeTagDef(name, tagDefs[name]))
   }
 
+  // 数据完整性修复：恢复回收站（deleted）与编辑历史（history）
+  restoreDeletedAndHistory(data.deleted, data.history)
+
   progress.value = { pct: 100, text: t('import.doneRecords', { added }) }
   window.Utils.showToast(t('import.importedN', { added }), 'success')
+}
+
+/* ── 恢复回收站与编辑历史（合并模式，兼容缺失字段） ─────────── */
+function restoreDeletedAndHistory(deleted, history) {
+  if (Array.isArray(deleted) && deleted.length) {
+    vaultState.deleted = vaultState.deleted || []
+    const existingIds = new Set(vaultState.deleted.map(x => x && x.id))
+    deleted.forEach(d => {
+      if (!d || !d.id) { vaultState.deleted.push(d); return }
+      if (!existingIds.has(d.id)) {
+        existingIds.add(d.id)
+        vaultState.deleted.push({
+          ...d,
+          customFields: Array.isArray(d.customFields) ? d.customFields : [],
+        })
+      }
+    })
+  }
+  if (history && typeof history === 'object') {
+    vaultState.history = vaultState.history || {}
+    Object.keys(history).forEach(id => {
+      const list = history[id]
+      if (!Array.isArray(list) || !list.length) return
+      if (!vaultState.history[id]) {
+        vaultState.history[id] = list.map(h => ({ ...h }))
+      } else {
+        const seen = new Set(vaultState.history[id].map(h => JSON.stringify(h)))
+        list.forEach(h => {
+          const s = JSON.stringify(h)
+          if (!seen.has(s)) { seen.add(s); vaultState.history[id].push({ ...h }) }
+        })
+      }
+      vaultState.history = { ...vaultState.history }
+    })
+  }
 }
 </script>
 
