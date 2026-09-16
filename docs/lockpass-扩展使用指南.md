@@ -157,7 +157,7 @@ LockPass 密码保险箱的浏览器伴侣扩展（Manifest V3）。解锁 LockP
 首次准备：
 
 ```bash
-cd /Users/wbtrex/website/localServer/node/trexwb/git/lockPass
+cd <lockPass 项目根目录>
 npm install
 ```
 

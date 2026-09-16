@@ -160,7 +160,67 @@
     · 安全设计:仅绑定回环地址、Bearer 常数时间比较、明文仅存内存、锁定即清</p>
   </div>
 
-  <h2>四、桌面版打包与安装</h2>
+  <h2>四、Safari 扩展(macOS)</h2>
+  <p>LockPass 的 <code>extension/</code> 是 Chrome/Edge 的 Manifest V3 扩展,Safari 没有「加载已解压扩展」入口,需用 Xcode 的 <code>safari-web-extension-converter</code> 转成「宿主 App + Safari Extension target」工程,运行一次宿主 App 即完成注册,再到 Safari → 设置 → 扩展中勾选启用。完整操作逻辑见 <code>docs/safari-extension-register.md</code>。</p>
+
+  <div class="card">
+    <div class="card-title">注册原理</div>
+    <div class="step"><span class="step-num">1</span><p>宿主 App 的 <code>Info.plist</code> 声明 <code>NSExtensionPointIdentifier=com.apple.Safari.web-extension</code></p></div>
+    <div class="step"><span class="step-num">2</span><p><strong>运行一次宿主 App</strong>,即向 Safari 注册该扩展</p></div>
+    <div class="step"><span class="step-num">3</span><p>Safari → 设置 → 扩展 → 勾选启用 LockPass</p></div>
+  </div>
+
+  <h3>1. 前置条件(缺失会静默失败)</h3>
+  <table>
+    <tr><th>#</th><th>命令</th><th>说明</th></tr>
+    <tr><td>1</td><td>安装完整 Xcode</td><td>仅 Command Line Tools 不含转换器,必须装完整 Xcode</td></tr>
+    <tr><td>2</td><td><code>sudo xcodebuild -license accept</code></td><td>接受 Xcode 许可,必须 sudo</td></tr>
+    <tr><td>3</td><td><code>sudo xcode-select -s /Applications/Xcode.app/Contents/Developer</code></td><td>开发目录指向完整 Xcode,避免误指向 CLT</td></tr>
+    <tr><td>4</td><td><code>xcodebuild -runFirstLaunch</code></td><td>补全 Xcode 首次启动组件</td></tr>
+    <tr><td>5</td><td><code>xcrun safari-web-extension-converter --help</code></td><td>验证:能看到 <code>Usage</code> 即就绪</td></tr>
+  </table>
+
+  <h3>2. 转换生成 Xcode 工程</h3>
+  <pre><code>cd &lt;lockPass 项目根目录&gt;
+xcrun safari-web-extension-converter extension \
+  --app-name "LockPass" \
+  --bundle-identifier "com.trexwb.lockpass.safari" \
+  --project-location .</code></pre>
+  <p>生成 <code>LockPass/LockPass.xcodeproj</code>(含 macOS (App)/(Extension) 与 iOS 两套 target,桌面注册只用 macOS 那套)。</p>
+
+  <h3>3. Xcode 构建运行</h3>
+  <div class="step"><span class="step-num">1</span><p><code>open LockPass/LockPass.xcodeproj</code> 打开工程</p></div>
+  <div class="step"><span class="step-num">2</span><p>Scheme 选择 <strong>LockPass</strong>(macOS 的,别选 iOS)</p></div>
+  <div class="step"><span class="step-num">3</span><p>设备下拉选 <strong>My Mac</strong>(不能选 Generic macOS,否则只能编译不能运行)</p></div>
+  <div class="step"><span class="step-num">4</span><p>TARGETS 里 LockPass 与 LockPass Extension 两个 target 的 Signing &amp; Capabilities → Team 都设 <strong>None</strong>(Sign to Run Locally,无需 Apple ID)</p></div>
+  <div class="step"><span class="step-num">5</span><p><code>⌘R</code> 运行,宿主 App 启动即完成注册(App 窗口提示扩展关闭状态属正常现象)</p></div>
+
+  <h3>4. Safari 启用与未签名放行</h3>
+  <div class="step"><span class="step-num">1</span><p>Safari → 设置 → 扩展 → 左侧出现 <strong>LockPass</strong> → 勾选启用</p></div>
+  <div class="step"><span class="step-num">2</span><p>如需 file:// 本地版通信,勾选「允许访问文件网址」</p></div>
+  <div class="step"><span class="step-num">3</span><p>未签名扩展需放行:Safari → 设置 → 高级 → 勾选「显示网页开发者功能」→ 菜单栏「开发」→ 勾选「允许未签名扩展」→ <strong>完全退出 Safari 重开</strong>(⌘Q,不是关窗口)</p></div>
+
+  <h3>5. 与桌面版配对使用</h3>
+  <div class="step"><span class="step-num">1</span><p>打开桌面版 LockPass 并解锁(本地服务即就绪)</p></div>
+  <div class="step"><span class="step-num">2</span><p>打开目标登录页,点击工具栏 LockPass 图标</p></div>
+  <div class="step"><span class="step-num">3</span><p>popup 显示「连接桌面版」→ 点击,扩展调用 <code>POST /pair</code></p></div>
+  <div class="step"><span class="step-num">4</span><p>桌面端弹出配对确认框,<strong>比对 nonce 一致</strong> → 点击「允许配对」</p></div>
+  <div class="step"><span class="step-num">5</span><p>扩展轮询 <code>GET /pair/poll</code> 领取 token,popup 进入就绪列表,此后自动填充</p></div>
+  <p>配对细节同第三节「一键配对流程」:端口 33555、Bearer 鉴权、锁定即清,安全模型一致。</p>
+
+  <h3>6. 常见坑排查</h3>
+  <table>
+    <tr><th>现象</th><th>原因</th><th>解决</th></tr>
+    <tr><td>转换器执行后不报错也无文件生成</td><td>Xcode 许可未接受 / xcode-select 指向 CLT / 系统内容未 init</td><td>依次执行前置条件 2-4</td></tr>
+    <tr><td>A build only device cannot be used to run this target</td><td>设备选了 Generic macOS(只能编译)</td><td>设备下拉改选 My Mac</td></tr>
+    <tr><td>宿主 App 正常启动但 Safari 扩展列表不显示</td><td>扩展已注册(pluginkit 可见)但 Safari 未刷新 / 签名问题</td><td>① 完全退出重启 Safari;② 重签:<code>codesign --force --deep --sign - &lt;LockPass.app路径&gt;</code> + <code>pluginkit -a &lt;LockPass.app路径&gt;</code> + 重新 open 宿主 App + 再重启 Safari;③ 调试可临时用 Safari → 设置 → 开发者 →「添加临时扩展...」直接加载 <code>extension/manifest.json</code>(重启后消失,仅调试用)</td></tr>
+    <tr><td>验证是否注册成功</td><td>—</td><td><code>pluginkit -m -p com.apple.Safari.web-extension</code> 应能看到 <code>com.trexwb.lockpass.safari.Extension</code></td></tr>
+  </table>
+
+  <h3>7. 对外分发</h3>
+  <p>本地 Sign to Run Locally 只供本机调试;分发给用户需加入 Apple Developer Program,配置 App ID / Entitlements,签名后公证(<code>notarytool</code>),可上架 Mac App Store 或发布「签名 + 公证」的 dmg。</p>
+
+  <h2>五、桌面版打包与安装</h2>
 
   <h3>前置环境</h3>
   <table>
@@ -171,7 +231,7 @@
     <tr><td>Windows: WebView2</td><td>Tauri v2 打包时自动处理</td></tr>
     <tr><td>Linux: webkit2gtk 等系统库</td><td>见 Tauri 官方 Linux 依赖清单</td></tr>
   </table>
-  <pre><code>cd /Users/wbtrex/website/localServer/node/trexwb/git/lockPass
+  <pre><code>cd &lt;lockPass 项目根目录&gt;
 npm install</code></pre>
 
   <h3>开发运行</h3>
@@ -225,7 +285,7 @@ curl -s "http://127.0.0.1:33555/pair/poll?nonce=&lt;上一步返回的nonce&gt;"
 # 4) 带 token 查凭据(无 token / 错误 token 返回 401)
 curl -s -H "Authorization: Bearer &lt;token&gt;" "http://127.0.0.1:33555/credentials?domain=github.com"</code></pre>
 
-  <h2>五、无痕模式(隐私窗口 / InPrivate)</h2>
+  <h2>六、无痕模式(隐私窗口 / InPrivate)</h2>
   <div class="card">
     <div class="card-title">1. 启用无痕支持(默认关闭)</div>
     <table>
@@ -254,7 +314,7 @@ curl -s -H "Authorization: Bearer &lt;token&gt;" "http://127.0.0.1:33555/credent
     · 无痕不改变安全模型:主密码仍在主应用内存,扩展仍不落盘。</p>
   </div>
 
-  <h2>六、安全模型</h2>
+  <h2>七、安全模型</h2>
   <table>
     <tr><th>项</th><th>说明</th></tr>
     <tr><td>主密码不出主应用</td><td>解密只在 LockPass 页面内存进行(Web Crypto,密钥不可导出),扩展仅转发解密结果 / 读取已同步的内存条目</td></tr>
@@ -265,18 +325,18 @@ curl -s -H "Authorization: Bearer &lt;token&gt;" "http://127.0.0.1:33555/credent
     <tr><td>不自动提交</td><td>填充后不触发提交,避免误操作</td></tr>
   </table>
 
-  <h2>七、当前限制</h2>
+  <h2>八、当前限制</h2>
   <p>· 浏览器版:需 LockPass 页面保持打开且处于解锁态(实时代理,不做扩展侧缓存)<br>
   · 桌面版:需桌面端保持解锁;扩展需完成一次配对;popup 仅显示当前网站匹配条目(无全量浏览)<br>
   · 表单识别基于通用规则(密码框定位 + 常见用户名选择器),复杂/动态表单(iframe / Shadow DOM / 多步登录)可能识别失败<br>
   · 自动填充在页面出现密码框时触发(同一域名 5 秒节流);也可点 popup 条目手动填充</p>
 
-  <h2>八、迭代方向(v1.1+)</h2>
+  <h2>九、迭代方向(v1.1+)</h2>
   <p>· 复杂动态表单支持(iframe / Shadow DOM / 多步登录)<br>
   · 填充后可选「自动提交」开关(默认关闭)<br>
   · 桌面版 popup 支持跨站点搜索全部条目</p>
 
-  <footer>LockPass 浏览器扩展使用指南 · 2026-08-25 · 配套文档:extension/README.md · docs/tauri.md · docs/spec.md</footer>
+  <footer>LockPass 浏览器扩展使用指南 · 2026-08-25 · 配套文档:extension/README.md · docs/tauri.md · docs/spec.md · docs/safari-extension-register.md</footer>
 </div>
 </body>
 </html>
