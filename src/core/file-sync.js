@@ -183,6 +183,10 @@ const FileSync = {
 
   /** 将备份负载写入 IndexedDB（重建 vault 加密数据，不触发解密） */
   async restorePayload(payload) {
+    // 数据完整性修复：校验 payload 完整性，防误选空/损坏 JSON 后写入 undefined
+    if (!payload || !payload.salt || !payload.iv || !payload.data) {
+      throw new Error(window.I18n ? window.I18n.t('sync.errBadFormat') : 'vault.json 格式不正确，不是有效的 LockPass 同步文件');
+    }
     await DBUtils.openDB();
     await DBUtils.dbPut(DBUtils.STORE_META, { key: 'salt', value: payload.salt });
     await DBUtils.dbPut(DBUtils.STORE_META, { key: 'iterations', value: payload.iterations || window.CryptoUtils.LEGACY_ITERATIONS });

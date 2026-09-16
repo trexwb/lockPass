@@ -35,6 +35,16 @@ const entriesToExport = computed(() => {
 
 async function exportEncryptedVault() {
   if (exporting.value) return
+  // 数据完整性修复：空数据导出前强确认，避免误导出空文件
+  if (entriesToExport.value.length === 0) {
+    const ok = await window.Utils.confirm({
+      title: t('export.emptyConfirmTitle'),
+      message: t('export.emptyConfirmMsg'),
+      confirmText: t('export.emptyConfirmOk'),
+      danger: true,
+    })
+    if (!ok) return
+  }
   exporting.value = true
   exportProgress.value = t('export.exportingVault')
   try {
@@ -48,8 +58,12 @@ async function exportEncryptedVault() {
     const { iv, data } = await window.CryptoUtils.encrypt(
       {
         entries: entriesToExport.value,
+        // 数据完整性修复：补齐 deleted（回收站）与 history（编辑历史），
+        // 与 saveVault 落盘负载对齐，确保 .vault 导出文件可完整还原
+        history: vaultState.history,
         tagDefs: vaultState.tagDefs,
         tags: vaultState.tags,
+        deleted: vaultState.deleted,
       },
       vaultState.cryptoKey
     )
@@ -90,6 +104,16 @@ async function exportEncryptedVault() {
 }
 
 async function exportCSV() {
+  // 数据完整性修复：空数据导出前强确认（在明文风险确认之前拦截）
+  if (entriesToExport.value.length === 0) {
+    const ok = await window.Utils.confirm({
+      title: t('export.emptyConfirmTitle'),
+      message: t('export.emptyConfirmMsg'),
+      confirmText: t('export.emptyConfirmOk'),
+      danger: true,
+    })
+    if (!ok) return
+  }
   const confirmed = await window.Utils.confirm({
     title: t('export.confirmCsvTitle'),
     message: t('export.confirmCsvMsg'),
@@ -109,6 +133,7 @@ async function exportCSV() {
       'appId',                             // app
       'privateKey',                        // app
       'tags', 'notes',
+      'customFields',                      // 自定义字段（JSON 数组字符串，v2 列）
     ]
     const rows = [headers.join(',')]
 
@@ -128,6 +153,7 @@ async function exportCSV() {
         type === 'app' ? `"${(entry.privateKey || '').replace(/"/g, '""')}"` : '""',
         `"${(entry.tags || []).join(';').replace(/"/g, '""')}"`,
         `"${(entry.notes || '').replace(/"/g, '""')}"`,
+        `"${JSON.stringify(entry.customFields || []).replace(/"/g, '""')}"`,
       ].join(','))
     })
 

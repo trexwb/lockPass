@@ -32,6 +32,7 @@
     'title', 'username', 'password', 'url', 'notes',
     'entrytype', 'category', 'tags', 'port',
     'rootusername', 'rootpassword', 'appid', 'privatekey',
+    'customfields',
   ]
 
   var TARGET_ALIASES = {
@@ -48,6 +49,7 @@
     rootpassword: ['rootpassword', 'root password', 'root密码'],
     appid: ['appid', 'app id', '应用id'],
     privatekey: ['privatekey', 'private key', '私钥'],
+    customfields: ['customfields', 'custom fields', '自定义字段', '自定义字段(JSON)'],
   }
 
   /* 自动猜测列映射：返回 { headerName: targetField } */
@@ -121,6 +123,7 @@
     var appIdIdx = idx.appid !== undefined ? idx.appid : -1
     var privateKeyIdx = idx.privatekey !== undefined ? idx.privatekey : -1
     var portIdx = idx.port !== undefined ? idx.port : -1
+    var customFieldsIdx = idx.customfields !== undefined ? idx.customfields : -1
 
     var entries = []
     var rows = lines.slice(1)
@@ -155,6 +158,14 @@
         tags: csvTags,
         createdAt: now,
         updatedAt: now,
+      }
+
+      // 数据完整性修复：解析 customFields 列（JSON 数组字符串，损坏时忽略）
+      if (customFieldsIdx !== -1 && cols[customFieldsIdx]) {
+        try {
+          var cfArr = JSON.parse(cols[customFieldsIdx])
+          if (Array.isArray(cfArr)) fields.customFields = cfArr
+        } catch (e) { /* 忽略格式错误的 customFields 列 */ }
       }
 
       if ((entryType === 'server' || entryType === 'database') && portIdx !== -1) {
@@ -251,6 +262,42 @@
     return { added, skipped }
   }
 
+  /* 数据完整性修复：合并恢复回收站（deleted）与编辑历史（history） */
+  function restoreDeletedAndHistory(deleted, history) {
+    var state = window.App && window.App.state
+    if (!state) return
+    if (Array.isArray(deleted) && deleted.length) {
+      state.deleted = state.deleted || []
+      var delIds = {}
+      state.deleted.forEach(function (x) { if (x && x.id) delIds[x.id] = true })
+      deleted.forEach(function (d) {
+        if (!d || !d.id) { state.deleted.push(d); return }
+        if (!delIds[d.id]) {
+          delIds[d.id] = true
+          state.deleted.push(Object.assign({}, d, { customFields: Array.isArray(d.customFields) ? d.customFields : [] }))
+        }
+      })
+    }
+    if (history && typeof history === 'object') {
+      state.history = state.history || {}
+      Object.keys(history).forEach(function (id) {
+        var list = history[id]
+        if (!Array.isArray(list) || !list.length) return
+        if (!state.history[id]) {
+          state.history[id] = list.map(function (h) { return Object.assign({}, h) })
+        } else {
+          var seen = {}
+          state.history[id].forEach(function (h) { seen[JSON.stringify(h)] = true })
+          list.forEach(function (h) {
+            var s = JSON.stringify(h)
+            if (!seen[s]) { seen[s] = true; state.history[id].push(Object.assign({}, h)) }
+          })
+        }
+        state.history = Object.assign({}, state.history)
+      })
+    }
+  }
+
   async function processFile(fileLike) {
     const name = (fileLike && fileLike.name) || ''
     const lower = String(name).toLowerCase()
@@ -305,6 +352,8 @@
         if (decrypted.tagDefs) {
           Object.keys(decrypted.tagDefs).forEach(function (n) { mergeTagDef(n, decrypted.tagDefs[n]) })
         }
+        // 数据完整性修复：恢复回收站与编辑历史（与 .vault 导出负载对齐）
+        restoreDeletedAndHistory(decrypted.deleted, decrypted.history)
         await window.App.saveVault()
         window.Utils.showToast(window.I18n.t('import.backupDone', { added: result.added }), 'success')
         return result
@@ -317,6 +366,8 @@
         if (data.tagDefs) {
           Object.keys(data.tagDefs).forEach(function (n) { mergeTagDef(n, data.tagDefs[n]) })
         }
+        // 数据完整性修复：恢复回收站与编辑历史
+        restoreDeletedAndHistory(data.deleted, data.history)
         await window.App.saveVault()
         window.Utils.showToast(window.I18n.t('import.plainBackupDone', { added: result.added }), 'success')
         return result
