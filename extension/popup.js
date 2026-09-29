@@ -58,7 +58,7 @@ function render(list) {
         '<div class="title"></div>' +
         '<div class="sub"></div>' +
       '</span>' +
-      '<span class="fill-icon">↪</span>'
+      '<span class="fill-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>'
     li.querySelector('.title').textContent = e.title || '未命名'
     li.querySelector('.sub').textContent =
       [e.username, e.url].filter(Boolean).join(' · ') || '—'

@@ -830,6 +830,53 @@
   transform: scale(1.1) rotate(-6deg);
 }
 
+/* TOTP 动态码区域 */
+.totp-field .totp-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.totp-code {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.totp-code.totp-refresh {
+  color: var(--text-muted);
+}
+.totp-issuer {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  margin-left: 6px;
+}
+.totp-countdown {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.totp-countdown svg {
+  display: block;
+}
+.totp-countdown circle:last-child {
+  transition: stroke-dasharray 0.3s ease;
+}
+.totp-remaining {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 被删除的条目：离场动画（JS 加 .leaving 触发一次） */
 .entry-card.leaving {
   animation: row-leave-left var(--dur-med) var(--ease-in-quart) both;
@@ -1088,6 +1135,51 @@
 
 /* ── 降低动效偏好（prefers-reduced-motion）：
    尊重系统设置，关闭 swipe 过渡、入场动画、hover 位移等非必要动效 ── */
+/* ── 过期时间显示 ──────────────────────────────────────────── */
+.detail-expiry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.detail-expiry-badge svg { flex-shrink: 0; }
+.expiry-status-text { opacity: 0.85; font-weight: 400; }
+.expiry-ok {
+  background: var(--success-dim, rgba(34, 197, 94, 0.12));
+  color: var(--success);
+}
+.expiry-expiring {
+  background: var(--warning-dim, rgba(234, 179, 8, 0.12));
+  color: var(--warning);
+}
+.expiry-expired {
+  background: var(--danger-dim, rgba(239, 68, 68, 0.12));
+  color: var(--danger);
+}
+
+/* 编辑器过期日期输入 */
+.expiry-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.expiry-date-input {
+  flex: 1;
+  color-scheme: dark;
+}
+[data-theme="light"] .expiry-date-input {
+  color-scheme: light;
+}
+.expiry-clear-btn {
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity var(--dur-fast);
+}
+.expiry-clear-btn:hover { opacity: 1; }
+
 @media (prefers-reduced-motion: reduce) {
   .entry-card,
   .entry-card.swiping {

@@ -37,8 +37,15 @@ const entryType = ref('website')
 const fields = reactive({})
 const selectedTags = ref([])
 const notes = ref('')
+const expiresAt = ref('')
 const newTag = ref('')
 const showFields = reactive({})
+
+/* ── TOTP 双因素（v1.1.0） ── */
+const totpSecret = ref('')
+const totpIssuer = ref('')
+const totpAccount = ref('')
+const totpValid = computed(() => window.TOTPUtils?.validateSecret(totpSecret.value) ?? false)
 
 /* ── 自定义字段（upgrade-design.md §1.4：编辑弹窗区块） ── */
 const customFields = ref([])
@@ -153,6 +160,14 @@ function currentFormObject() {
     tags: selectedTags.value.slice(),
     notes: notes.value,
     customFields: customFields.value.map(cf => ({ ...cf })),
+    totp: totpSecret.value ? {
+      secret: totpSecret.value.toUpperCase().replace(/\s/g, ''),
+      issuer: totpIssuer.value,
+      account: totpAccount.value,
+      period: 30,
+      digits: 6,
+      algorithm: 'SHA1'
+    } : null,
   }
 }
 
@@ -174,7 +189,11 @@ function fillFromEntry(e) {
   }
   selectedTags.value = (e.tags || []).slice()
   notes.value = e.notes || ''
+  expiresAt.value = e.expiresAt ? e.expiresAt.slice(0, 10) : ''
   customFields.value = (e.customFields || []).map(cf => ({ ...cf }))
+  totpSecret.value = e.totp?.secret || ''
+  totpIssuer.value = e.totp?.issuer || ''
+  totpAccount.value = e.totp?.account || ''
 }
 
 /**
@@ -405,11 +424,17 @@ async function onSave() {
     fields: { ...fields },
     tags: selectedTags.value.slice(),
     notes: notes.value,
-    // 自定义字段扩展（upgrade-design.md §1.1）：深拷贝避免引用 vault 数据
+    expiresAt: expiresAt.value || '',
     customFields: customFields.value.map(cf => ({ ...cf })),
+    totp: totpSecret.value ? {
+      secret: totpSecret.value.toUpperCase().replace(/\s/g, ''),
+      issuer: totpIssuer.value,
+      account: totpAccount.value,
+      period: 30,
+      digits: 6,
+      algorithm: 'SHA1'
+    } : null,
   }
-  // 草稿生命周期 v1.1.12b：草稿清理统一由 useVault.saveEntry 在真实落盘成功后执行
-  //（编辑器不再自行清理，避免 closeModal 已清 editingEntryId 后用 'new' 键误删）
   await saveEntry(payload)
 }
 
@@ -426,6 +451,7 @@ function snapshotForm() {
     tags: selectedTags.value.slice(),
     notes: notes.value,
     customFields: customFields.value.map(cf => ({ ...cf })),
+    totp: totpSecret.value || null,
   })
 }
 
@@ -1124,6 +1150,68 @@ const editorCtxItems = computed(() => {
           :placeholder="t('editor.ph.notes')"
           @contextmenu="handleCtxMenu($event, { kind: 'form-input', fieldKey: '__notes', label: t('editor.label.notes'), value: notes }, { w: 240, h: 170 })"
         ></textarea>
+      </div>
+
+      <!-- 过期时间 -->
+      <div class="form-group">
+        <label class="form-label">{{ t('editor.label.expiresAt') }}</label>
+        <div class="expiry-input-row">
+          <input
+            v-model="expiresAt"
+            class="form-input expiry-date-input"
+            type="date"
+            :placeholder="t('editor.ph.expiresAt')"
+          />
+          <button v-if="expiresAt" class="btn-icon expiry-clear-btn" type="button" :title="t('editor.clearExpiry')" @click="expiresAt = ''">
+            <span v-html="Icons?.close?.(14) || '×'"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ TOTP 两步验证（v1.1.0） ══ -->
+      <div class="form-group totp-section">
+        <label class="form-label">
+          {{ t('editor.totp.title') }}
+          <span v-if="totpSecret" class="totp-status" :class="{ 'totp-valid': totpValid, 'totp-invalid': !totpValid }">
+            {{ totpValid ? t('editor.totp.valid') : t('editor.totp.invalid') }}
+          </span>
+        </label>
+        <div class="totp-input-row">
+          <input
+            v-model="totpSecret"
+            class="form-input totp-secret-input"
+            :class="{ 'is-valid': totpValid && totpSecret, 'is-invalid': !totpValid && totpSecret }"
+            type="text"
+            :placeholder="t('editor.totp.phSecret')"
+            maxlength="128"
+            autocomplete="off"
+            spellcheck="false"
+            @input="totpSecret = totpSecret.toUpperCase().replace(/[^A-Z2-7=\s]/g, '')"
+          />
+          <button v-if="totpSecret" type="button" class="btn-icon totp-clear-btn" :title="t('editor.totp.clear')" @click="totpSecret = ''; totpIssuer = ''; totpAccount = ''">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div v-if="totpSecret" class="totp-extra-row">
+          <input
+            v-model="totpIssuer"
+            class="form-input totp-extra-input"
+            type="text"
+            :placeholder="t('editor.totp.phIssuer')"
+            maxlength="50"
+            autocomplete="off"
+          />
+          <input
+            v-model="totpAccount"
+            class="form-input totp-extra-input"
+            type="text"
+            :placeholder="t('editor.totp.phAccount')"
+            maxlength="100"
+            autocomplete="off"
+          />
+        </div>
       </div>
 
       <!-- ══ 自定义字段（upgrade-design.md §1.4） ══ -->

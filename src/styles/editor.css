@@ -185,6 +185,49 @@ textarea.notes-textarea {
   line-height: 1.5;
 }
 
+/* ── TOTP 编辑器区域 ──────────────────────────────────────── */
+.totp-section .form-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.totp-status {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+.totp-valid { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.totp-invalid { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.totp-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.totp-secret-input {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.totp-secret-input.is-valid { border-color: var(--success); }
+.totp-secret-input.is-invalid { border-color: var(--danger); }
+.totp-clear-btn {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+.totp-clear-btn:hover { color: var(--danger); }
+.totp-extra-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.totp-extra-input {
+  flex: 1;
+  font-size: 0.86rem;
+}
+
 /* Markdown 渲染样式 */
 .markdown-body {
   font-family: var(--font-ui);

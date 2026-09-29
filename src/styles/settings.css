@@ -830,3 +830,165 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ── 密码健康审计 ── */
+.audit-score-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 0 20px;
+}
+.audit-score-ring {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+}
+.audit-score-ring svg circle:last-child {
+  transition: stroke-dasharray 0.6s var(--ease-out-quart);
+}
+.audit-score-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.audit-score-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.audit-score-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.audit-score-detail {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.audit-category {
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm, 6px);
+  overflow: hidden;
+}
+.audit-category-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart);
+  text-align: left;
+}
+.audit-category-header:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.05));
+}
+.audit-category-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.audit-icon-danger { color: var(--danger); }
+.audit-icon-warning { color: var(--warning); }
+.audit-icon-info { color: var(--accent); }
+.audit-icon-muted { color: var(--text-muted); }
+
+.audit-category-label {
+  flex: 1;
+}
+.audit-category-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.audit-count-danger { background: var(--danger-dim, rgba(239,68,68,0.15)); color: var(--danger); }
+.audit-count-warning { background: var(--warning-dim, rgba(245,158,11,0.15)); color: var(--warning); }
+.audit-count-info { background: var(--accent-dim, rgba(59,130,246,0.15)); color: var(--accent); }
+.audit-count-muted { background: var(--border-dim, rgba(128,128,128,0.15)); color: var(--text-muted); }
+
+.audit-category-arrow {
+  display: flex;
+  transition: transform var(--dur-fast) var(--ease-out-quart);
+}
+.audit-category-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.audit-category-list {
+  padding: 0 8px 8px 38px;
+}
+.audit-entry-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart), color var(--dur-fast);
+  text-align: left;
+}
+.audit-entry-item:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.05));
+  color: var(--text-primary);
+}
+.audit-entry-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audit-entry-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.audit-entry-action {
+  display: flex;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+  color: var(--accent);
+}
+.audit-entry-item:hover .audit-entry-action {
+  opacity: 1;
+}
+
+.audit-reused-group-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 10px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.audit-all-clear {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  text-align: center;
+}
+.audit-all-clear-text {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}

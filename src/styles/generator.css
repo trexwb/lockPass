@@ -358,6 +358,66 @@
 .pwgen-footer { flex-shrink: 0; }
 .pwgen-footer .btn { min-height: 40px; }
 
+/* ── 模式切换标签 ──────────────────────────────────────────── */
+.pwgen-mode-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 20px;
+  margin-bottom: -2px;
+  position: relative;
+  z-index: 1;
+}
+.pwgen-mode-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out-quart);
+}
+.pwgen-mode-tab:hover { color: var(--text-primary); background: var(--bg-secondary); }
+.pwgen-mode-tab.active {
+  background: var(--bg-secondary);
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  border-bottom-color: var(--bg-secondary);
+}
+
+/* ── 密码短语：分隔符按钮组 ─────────────────────────────────── */
+.pwgen-sep-row { flex-wrap: wrap; }
+.pwgen-sep-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pwgen-sep-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out-quart);
+}
+.pwgen-sep-btn:hover { border-color: var(--accent-dim); color: var(--text-primary); }
+.pwgen-sep-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── 密码短语：首字母大写行 ─────────────────────────────────── */
+.pwgen-cap-row {
+  margin-top: 2px;
+}
+
 /* ── 移动端适配：单列 chips、字号/间距微调 ────────────────── */
 @media (max-width: 480px) {
   .pwgen-body { padding: 14px 16px 18px; gap: 12px; }

@@ -96,4 +96,3 @@ xcrun safari-web-extension-converter extension \
 2. 配置 App ID / Entitlements；
 3. 签名后**公证**（`notarytool`）；
 4. 可上架 **Mac App Store**，或发布「签名 + 公证」的 dmg。
-*（内容由AI生成，仅供参考）*

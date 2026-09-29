@@ -16,9 +16,9 @@ const { t } = useI18n()
 const Icons = window.Utils.SvgIcons
 
 const visible = computed(() => vaultState.pwGenVisible)
-// 有目标字段（编辑器打开中）：显示「填入」；否则仅复制
 const hasTarget = computed(() => !!(vaultState.pwGenTarget && vaultState.pwGenTarget.source === 'entry' && vaultState.pwGenTarget.field))
 
+const mode = ref('random')
 const length = ref(16)
 const opts = reactive({
   upper: true,
@@ -29,17 +29,34 @@ const opts = reactive({
   minEachSet: true,
   maxRepeat: false,
 })
+
+const ppWords = ref(5)
+const ppSeparator = ref('-')
+const ppCapitalize = ref(false)
+const SEPARATORS = [
+  { value: '-', labelKey: 'pwgen.sepDash' },
+  { value: '.', labelKey: 'pwgen.sepDot' },
+  { value: '_', labelKey: 'pwgen.sepUnderscore' },
+  { value: ' ', labelKey: 'pwgen.sepSpace' },
+]
+
 const preview = ref('')
 const previewKey = ref(0)
 const copied = ref(false)
 const advOpen = ref(false)
 const copyTimer = ref(null)
 const debounceTimer = ref(null)
-const emptySets = computed(() => !(opts.upper || opts.lower || opts.number || opts.symbol))
+const emptySets = computed(() => mode.value === 'random' && !(opts.upper || opts.lower || opts.number || opts.symbol))
 
 const strength = computed(() => {
   if (!preview.value) return { entropy: 0, label: '', color: 'var(--text-muted)', pct: 0 }
-  const info = window.PasswordGenerator.calcStrength(preview.value)
+  let info
+  if (mode.value === 'passphrase') {
+    const entropy = window.PasswordGenerator.calcPassphraseEntropy(preview.value)
+    info = calcStrengthFromEntropy(entropy)
+  } else {
+    info = window.PasswordGenerator.calcStrength(preview.value)
+  }
   return {
     entropy: Math.round(info.entropy),
     label: info.label,
@@ -48,7 +65,29 @@ const strength = computed(() => {
   }
 })
 
+function calcStrengthFromEntropy(entropy) {
+  let label, color, pct
+  if (entropy < 40) {
+    label = window.I18n ? window.I18n.t('editor.strength.weak') : '弱'
+    color = 'var(--danger)'; pct = 20
+  } else if (entropy < 60) {
+    label = window.I18n ? window.I18n.t('editor.strength.medium') : '中'
+    color = 'var(--warning)'; pct = 50
+  } else if (entropy < 80) {
+    label = window.I18n ? window.I18n.t('editor.strength.strong') : '强'
+    color = 'var(--accent)'; pct = 75
+  } else {
+    label = window.I18n ? window.I18n.t('editor.strength.veryStrong') : '极强'
+    color = 'var(--success)'; pct = 100
+  }
+  return { entropy, label, color, pct }
+}
+
 const rangeStyle = computed(() => {
+  if (mode.value === 'passphrase') {
+    const pct = ((ppWords.value - 3) / (10 - 3)) * 100
+    return { background: `linear-gradient(90deg, var(--accent) 0%, var(--accent) ${pct}%, var(--border) ${pct}%, var(--border) 100%)` }
+  }
   const pct = ((length.value - 8) / (64 - 8)) * 100
   return {
     background: `linear-gradient(90deg, var(--accent) 0%, var(--accent) ${pct}%, var(--border) ${pct}%, var(--border) 100%)`,
@@ -60,17 +99,26 @@ function genNow() {
     preview.value = ''
     return
   }
-  const pw = window.PasswordGenerator.generatePassword({
-    length: length.value,
-    uppercase: opts.upper,
-    lowercase: opts.lower,
-    numbers: opts.number,
-    symbols: opts.symbol,
-    noAmbiguous: opts.noAmbig,
-    minEachSet: opts.minEachSet,
-    maxRepeat: opts.maxRepeat ? 1 : 0,
-  })
-  preview.value = pw
+  if (mode.value === 'passphrase') {
+    const pp = window.PasswordGenerator.generatePassphrase({
+      words: ppWords.value,
+      separator: ppSeparator.value,
+      capitalize: ppCapitalize.value,
+    })
+    preview.value = pp
+  } else {
+    const pw = window.PasswordGenerator.generatePassword({
+      length: length.value,
+      uppercase: opts.upper,
+      lowercase: opts.lower,
+      numbers: opts.number,
+      symbols: opts.symbol,
+      noAmbiguous: opts.noAmbig,
+      minEachSet: opts.minEachSet,
+      maxRepeat: opts.maxRepeat ? 1 : 0,
+    })
+    preview.value = pw
+  }
   previewKey.value++
 }
 
@@ -124,6 +172,16 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
+      <!-- 模式切换 -->
+      <div class="pwgen-mode-tabs">
+        <button class="pwgen-mode-tab" :class="{ active: mode === 'random' }" @click="mode = 'random'; genNow()">
+          {{ t('pwgen.mode.random') }}
+        </button>
+        <button class="pwgen-mode-tab" :class="{ active: mode === 'passphrase' }" @click="mode = 'passphrase'; genNow()">
+          {{ t('pwgen.mode.passphrase') }}
+        </button>
+      </div>
+
       <!-- 预览区 -->
       <div class="pwgen-body">
         <div class="pwgen-preview" :class="{ 'is-copied': copied }" @click="copyPw(preview)">
@@ -163,72 +221,108 @@ onBeforeUnmount(() => {
 
         <div class="pwgen-sep"></div>
 
-        <!-- 长度滑杆 -->
-        <div class="pwgen-ctl-row">
-          <span class="lbl">{{ t('pwgen.length') }}</span>
-          <input class="pwgen-range" type="range" min="8" max="64" step="1" v-model.number="length" :style="rangeStyle" @input="debounceGen" :aria-label="t('pwgen.length')" />
-          <span class="num mono">{{ length }}</span>
-        </div>
-
-        <!-- 字符集 -->
-        <div class="pwgen-chips">
-          <label class="chip" :class="{ on: opts.upper }">
-            <span class="box"><span v-if="opts.upper" class="box-check">✓</span></span>
-            <span class="chip-name">{{ t('pwgen.setUpper') }}</span>
-            <span class="hint mono">A-Z</span>
-            <input type="checkbox" v-model="opts.upper" @change="genNow" class="chip-input" />
-          </label>
-          <label class="chip" :class="{ on: opts.lower }">
-            <span class="box"><span v-if="opts.lower" class="box-check">✓</span></span>
-            <span class="chip-name">{{ t('pwgen.setLower') }}</span>
-            <span class="hint mono">a-z</span>
-            <input type="checkbox" v-model="opts.lower" @change="genNow" class="chip-input" />
-          </label>
-          <label class="chip" :class="{ on: opts.number }">
-            <span class="box"><span v-if="opts.number" class="box-check">✓</span></span>
-            <span class="chip-name">{{ t('pwgen.setNumber') }}</span>
-            <span class="hint mono">0-9</span>
-            <input type="checkbox" v-model="opts.number" @change="genNow" class="chip-input" />
-          </label>
-          <label class="chip" :class="{ on: opts.symbol }">
-            <span class="box"><span v-if="opts.symbol" class="box-check">✓</span></span>
-            <span class="chip-name">{{ t('pwgen.setSymbol') }}</span>
-            <span class="hint mono">!@#$…</span>
-            <input type="checkbox" v-model="opts.symbol" @change="genNow" class="chip-input" />
-          </label>
-          <label class="chip chip-wide" :class="{ on: opts.noAmbig }">
-            <span class="box"><span v-if="opts.noAmbig" class="box-check">✓</span></span>
-            <span class="chip-name">{{ t('pwgen.noAmbig') }}</span>
-            <input type="checkbox" v-model="opts.noAmbig" @change="genNow" class="chip-input" />
-          </label>
-        </div>
-
-        <!-- 高级选项折叠 -->
-        <div class="pwgen-adv" :class="{ open: advOpen }">
-          <div class="pwgen-adv-head" @click="advOpen = !advOpen" role="button" tabindex="0" :aria-expanded="advOpen" @keydown.enter="advOpen = !advOpen">
-            <span v-html="Icons?.settings?.(13)"></span>
-            <span>{{ t('pwgen.advance') }}</span>
-            <span class="chev">▾</span>
+        <!-- 随机字符模式控件 -->
+        <template v-if="mode === 'random'">
+          <!-- 长度滑杆 -->
+          <div class="pwgen-ctl-row">
+            <span class="lbl">{{ t('pwgen.length') }}</span>
+            <input class="pwgen-range" type="range" min="8" max="64" step="1" v-model.number="length" :style="rangeStyle" @input="debounceGen" :aria-label="t('pwgen.length')" />
+            <span class="num mono">{{ length }}</span>
           </div>
-          <div class="pwgen-adv-body">
-            <div class="pwgen-adv-inner">
-              <label class="switch-row">
-                <span>{{ t('pwgen.minEachSet') }}</span>
-                <span class="switch" :class="{ on: opts.minEachSet }">
-                  <input type="checkbox" v-model="opts.minEachSet" @change="genNow" />
-                  <span class="switch-slider"></span>
-                </span>
-              </label>
-              <label class="switch-row">
-                <span>{{ t('pwgen.maxRepeat') }}</span>
-                <span class="switch" :class="{ on: opts.maxRepeat }">
-                  <input type="checkbox" v-model="opts.maxRepeat" @change="genNow" />
-                  <span class="switch-slider"></span>
-                </span>
-              </label>
+
+          <!-- 字符集 -->
+          <div class="pwgen-chips">
+            <label class="chip" :class="{ on: opts.upper }">
+              <span class="box"><span v-if="opts.upper" class="box-check">✓</span></span>
+              <span class="chip-name">{{ t('pwgen.setUpper') }}</span>
+              <span class="hint mono">A-Z</span>
+              <input type="checkbox" v-model="opts.upper" @change="genNow" class="chip-input" />
+            </label>
+            <label class="chip" :class="{ on: opts.lower }">
+              <span class="box"><span v-if="opts.lower" class="box-check">✓</span></span>
+              <span class="chip-name">{{ t('pwgen.setLower') }}</span>
+              <span class="hint mono">a-z</span>
+              <input type="checkbox" v-model="opts.lower" @change="genNow" class="chip-input" />
+            </label>
+            <label class="chip" :class="{ on: opts.number }">
+              <span class="box"><span v-if="opts.number" class="box-check">✓</span></span>
+              <span class="chip-name">{{ t('pwgen.setNumber') }}</span>
+              <span class="hint mono">0-9</span>
+              <input type="checkbox" v-model="opts.number" @change="genNow" class="chip-input" />
+            </label>
+            <label class="chip" :class="{ on: opts.symbol }">
+              <span class="box"><span v-if="opts.symbol" class="box-check">✓</span></span>
+              <span class="chip-name">{{ t('pwgen.setSymbol') }}</span>
+              <span class="hint mono">!@#$…</span>
+              <input type="checkbox" v-model="opts.symbol" @change="genNow" class="chip-input" />
+            </label>
+            <label class="chip chip-wide" :class="{ on: opts.noAmbig }">
+              <span class="box"><span v-if="opts.noAmbig" class="box-check">✓</span></span>
+              <span class="chip-name">{{ t('pwgen.noAmbig') }}</span>
+              <input type="checkbox" v-model="opts.noAmbig" @change="genNow" class="chip-input" />
+            </label>
+          </div>
+
+          <!-- 高级选项折叠 -->
+          <div class="pwgen-adv" :class="{ open: advOpen }">
+            <div class="pwgen-adv-head" @click="advOpen = !advOpen" role="button" tabindex="0" :aria-expanded="advOpen" @keydown.enter="advOpen = !advOpen">
+              <span v-html="Icons?.settings?.(13)"></span>
+              <span>{{ t('pwgen.advance') }}</span>
+              <span class="chev">▾</span>
+            </div>
+            <div class="pwgen-adv-body">
+              <div class="pwgen-adv-inner">
+                <label class="switch-row">
+                  <span>{{ t('pwgen.minEachSet') }}</span>
+                  <span class="switch" :class="{ on: opts.minEachSet }">
+                    <input type="checkbox" v-model="opts.minEachSet" @change="genNow" />
+                    <span class="switch-slider"></span>
+                  </span>
+                </label>
+                <label class="switch-row">
+                  <span>{{ t('pwgen.maxRepeat') }}</span>
+                  <span class="switch" :class="{ on: opts.maxRepeat }">
+                    <input type="checkbox" v-model="opts.maxRepeat" @change="genNow" />
+                    <span class="switch-slider"></span>
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
+
+        <!-- 密码短语模式控件 -->
+        <template v-if="mode === 'passphrase'">
+          <!-- 单词数滑杆 -->
+          <div class="pwgen-ctl-row">
+            <span class="lbl">{{ t('pwgen.words') }}</span>
+            <input class="pwgen-range" type="range" min="3" max="10" step="1" v-model.number="ppWords" :style="rangeStyle" @input="debounceGen" :aria-label="t('pwgen.words')" />
+            <span class="num mono">{{ ppWords }}</span>
+          </div>
+
+          <!-- 分隔符 -->
+          <div class="pwgen-ctl-row pwgen-sep-row">
+            <span class="lbl">{{ t('pwgen.separator') }}</span>
+            <div class="pwgen-sep-options">
+              <button
+                v-for="sep in SEPARATORS"
+                :key="sep.value"
+                class="pwgen-sep-btn"
+                :class="{ active: ppSeparator === sep.value }"
+                @click="ppSeparator = sep.value; genNow()"
+              >{{ t(sep.labelKey) }}</button>
+            </div>
+          </div>
+
+          <!-- 首字母大写 -->
+          <label class="switch-row pwgen-cap-row">
+            <span>{{ t('pwgen.capitalize') }}</span>
+            <span class="switch" :class="{ on: ppCapitalize }">
+              <input type="checkbox" v-model="ppCapitalize" @change="genNow" />
+              <span class="switch-slider"></span>
+            </span>
+          </label>
+        </template>
 
       </div>
 

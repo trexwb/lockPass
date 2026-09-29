@@ -11,7 +11,35 @@ LockPass 密码保险箱的浏览器伴侣扩展（Manifest V3）。解锁 LockP
 
 ---
 
-## 一、安装扩展（Chrome / Edge）
+## 一、各浏览器扩展安装与启用
+
+LockPass 扩展为 Manifest V3 单份代码，除 Safari 外主流浏览器均可直接加载 `extension/` 目录。下表按浏览器给出扩展管理页与加载入口：
+
+| 浏览器 | 扩展管理页 | 开发者模式 | 加载入口 | 备注 |
+|--------|-----------|-----------|---------|------|
+| Chrome | `chrome://extensions` | 右上角开关 | 「加载已解压的扩展程序」→ 选 `extension/` 目录 | Chromium 系，直接支持 MV3 |
+| Edge | `edge://extensions` | 左侧「开发人员模式」开关 | 「加载解压缩的扩展」→ 选 `extension/` 目录 | Chromium 系 |
+| Firefox | `about:debugging#/runtime/this-firefox` | 无需开关 | 「临时载入附加组件」→ 选 `extension/manifest.json` | MV3 部分 API 差异，background 用 `browser.*` 命名空间，如遇问题需单独适配 |
+| 360 极速浏览器 | `se://extensions` | 右上角开关 | 「加载已解压扩展」→ 选 `extension/` 目录 | 内核需 Chromium 88+ 才支持 MV3（`chrome://version` 查看） |
+| 360 安全浏览器 | `chrome://extensions`（或 `360se://extensions`） | 右上角开关 | 「加载已解压扩展」→ 选 `extension/` 目录 | 同样注意内核版本 |
+| QQ 浏览器 | `chrome://extensions` | 右上角开关 | 「加载已解压的扩展程序」→ 选 `extension/` 目录 | Chromium 系 |
+| 搜狗高速浏览器 | `chrome://extensions` | 右上角开关 | 「加载已解压的扩展程序」→ 选 `extension/` 目录 | Chromium 系 |
+| Opera | `opera://extensions` | 右上角 Developer mode 开关 | Load unpacked → 选 `extension/` 目录 | Chromium 系 |
+| Brave | `brave://extensions` | 右上角 Developer mode 开关 | Load unpacked → 选 `extension/` 目录 | Chromium 系 |
+| Vivaldi | `vivaldi://extensions` | 右上角 Developer mode 开关 | Load unpacked → 选 `extension/` 目录 | Chromium 系 |
+| Safari（macOS） | Safari → 设置 → 扩展 | — | — | 需 Xcode 转换器生成宿主 App 注册，见《Safari 扩展注册指南》`docs/safari-extension-register.md` |
+
+### Chromium 系统一说明
+
+- Chrome / Edge / 360 / QQ / 搜狗 / Opera / Brave / Vivaldi 均为 Chromium 内核，**共用同一份 `extension/` 目录**，一份扩展全覆盖，无需分别打包；
+- 加载成功后工具栏出现 LockPass 盾牌图标；如需 `file://` 本地版通信，在扩展详情页开启 **「允许访问文件网址」**；
+- 与桌面版配对流程各浏览器一致（扩展直连 `127.0.0.1:33555`，一键 nonce 确认），详见「三、桌面版使用」。
+
+> ⚠️ **Firefox 兼容注意**：Firefox 的「临时载入附加组件」加载的是 `manifest.json`（而非整个目录）。Firefox 对 MV3 的支持与 Chromium 存在差异：`background.service_worker` 需按 Firefox 方式声明、API 使用 `browser.*` 命名空间、部分 Chrome API 行为不同。当前 `extension/` 主要面向 Chromium，Firefox 如遇加载或运行问题需按 Firefox 规范单独适配。
+
+> ⚠️ **360 浏览器内核注意**：MV3 扩展需 **Chromium 88+** 内核。在地址栏访问 `chrome://version` 查看内核版本；若内核过旧（如老版 360 安全浏览器仍为 Chromium 63/78），可能无法加载或运行 MV3 扩展，建议升级浏览器或改用 Chromium 系浏览器。
+
+### 加载扩展（Chrome / Edge 示例）
 
 1. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）
 2. 右上角开启 **「开发者模式」**

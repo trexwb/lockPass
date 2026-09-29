@@ -14,7 +14,7 @@ import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 
-const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession } = useVault()
+const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession, selectEntry, openEntryModal } = useVault()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -23,6 +23,7 @@ const Icons = window.Utils.SvgIcons
 const settingsTab = ref('security')
 const SETTINGS_TABS = [
   { id: 'security', label: '安全', labelKey: 'settings.tab.security' },
+  { id: 'audit', label: '安全报告', labelKey: 'settings.tab.audit' },
   { id: 'appearance', label: '外观', labelKey: 'settings.tab.appearance' },
   { id: 'sync', label: '备份', labelKey: 'settings.tab.sync' },
   { id: 'extension', label: '扩展', labelKey: 'settings.tab.extension' },
@@ -34,6 +35,7 @@ const SETTINGS_TABS = [
 const lockTimeout = ref(vaultState.lockTimeoutMs)
 const clipboardClear = ref(vaultState.clipboardClearMs)
 const recycleTtl = ref(vaultState.recycleTtlDays)
+const expiryWarn = ref(parseInt(localStorage.getItem('lockpass_expiry_warn') || '30', 10) || 30)
 
 /* ── 生物识别解锁（Passkey，macOS 桌面单端 MVP） ── */
 const { supported: bioSupported, enabled: bioEnabled, refresh: refreshBioStatus } = usePasskey()
@@ -136,6 +138,14 @@ const recycleTtlOptions = computed(() => [
   { value: 30, label: t('settings.security.recycle30d') },
   { value: 60, label: t('settings.security.recycle60d') },
   { value: 90, label: t('settings.security.recycle90d') },
+])
+
+const expiryWarnOptions = computed(() => [
+  { value: 7, label: t('settings.security.expiry7d') },
+  { value: 14, label: t('settings.security.expiry14d') },
+  { value: 30, label: t('settings.security.expiry30d') },
+  { value: 60, label: t('settings.security.expiry60d') },
+  { value: 90, label: t('settings.security.expiry90d') },
 ])
 
 const backupIntervalOptions = computed(() => [
@@ -289,6 +299,12 @@ async function updateRecycleTtl() {
     }
   }
   setRecycleTtl(value)
+  window.Utils.showToast(t('settings.toast.saved'), 'success')
+}
+
+function updateExpiryWarn() {
+  const value = parseInt(expiryWarn.value, 10) || 30
+  try { localStorage.setItem('lockpass_expiry_warn', String(value)) } catch (e) {}
   window.Utils.showToast(t('settings.toast.saved'), 'success')
 }
 
@@ -514,6 +530,38 @@ async function refreshDataInfo() {
 }
 
 /* ── 销毁保险箱 ── */
+
+/* ── 密码健康审计 ── */
+const auditResult = computed(() => {
+  if (!window.VaultAudit) return null
+  const entries = (vaultState.entries || []).filter(e => !e.deleted)
+  return window.VaultAudit.auditVault(entries)
+})
+
+const auditScoreColor = computed(() => {
+  const s = auditResult.value?.score ?? 100
+  if (s >= 80) return 'var(--success)'
+  if (s >= 50) return 'var(--warning)'
+  return 'var(--danger)'
+})
+
+const auditScoreLabel = computed(() => {
+  const s = auditResult.value?.score ?? 100
+  if (s >= 90) return t('audit.level.excellent')
+  if (s >= 70) return t('audit.level.good')
+  if (s >= 50) return t('audit.level.fair')
+  return t('audit.level.poor')
+})
+
+const auditExpanded = ref({ weak: false, reused: false, empty: false, stale: false, expired: false })
+
+function navigateToEntry(entryId) {
+  closeModal()
+  setTimeout(() => {
+    selectEntry(entryId)
+    openEntryModal(entryId)
+  }, 100)
+}
 
 async function destroyVault() {
   const confirmed = await window.Utils.confirm({
@@ -775,6 +823,22 @@ const settingsCtxItems = computed(() => {
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: recycleTtl, label: t('settings.security.recycleTtl') }, { w: 220, h: 120 })"
           />
         </div>
+        <div
+          class="settings-row"
+          @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', desc: t('settings.security.expiryWarnDesc'), tab: 'security', tabLabel: t('settings.tab.security'), runLabel: t('settings.security.expiryWarn') + t('settings.ctx.saveSuffix') }, { w: 260, h: 170 })"
+        >
+          <div>
+            <div class="settings-label">{{ t('settings.security.expiryWarn') }}</div>
+            <div class="settings-desc">{{ t('settings.security.expiryWarnDesc') }}</div>
+          </div>
+          <BaseSelect
+            class="form-input w-120"
+            v-model.number="expiryWarn"
+            :options="expiryWarnOptions"
+            @change="updateExpiryWarn()"
+            @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'select', value: expiryWarn, label: t('settings.security.expiryWarn') }, { w: 220, h: 120 })"
+          />
+        </div>
         <!-- 生物识别解锁（Passkey）：桌面 macOS 显示；启用需主密码会话，失败/停用随时回退主密码 -->
         <div
           v-if="bioSupported"
@@ -794,6 +858,160 @@ const settingsCtxItems = computed(() => {
             />
             <span class="switch-slider"></span>
           </label>
+        </div>
+      </div>
+
+      <!-- 密码健康审计 -->
+      <div class="settings-group" v-show="settingsTab === 'audit'">
+        <div class="settings-group-title">{{ t('settings.group.audit') }}</div>
+        <div class="audit-score-section" v-if="auditResult">
+          <div class="audit-score-ring">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" stroke-width="6" />
+              <circle cx="50" cy="50" r="42" fill="none" :stroke="auditScoreColor" stroke-width="6"
+                :stroke-dasharray="`${auditResult.score * 2.639} 263.9`"
+                stroke-linecap="round" transform="rotate(-90 50 50)" />
+            </svg>
+            <div class="audit-score-value" :style="{ color: auditScoreColor }">{{ auditResult.score }}</div>
+          </div>
+          <div class="audit-score-summary">
+            <div class="audit-score-label">{{ auditScoreLabel }}</div>
+            <div class="audit-score-detail">{{ t('audit.total', { n: auditResult.total }) }}</div>
+          </div>
+        </div>
+
+        <!-- 空密码 -->
+        <div class="audit-category" v-if="auditResult && auditResult.empty.length > 0">
+          <button class="audit-category-header" @click="auditExpanded.empty = !auditExpanded.empty">
+            <span class="audit-category-icon audit-icon-danger">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </span>
+            <span class="audit-category-label">{{ t('audit.empty') }}</span>
+            <span class="audit-category-count audit-count-danger">{{ auditResult.empty.length }}</span>
+            <span class="audit-category-arrow" :class="{ expanded: auditExpanded.empty }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="audit-category-list" v-show="auditExpanded.empty">
+            <button v-for="item in auditResult.empty" :key="item.id" class="audit-entry-item" @click="navigateToEntry(item.id)">
+              <span class="audit-entry-title">{{ item.title }}</span>
+              <span class="audit-entry-action">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 弱密码 -->
+        <div class="audit-category" v-if="auditResult && auditResult.weak.length > 0">
+          <button class="audit-category-header" @click="auditExpanded.weak = !auditExpanded.weak">
+            <span class="audit-category-icon audit-icon-warning">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </span>
+            <span class="audit-category-label">{{ t('audit.weak') }}</span>
+            <span class="audit-category-count audit-count-warning">{{ auditResult.weak.length }}</span>
+            <span class="audit-category-arrow" :class="{ expanded: auditExpanded.weak }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="audit-category-list" v-show="auditExpanded.weak">
+            <button v-for="item in auditResult.weak" :key="item.id" class="audit-entry-item" @click="navigateToEntry(item.id)">
+              <span class="audit-entry-title">{{ item.title }}</span>
+              <span class="audit-entry-meta">{{ t('audit.entropy', { n: item.entropy }) }}</span>
+              <span class="audit-entry-action">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 重复密码 -->
+        <div class="audit-category" v-if="auditResult && auditResult.reused.length > 0">
+          <button class="audit-category-header" @click="auditExpanded.reused = !auditExpanded.reused">
+            <span class="audit-category-icon audit-icon-info">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+              </svg>
+            </span>
+            <span class="audit-category-label">{{ t('audit.reused') }}</span>
+            <span class="audit-category-count audit-count-info">{{ auditResult.reused.length }} {{ t('audit.groups') }}</span>
+            <span class="audit-category-arrow" :class="{ expanded: auditExpanded.reused }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="audit-category-list" v-show="auditExpanded.reused">
+            <template v-for="(group, gi) in auditResult.reused" :key="gi">
+              <div class="audit-reused-group-label" v-if="group.length > 0">{{ t('audit.reusedGroup', { n: gi + 1 }) }}</div>
+              <button v-for="item in group" :key="item.id" class="audit-entry-item" @click="navigateToEntry(item.id)">
+                <span class="audit-entry-title">{{ item.title }}</span>
+                <span class="audit-entry-action">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- 长期未更新 -->
+        <div class="audit-category" v-if="auditResult && auditResult.stale.length > 0">
+          <button class="audit-category-header" @click="auditExpanded.stale = !auditExpanded.stale">
+            <span class="audit-category-icon audit-icon-muted">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </span>
+            <span class="audit-category-label">{{ t('audit.stale') }}</span>
+            <span class="audit-category-count audit-count-muted">{{ auditResult.stale.length }}</span>
+            <span class="audit-category-arrow" :class="{ expanded: auditExpanded.stale }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="audit-category-list" v-show="auditExpanded.stale">
+            <button v-for="item in auditResult.stale" :key="item.id" class="audit-entry-item" @click="navigateToEntry(item.id)">
+              <span class="audit-entry-title">{{ item.title }}</span>
+              <span class="audit-entry-meta">{{ t('audit.daysAgo', { n: item.days }) }}</span>
+              <span class="audit-entry-action">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 已过期 -->
+        <div class="audit-category" v-if="auditResult && auditResult.expired.length > 0">
+          <button class="audit-category-header" @click="auditExpanded.expired = !auditExpanded.expired">
+            <span class="audit-category-icon audit-icon-danger">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="16" x2="15" y2="16"/>
+              </svg>
+            </span>
+            <span class="audit-category-label">{{ t('audit.expired') }}</span>
+            <span class="audit-category-count audit-count-danger">{{ auditResult.expired.length }}</span>
+            <span class="audit-category-arrow" :class="{ expanded: auditExpanded.expired }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="audit-category-list" v-show="auditExpanded.expired">
+            <button v-for="item in auditResult.expired" :key="item.id" class="audit-entry-item" @click="navigateToEntry(item.id)">
+              <span class="audit-entry-title">{{ item.title }}</span>
+              <span class="audit-entry-meta">{{ t('audit.expiredDaysAgo', { n: item.days }) }}</span>
+              <span class="audit-entry-action">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 全部通过 -->
+        <div class="audit-all-clear" v-if="auditResult && auditResult.weak.length === 0 && auditResult.reused.length === 0 && auditResult.empty.length === 0 && auditResult.stale.length === 0 && auditResult.expired.length === 0">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <div class="audit-all-clear-text">{{ t('audit.allClear') }}</div>
         </div>
       </div>
 

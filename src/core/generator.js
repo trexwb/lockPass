@@ -175,9 +175,52 @@ function calcStrength(password) {
   return { entropy, label, color, pct };
 }
 
+/**
+ * 生成密码短语（Diceware / EFF 词表）
+ * @param {Object} options - 配置选项
+ * @param {number} [options.words=5] - 单词数量 (3-10)
+ * @param {string} [options.separator='-'] - 单词分隔符
+ * @param {boolean} [options.capitalize=false] - 每个单词首字母大写
+ * @returns {string} 生成的密码短语
+ */
+function generatePassphrase(options = {}) {
+  const {
+    words = 5,
+    separator = '-',
+    capitalize = false
+  } = options;
+
+  const wordlist = window.EFF_WORDLIST;
+  if (!wordlist || !wordlist.length) {
+    throw new Error('EFF wordlist not loaded');
+  }
+
+  const count = Math.max(3, Math.min(10, words | 0));
+  const picked = [];
+  for (let i = 0; i < count; i++) {
+    let w = wordlist[randInt(wordlist.length)];
+    if (capitalize) w = w[0].toUpperCase() + w.slice(1);
+    picked.push(w);
+  }
+  return picked.join(separator);
+}
+
+/**
+ * 计算密码短语熵值
+ * @param {string} passphrase - 密码短语
+ * @returns {number} 熵（bits）
+ */
+function calcPassphraseEntropy(passphrase) {
+  if (!passphrase) return 0;
+  const wordCount = passphrase.split(/[\s\-_.]+/).filter(Boolean).length;
+  return wordCount * Math.log2(7776);
+}
+
 // 导出模块
 window.PasswordGenerator = {
   generatePassword,
+  generatePassphrase,
   calcStrength,
+  calcPassphraseEntropy,
   CHARSETS
 };

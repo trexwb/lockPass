@@ -10,6 +10,7 @@ import SecretFieldRow from './SecretFieldRow.vue'
 import CustomFieldRow from './CustomFieldRow.vue'
 import CtxMenu from '../common/CtxMenu.vue'
 import { useI18n } from '../../composables/useI18n'
+import { useTotp } from '../../composables/useTotp'
 // S1 修复（分级缓存）：复制入口的预填草稿改走分级 store（内存全量明文，
 // sessionStorage 仅落非敏感脱敏子集），不再把含密码明文 JSON 直写 sessionStorage
 import { saveDraft as memSaveDraft } from '../../composables/editorDraftStore.js'
@@ -26,6 +27,19 @@ const Icons = window.Utils?.SvgIcons
 const { t } = useI18n()
 
 const entry = computed(() => (vaultState.selectedEntry ? getEntryById(vaultState.selectedEntry) : null))
+
+const expiryInfo = computed(() => {
+  if (!entry.value || !entry.value.expiresAt) return null
+  const exp = new Date(entry.value.expiresAt).getTime()
+  const now = Date.now()
+  const diff = exp - now
+  const days = Math.ceil(diff / 86400000)
+  if (diff < 0) return { status: 'expired', label: t('detail.expiry.expired', { days: Math.abs(days) }) }
+  if (days <= 30) return { status: 'expiring', label: t('detail.expiry.soon', { days }) }
+  return { status: 'ok', label: t('detail.expiry.ok', { days }) }
+})
+
+const { code: totpCode, remaining: totpRemaining, progress: totpProgress, hasTotp, refresh: refreshTotp } = useTotp(entry)
 
 const isRecycleView = computed(() => vaultState.currentFilter === 'recycle')
 // 密码显隐：从 vaultState.showPasswordMap 读取（独立于 entry 数据对象）
@@ -549,6 +563,33 @@ const detailCtxItems = computed(() => {
           </template>
         </div>
 
+        <!-- TOTP 双因素动态码 -->
+        <template v-if="hasTotp && !isRecycleView">
+          <div class="detail-section-divider"><span>TOTP</span></div>
+          <div class="detail-field totp-field">
+            <div class="detail-field-label">
+              <span>{{ t('detail.totp.code') }}</span>
+              <span v-if="entry.totp?.issuer" class="totp-issuer">{{ entry.totp.issuer }}</span>
+            </div>
+            <div class="detail-field-value totp-value">
+              <span class="totp-code mono" :class="{ 'totp-refresh': totpCode === '------' }">{{ totpCode }}</span>
+              <div class="totp-countdown" :style="{ '--progress': totpProgress }">
+                <svg width="24" height="24" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="var(--border)" stroke-width="2" />
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="var(--accent)" stroke-width="2"
+                    :stroke-dasharray="`${totpProgress * 62.83} 62.83`"
+                    stroke-linecap="round" transform="rotate(-90 12 12)" />
+                </svg>
+                <span class="totp-remaining">{{ totpRemaining }}</span>
+              </div>
+              <button class="btn-icon" :title="t('detail.totp.copy')" :aria-label="t('detail.totp.copy')"
+                @click="copyField(totpCode, $event.currentTarget)">
+                <span v-html="Icons.copy(14)"></span>
+              </button>
+            </div>
+          </div>
+        </template>
+
         <!-- 自定义字段分组（upgrade-design.md §1.4：敏感字段默认掩码、点击揭示） -->
         <template v-if="visibleCustomFields.length">
           <div class="detail-section-divider"><span>{{ t('detail.custom.title', { n: visibleCustomFields.length }) }}</span></div>
@@ -575,6 +616,18 @@ const detailCtxItems = computed(() => {
               @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'tag', name: tag }, { w: 280, h: 200 })"
               :title="t('detail.tipTagCtx', { tag })"
             >{{ tag }}</span>
+          </div>
+        </div>
+
+        <!-- 过期时间 -->
+        <div v-if="expiryInfo" class="detail-field">
+          <div class="detail-field-label">{{ t('detail.field.expiresAt') }}</div>
+          <div class="detail-field-value detail-expiry-badge" :class="'expiry-' + expiryInfo.status">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>{{ entry.expiresAt.slice(0, 10) }}</span>
+            <span class="expiry-status-text">{{ expiryInfo.label }}</span>
           </div>
         </div>
 
