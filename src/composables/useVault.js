@@ -573,6 +573,19 @@ export function useVault() {
     try { window.TauriServer && window.TauriServer.setEntries(vaultState.entries) } catch (e) {}
     // 备份提醒 + 自动快照检查（BackupManager 内部容错，失败不阻断解锁）
     try { window.BackupManager && window.BackupManager.checkAfterUnlock() } catch (e) {}
+    // 密码过期提醒（v1.1.2）
+    try {
+      const warnDays = loadSettingInt('lockpass_expiry_warn', 30)
+      const expiring = window.VaultAudit && window.VaultAudit.getExpiringEntries(vaultState.entries, warnDays)
+      if (expiring) {
+        if (expiring.expired.length > 0) {
+          window.Utils.showToast(t('toast.expiryExpired', { n: expiring.expired.length }), 'warning', 6000)
+        }
+        if (expiring.expiring.length > 0) {
+          window.Utils.showToast(t('toast.expiryWarn', { n: expiring.expiring.length, days: warnDays }), 'info', 5000)
+        }
+      }
+    } catch (e) {}
     const savedFilter = restoreFilterFromHash()
     if (savedFilter && savedFilter !== 'all') {
       vaultState.currentFilter = savedFilter
@@ -1428,7 +1441,7 @@ export function useVault() {
   try { window.ExtBridge && window.ExtBridge.setEntriesProvider(() => vaultState.entries) } catch (e) {}
 
   async function saveEntry(payload) {
-    const { title, type, fields, tags, notes, customFields } = payload
+    const { title, type, fields, tags, notes, customFields, totp, expiresAt } = payload
     if (!title || !title.trim()) {
       window.Utils.showToast(t('toast.titleRequired'), 'error')
       return false
@@ -1465,6 +1478,7 @@ export function useVault() {
       showPassword: false,
       updatedAt: now,
     }
+    if (expiresAt) base.expiresAt = expiresAt
     if (!vaultState.editingEntryId) base.createdAt = now
 
     const entry = { ...base, ...fields }
@@ -1489,6 +1503,20 @@ export function useVault() {
         sensitive: !!cf.sensitive,
         type: CF_TYPES.includes(cf.type) ? cf.type : 'text',
       }))
+
+    // TOTP 两步验证（v1.1.0）：归一化存储结构
+    if (totp && totp.secret) {
+      entry.totp = {
+        secret: String(totp.secret).toUpperCase().replace(/\s/g, ''),
+        issuer: String(totp.issuer || ''),
+        account: String(totp.account || ''),
+        period: Number(totp.period) || 30,
+        digits: Number(totp.digits) || 6,
+        algorithm: 'SHA1',
+      }
+    } else {
+      delete entry.totp
+    }
 
     // 变更落地前快照（草稿生命周期 v1.1.12b：写盘失败时回滚内存，
     // 使「提交失败保留草稿以便重试」不产生重复条目/重复历史）

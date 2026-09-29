@@ -8,6 +8,7 @@
  * 1. 用 dx²+dy² 替代 Math.hypot，避免每帧 O(n²) 次开方运算
  * 2. 按透明度分组批量绘制连线，减少 strokeStyle 切换次数
  * 3. 容器不可见时暂停 RAF，可见时恢复
+ * 4. 实例废弃（主题切换 refresh / canvas 元素重建）时 destroy：停 RAF + 移除监听器
  */
 (function () {
   'use strict';
@@ -18,7 +19,7 @@
    * 创建单 canvas 粒子实例
    * @param {HTMLCanvasElement} canvas
    * @param {Object} [opts] 可选覆盖：linkDist/mouseDist/baseCount/linkOpaqueMax/mouseOpaqueMax/linkColor/particleColor
-   * @returns {{ start: Function, stop: Function, resize: Function }|null}
+   * @returns {{ start: Function, stop: Function, resize: Function, destroy: Function }|null}
    */
   function createParticles(canvas, opts) {
     if (!canvas || !canvas.getContext) return null;
@@ -93,6 +94,7 @@
     }
 
     function step() {
+      if (!running) return; // 防御：实例已被销毁/停止时不再自续帧循环
       ctx.clearRect(0, 0, width, height);
 
       // 更新粒子位置
@@ -166,7 +168,7 @@
         ctx.fill();
       }
 
-      rafId = requestAnimationFrame(step);
+      if (running) rafId = requestAnimationFrame(step);
     }
 
     function start() {
@@ -198,9 +200,22 @@
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseleave', onMouseLeave);
 
+    /**
+     * 销毁实例：停止动画帧并移除全部监听器。
+     * 实例废弃（主题切换重建 / canvas 元素重建）时必须调用，
+     * 否则旧 RAF 循环会永久自续运行，监听器随切换次数累积。
+     */
+    function destroy() {
+      stop();
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('load', resize);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseleave', onMouseLeave);
+    }
+
     resize();
 
-    return { start: start, stop: stop, resize: resize };
+    return { start: start, stop: stop, resize: resize, destroy: destroy };
   }
 
   function isLockVisible() {
@@ -230,7 +245,7 @@
     const inst = isLock ? lockInst : wsInst;
     const curCanvas = isLock ? lockCanvas : wsCanvas;
     if (inst && curCanvas === el) return; // 已绑定同一 canvas，复用
-    if (inst) inst.stop();                // canvas 已重建，停掉旧实例
+    if (inst) inst.destroy();             // canvas 已重建，销毁旧实例（停 RAF + 移除监听器）
     const next = createParticles(el, opts);
     if (isLock) { lockCanvas = el; lockInst = next; }
     else { wsCanvas = el; wsInst = next; }
@@ -261,6 +276,11 @@
   // start = 锁屏粒子启动（工作区停止）；stop = 锁屏停止（工作区启动）
   // 主题切换时调用：丢弃实例缓存，强制重建并重读粒子颜色（canvas 元素不变，原位重绘）
   function refreshAll() {
+    // v1.1.1 修复：主题切换重建前必须先 destroy 旧实例（停 RAF + 移除监听器）
+    // 再清空引用；此前直接置 null 会导致旧实例的 RAF 循环永久自续运行，
+    // 每次切换主题/强调色叠加一条完整帧循环（CPU 逐次叠加）。
+    if (lockInst) lockInst.destroy();
+    if (wsInst) wsInst.destroy();
     lockCanvas = null;
     wsCanvas = null;
     lockInst = null;
