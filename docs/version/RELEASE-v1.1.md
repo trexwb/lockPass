@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-09-29 · 粒子背景 CPU 泄漏修复（基准 v1.1.0，不推进版本号）
+
+### 修复
+
+- **粒子背景 CPU 泄漏（src/core/particles.js）**：切换主题/强调色时（`LockParticles.refresh()`）旧实例引用被直接置 null，其 requestAnimationFrame 循环永久自续运行（每帧 O(n²) 连线检测），且 4 个事件监听器（window resize/load、document mousemove/mouseleave）随切换次数累积，活跃帧循环逐次叠加。现重建前统一调用新增的 `destroy()`（停 RAF + 移除全部监听器），`resolveInstance()` 的 canvas 重建路径同步改用 destroy，并为 `step()` 增加运行状态自守（`running` 为假不再自续）
+
+---
+
 ## v1.1.0 (2026-09-29)
 
 ### 新增
