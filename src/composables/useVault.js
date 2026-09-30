@@ -1249,6 +1249,27 @@ export function useVault() {
     await copyToClipboard(value || '', null, btnEl)
   }
 
+  /* v1.1.1：密码 + TOTP 验证码组合复制（同周期内动态码一致，同步取值） */
+  async function copyPasswordWithTotp(id, btnEl = null) {
+    const entry = getEntryById(id)
+    if (!entry || !entry.totp || !entry.totp.secret || !window.TOTPUtils) {
+      return copyPassword(id, btnEl)
+    }
+    let code = ''
+    try {
+      code = await window.TOTPUtils.generateTOTP(entry.totp.secret, {
+        period: entry.totp.period || 30,
+        digits: entry.totp.digits || 6
+      })
+    } catch (e) {
+      code = ''
+    }
+    const text = [entry.password || '', code].filter(Boolean).join(' ')
+    const ok = await copyToClipboard(text, id, btnEl)
+    if (ok) window.Utils.showToast(t('toast.copiedTotp', { sec: Math.round(vaultState.clipboardClearMs / 1000) }), 'success')
+    return ok
+  }
+
   // 密码显示自动隐藏计时器（按条目 ID 管理，5 秒后自动切回隐藏）
   const _pwHideTimers = {}
   const PW_AUTO_HIDE_MS = 5000
@@ -1610,6 +1631,7 @@ export function useVault() {
     setRecycleTtl,
     copyToClipboard,
     copyPassword,
+    copyPasswordWithTotp,
     copyField,
     toggleDetailPassword,
     revealDetailPasswordOnce,

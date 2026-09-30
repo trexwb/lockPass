@@ -16,7 +16,7 @@ import { useTotp } from '../../composables/useTotp'
 import { saveDraft as memSaveDraft } from '../../composables/editorDraftStore.js'
 
 const {
-  getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
+  getEntryById, closeDetail, toggleFavorite, copyPassword, copyPasswordWithTotp, copyField,
   softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
   rollbackEntry, snapDiffers, describeHistoryFields, saveVault,
   toggleDetailPassword, revealDetailPasswordOnce,
@@ -585,6 +585,10 @@ const detailCtxItems = computed(() => {
               <button class="btn-icon" :title="t('detail.totp.copy')" :aria-label="t('detail.totp.copy')"
                 @click="copyField(totpCode, $event.currentTarget)">
                 <span v-html="Icons.copy(14)"></span>
+              </button>
+              <button v-if="entry.password" class="btn-icon totp-combo-btn" :title="t('detail.ctx.copyPwTotp')" :aria-label="t('detail.ctx.copyPwTotp')"
+                @click="copyPasswordWithTotp(entry.id, $event.currentTarget)">
+                <span v-html="Icons.key(14)"></span>
               </button>
             </div>
           </div>

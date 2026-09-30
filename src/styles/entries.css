@@ -195,6 +195,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* v1.1.1：列表卡片过期/即将过期警示徽章（图标区右上角） */
+.entry-icon { position: relative; }
+.card-expiry-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--warning-dim);
+  color: var(--warning);
+  z-index: 1;
+}
+.card-expiry-badge.card-expiry-expired {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
 .entry-meta { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; color: var(--text-muted); }
 .entry-category {
   background: var(--bg-tertiary);
@@ -864,6 +885,13 @@
 }
 .totp-countdown circle:last-child {
   transition: stroke-dasharray 0.3s ease;
+}
+/* v1.1.1：密码+验证码组合复制按钮（说明走 title 提示） */
+.totp-combo-btn {
+  color: var(--text-muted);
+}
+.totp-combo-btn:hover {
+  color: var(--accent);
 }
 .totp-remaining {
   position: absolute;

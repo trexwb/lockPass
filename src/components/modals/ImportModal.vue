@@ -3,7 +3,7 @@
    Vue 3 迁移：对齐旧版 src/js/import-export.js 的导入流程
    - .vault / .json：加密备份（需输入主密码解密）或明文备份
    - .csv：Chrome/通用 CSV 导入向导（列映射 → 预览 → 确认，C2）
-   导入采用合并模式：按「标题 + 用户名」查重，重复时逐条询问替换/跳过；
+   备份导入采用覆盖合并：同类型 + 同标题覆盖旧条目，其余新增；CSV 仍按「标题 + 用户名」查重逐条询问。
    支持进度条与中途取消。数据通过 useVault 的 vaultState / saveVault 操作。 */
 import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
@@ -374,6 +374,12 @@ async function importCSV(text, mapping) {
   window.Utils.showToast(t('import.doneProgress', { added, replaced, skipped, hint: emptyHint }), 'success')
 }
 
+/* v1.1.1：条目类型归一化（与 core/import-bridge.js 的 toEntryType 同口径） */
+function normEntryType(v) {
+  const t = (v || '').trim().toLowerCase()
+  return ['website', 'server', 'database', 'ai', 'app', 'other'].includes(t) ? t : 'website'
+}
+
 /* ── 合并标签注册表（旧 categories 升级为 tagDefs） ────────────── */
 function mergeTagDef(name, def) {
   if (!name || vaultState.tagDefs[name]) return
@@ -393,6 +399,7 @@ async function importEncryptedVault(data) {
     const decrypted = await window.CryptoUtils.decrypt(data.data, data.iv, key)
 
     let added = 0
+    let replaced = 0
     for (const entry of (decrypted.entries || [])) {
       // 旧 category 字段升级为标签
       const e = { ...entry }
@@ -403,17 +410,35 @@ async function importEncryptedVault(data) {
         if (!e.tags.includes(name)) e.tags.push(name)
         delete e.category
       }
-      // 合并模式：不跳过冲突，直接作为新条目添加
-      vaultState.entries.push({
-        ...e,
-        entryType: e.entryType || 'website',
-        id: window.CryptoUtils.uuid(),
-        createdAt: e.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份补默认空数组
-        customFields: (e.customFields || []),
-      })
-      added++
+      // v1.1.1 覆盖合并：同类型 + 同标题覆盖旧条目（保留 id/favorite/createdAt，历史随 id 延续）；否则新增
+      const dup = vaultState.entries.find(x =>
+        normEntryType(x.entryType) === normEntryType(e.entryType) &&
+        (x.title || '') === (e.title || '') && (e.title || '') !== ''
+      )
+      if (dup) {
+        const merged = Object.assign({}, dup, e, {
+          id: dup.id,
+          favorite: !!dup.favorite,
+          createdAt: dup.createdAt || e.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          entryType: e.entryType || dup.entryType || 'website',
+          customFields: Array.isArray(e.customFields) ? e.customFields : (dup.customFields || []),
+        })
+        const idx = vaultState.entries.indexOf(dup)
+        if (idx !== -1) vaultState.entries.splice(idx, 1, merged)
+        replaced++
+      } else {
+        vaultState.entries.push({
+          ...e,
+          entryType: e.entryType || 'website',
+          id: window.CryptoUtils.uuid(),
+          createdAt: e.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份补默认空数组
+          customFields: (e.customFields || []),
+        })
+        added++
+      }
     }
 
     // 合并标签注册表
@@ -429,8 +454,11 @@ async function importEncryptedVault(data) {
     // 与 .vault 导出负载对齐；兼容旧备份缺失字段时保持现状
     restoreDeletedAndHistory(decrypted.deleted, decrypted.history)
 
-    progress.value = { pct: 100, text: t('import.doneRecords', { added }) }
-    window.Utils.showToast(t('import.importedN', { added }), 'success')
+    const doneMsg = replaced
+      ? t('import.backupDoneReplaced', { added, replaced })
+      : t('import.importedN', { added })
+    progress.value = { pct: 100, text: doneMsg }
+    window.Utils.showToast(doneMsg, 'success')
   } catch (e) {
     throw new Error(t('import.errPwOrCorrupt'))
   }
@@ -440,19 +468,38 @@ async function importEncryptedVault(data) {
 async function importPlaintextVault(data) {
   const { entries, categories, tagDefs } = data
   let added = 0
+  let replaced = 0
 
   for (const entry of (entries || [])) {
-    // 合并模式：不跳过冲突，直接作为新条目添加
-    vaultState.entries.push({
-      ...entry,
-      entryType: entry.entryType || 'website',
-      id: window.CryptoUtils.uuid(),
-      createdAt: entry.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      // 自定义字段扩展（upgrade-design.md §1.3）：v1 明文备份补默认空数组
-      customFields: entry.customFields || [],
-    })
-    added++
+    // v1.1.1 覆盖合并：同类型 + 同标题覆盖旧条目（保留 id/favorite/createdAt，历史随 id 延续）；否则新增
+    const dup = vaultState.entries.find(x =>
+      normEntryType(x.entryType) === normEntryType(entry.entryType) &&
+      (x.title || '') === (entry.title || '') && (entry.title || '') !== ''
+    )
+    if (dup) {
+      const merged = Object.assign({}, dup, entry, {
+        id: dup.id,
+        favorite: !!dup.favorite,
+        createdAt: dup.createdAt || entry.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        entryType: entry.entryType || dup.entryType || 'website',
+        customFields: Array.isArray(entry.customFields) ? entry.customFields : (dup.customFields || []),
+      })
+      const idx = vaultState.entries.indexOf(dup)
+      if (idx !== -1) vaultState.entries.splice(idx, 1, merged)
+      replaced++
+    } else {
+      vaultState.entries.push({
+        ...entry,
+        entryType: entry.entryType || 'website',
+        id: window.CryptoUtils.uuid(),
+        createdAt: entry.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        // 自定义字段扩展（upgrade-design.md §1.3）：v1 明文备份补默认空数组
+        customFields: entry.customFields || [],
+      })
+      added++
+    }
   }
 
   // 合并标签注册表
@@ -467,8 +514,11 @@ async function importPlaintextVault(data) {
   // 数据完整性修复：恢复回收站（deleted）与编辑历史（history）
   restoreDeletedAndHistory(data.deleted, data.history)
 
-  progress.value = { pct: 100, text: t('import.doneRecords', { added }) }
-  window.Utils.showToast(t('import.importedN', { added }), 'success')
+  const doneMsg = replaced
+    ? t('import.plainBackupDoneReplaced', { added, replaced })
+    : t('import.importedN', { added })
+  progress.value = { pct: 100, text: doneMsg }
+  window.Utils.showToast(doneMsg, 'success')
 }
 
 /* ── 恢复回收站与编辑历史（合并模式，兼容缺失字段） ─────────── */

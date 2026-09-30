@@ -113,6 +113,44 @@ function esc(value) {
   return window.Utils ? window.Utils.escHtml(value) : String(value ?? '')
 }
 
+/* ── v1.1.1：列表卡片过期/即将过期警示（复用 VaultAudit.getExpiryStatus，与解锁提醒同口径） ── */
+
+const cardExpiryStates = reactive({})
+
+function warnDaysValue() {
+  return parseInt(localStorage.getItem('lockpass_expiry_warn') || '30', 10) || 30
+}
+
+function cardExpiryClass(entry) {
+  if (isRecycleView.value || !entry.expiresAt) return null
+  try {
+    return (window.VaultAudit && window.VaultAudit.getExpiryStatus(entry, warnDaysValue())) || null
+  } catch (e) {
+    return null
+  }
+}
+
+function cardExpiryTitle(state) {
+  return state === 'expired' ? t('card.expiry.expired') : t('card.expiry.expiring', { days: warnDaysValue() })
+}
+
+/* 日期流转以天为单位：过滤列表变化时重算一次即可，无需秒级轮询 */
+watch(
+  () => filteredEntries.value.map(e => e.id + '|' + (e.expiresAt || '')).join(',') + '|' + isRecycleView.value,
+  () => {
+    const next = {}
+    for (const entry of filteredEntries.value) {
+      const st = cardExpiryClass(entry)
+      if (st) next[entry.id] = st
+    }
+    for (const key of Object.keys(cardExpiryStates)) {
+      if (!next[key]) delete cardExpiryStates[key]
+    }
+    Object.assign(cardExpiryStates, next)
+  },
+  { immediate: true }
+)
+
 /* B5 搜索增强：标题/副标题命中片段高亮（SearchUtil.highlightField 内置转义防 XSS） */
 function highlightTitle(entry) {
   const q = vaultState.searchQuery.trim()
@@ -665,6 +703,14 @@ onBeforeUnmount(() => {
               >
                 <div class="entry-icon">
                   <span class="type-icon-badge" :class="'type-icon-' + (entry.entryType || 'website')" :title="esc(typeLabelOf(entry.entryType))" v-html="cardTypeIcon(entry.entryType)"></span>
+                  <span
+                    v-if="cardExpiryStates[entry.id]"
+                    class="card-expiry-badge"
+                    :class="'card-expiry-' + cardExpiryStates[entry.id]"
+                    :title="cardExpiryTitle(cardExpiryStates[entry.id])"
+                    :aria-label="cardExpiryTitle(cardExpiryStates[entry.id])"
+                    v-html="Icons?.alert(12)"
+                  ></span>
                 </div>
                 <div class="entry-info">
                   <div class="entry-title" v-html="highlightTitle(entry)"></div>
