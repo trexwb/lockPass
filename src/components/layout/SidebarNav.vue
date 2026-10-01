@@ -14,8 +14,11 @@ const Icons = window.Utils?.SvgIcons
 
 const {
   setFilter, openEntryModal, openModal, computeSidebarStats, getTopTags, logout,
-  saveVault,
+  saveVault, toggleTravelMode,
 } = useVault()
+
+// 旅行模式（v1.1.3）：开关 + 当前被隐藏的敏感条目数（未开启时也展示，提示有多少条目会被隐藏）
+const hiddenSensitiveCount = computed(() => vaultState.entries.filter(e => e.sensitive).length)
 
 const addDropdownOpen = ref(false)
 const addDropdownStyle = ref(null)
@@ -455,6 +458,23 @@ async function handleLogout(action) {
             </button>
           </div>
         </Teleport>
+      </div>
+
+      <!-- 旅行模式（v1.1.3）：开启后敏感条目从列表/搜索/导出/扩展隐藏 -->
+      <div class="sidebar-section">
+        <label
+          class="travel-row"
+          :class="{ on: vaultState.travelMode }"
+          :title="t('side.travelModeHint')"
+        >
+          <span class="travel-icon" v-html="Icons?.shield?.(15) || ''"></span>
+          <span class="travel-label">{{ t('side.travelMode') }}</span>
+          <span v-if="vaultState.travelMode && hiddenSensitiveCount" class="travel-hidden">{{ t('side.travelHidden', { n: hiddenSensitiveCount }) }}</span>
+          <span class="switch">
+            <input type="checkbox" :checked="vaultState.travelMode" @change="toggleTravelMode()" />
+            <span class="switch-slider"></span>
+          </span>
+        </label>
       </div>
 
       <div class="sidebar-section">

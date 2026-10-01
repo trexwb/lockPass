@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-10-01 · v1.1.2
+
+### 新增
+
+- **旅行模式（原计划 v1.1.3）**：条目可在编辑器「标记为敏感」（条目级 `sensitive` 字段，随加密 vault 存储）；侧边栏顶部新增「旅行模式」开关（状态存 localStorage `lockpass_travel_mode`，刷新保留）。开启后敏感条目从以下出口统一隐藏：列表/搜索（`getFilteredEntries`）、侧边栏统计计数、回收站视图、`.vault` / CSV 导出（ExportModal）、二维码分享（QrShareModal + 关联跳转 `selectEntry` 拦截）、浏览器扩展桥（`ExtBridge.setEntriesProvider` 过滤后下发，`get-password` 随之查不到条目）。开启时若正选中敏感条目自动关闭详情面板；开关行展示「已隐藏 N 条」指示；详情页标题旁新增敏感盾牌徽标
+- **浏览器扩展自动捕获（原计划 v1.1.4）**：内容脚本监听表单 submit，提取域名 + 用户名 + 已填密码上报后台（Service Worker 内存暂存 15s TTL，不落盘）；新页面加载时按「已跳转或密码框消失」判定登录成功，右上角弹出「保存到 LockPass？」浮层（保存 / 忽略 / 关闭，20s 自动收起，同域同账号忽略后不再重复弹）。保存链路：浮层 → background `LP_CAPTURE_SAVE` → LockPass 页面桥 `LP_CAPTURE_FORWARD` → 页面 `ExtBridge`（会话令牌校验）→ `handleExtensionCapture` 入库：精确主机名 + 同用户名去重（密码相同 → 跳过并提示；密码不同 → 更新密码并记录编辑历史；未命中 → 新建网站条目），结果经 `capture-result` 回传浮层展示（已保存 / 已更新 / 已存在）。LockPass 主应用页面通过 `data-lockpass-app` DOM 标记跳过捕获，避免误抓主密码；未解锁 / 页面未打开时浮层给出明确失败提示
+
+### 说明
+
+- `extension/manifest.json` 版本号随 `npm run version:set 1.1.2` 同步至 1.1.2
+- 桌面版本地 HTTP 通道（tauri-server）暂未接入捕获，捕获仅覆盖「浏览器内打开并解锁 LockPass 页面」场景
+
+---
+
 ## 2026-09-30 · v1.1.1
 
 ### 新增

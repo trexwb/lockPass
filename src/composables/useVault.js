@@ -73,6 +73,9 @@ export const vaultState = reactive({
   selectedEntry: null,
   currentFilter: 'all',
   searchQuery: '',
+  // 旅行模式（v1.1.3）：开启后带 sensitive 标记的条目从列表/搜索/导出/QR 分享/扩展桥接中隐藏。
+  // 仅存布尔开关于 localStorage（条目敏感标记本身在加密 vault 内，不泄露内容）
+  travelMode: (() => { try { return localStorage.getItem('lockpass_travel_mode') === '1' } catch (e) { return false } })(),
   // 密码显隐状态：按条目 ID 记忆，独立于 entry 数据对象，避免污染加密 vault
   showPasswordMap: {},
   clipboardTimer: null,
@@ -840,14 +843,49 @@ export function useVault() {
     return m ? decodeURIComponent(m[1]) : null
   }
 
+  /**
+   * 旅行模式（v1.1.3）：条目在当前视图下是否应被隐藏
+   * @param {object|null} entry 条目
+   * @returns {boolean} 开启旅行模式且条目带 sensitive 标记时返回 true
+   */
+  function isTravelHidden(entry) {
+    return vaultState.travelMode && !!(entry && entry.sensitive)
+  }
+
+  /** 旅行模式过滤后的可见条目列表（列表/统计/导出/扩展桥共用出口） */
+  function visibleEntries() {
+    return vaultState.entries.filter(e => !isTravelHidden(e))
+  }
+
+  /**
+   * 切换旅行模式：持久化开关；开启时若正选中敏感条目则关闭详情/QR 分享，并提示隐藏数量
+   * @returns {number} 切换后仍处于隐藏状态的敏感条目数
+   */
+  function toggleTravelMode() {
+    vaultState.travelMode = !vaultState.travelMode
+    try { localStorage.setItem('lockpass_travel_mode', vaultState.travelMode ? '1' : '0') } catch (e) {}
+    const hiddenCount = vaultState.entries.filter(e => e.sensitive).length
+    if (vaultState.travelMode) {
+      const sel = vaultState.selectedEntry && getEntryById(vaultState.selectedEntry)
+      if (sel && isTravelHidden(sel)) {
+        closeDetail()
+        if (vaultState.activeModal === 'qr-share') closeModal()
+      }
+      window.Utils.showToast(hiddenCount ? t('travel.onHidden', { n: hiddenCount }) : t('travel.on'), 'success')
+    } else {
+      window.Utils.showToast(t('travel.off'), 'success')
+    }
+    return hiddenCount
+  }
+
   function getFilteredEntries() {
     let list
     const isRecycle = vaultState.currentFilter === 'recycle'
 
     if (isRecycle) {
-      list = vaultState.deleted
+      list = vaultState.deleted.filter(e => !isTravelHidden(e))
     } else {
-      list = vaultState.entries
+      list = visibleEntries()
       if (vaultState.currentFilter === 'favorites') {
         list = list.filter(e => e.favorite)
       } else if (vaultState.currentFilter.startsWith('type:')) {
@@ -879,7 +917,7 @@ export function useVault() {
     ENTRY_TYPES.forEach(t => { typeMap[t.id] = 0 })
     const tagCount = {}
 
-    vaultState.entries.forEach(e => {
+    visibleEntries().forEach(e => {
       stats.total++
       if (e.favorite) stats.favorites++
       const type = e.entryType || 'website'
@@ -906,6 +944,8 @@ export function useVault() {
     if (event) event.stopPropagation()
     const entry = getEntryById(id)
     if (!entry) return
+    // 旅行模式（v1.1.3）：敏感条目不可选中（拦截关联跳转等间接入口）
+    if (isTravelHidden(entry)) return
     const alreadyOpen = !!vaultState.selectedEntry
     const sameEntry = vaultState.selectedEntry === id
     vaultState.selectedEntry = id
@@ -1459,10 +1499,77 @@ export function useVault() {
   }
 
   // 浏览器扩展桥：注册条目数据源（扩展仅能拿到脱敏列表，解密请求经页面内存处理）
-  try { window.ExtBridge && window.ExtBridge.setEntriesProvider(() => vaultState.entries) } catch (e) {}
+  // 旅行模式（v1.1.3）：敏感条目不下发给扩展（get-password 因 provider 过滤同步失效）
+  try { window.ExtBridge && window.ExtBridge.setEntriesProvider(() => visibleEntries()) } catch (e) {}
+
+  /**
+   * 扩展自动捕获（v1.1.4）：网页登录成功后由扩展推送凭据，在此落库。
+   * 去重口径：同主机名（精确匹配）+ 同用户名的网站条目视为同一账号——
+   * 密码相同则跳过；不同则更新密码（编辑历史照常记录）。
+   * @param {object} payload { domain, username, password, href }
+   * @returns {Promise<string>} 'created' | 'updated' | 'exists' | 'error'
+   */
+  async function handleExtensionCapture(payload) {
+    const domain = String((payload && payload.domain) || '').toLowerCase()
+    const username = String((payload && payload.username) || '')
+    const password = String((payload && payload.password) || '')
+    if (!domain || !password) return 'error'
+
+    // 条目 url 域名与登录域名匹配（登录域 === 条目域 或 为其子域）
+    const hostOf = (u) => {
+      try { return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname.toLowerCase() } catch (e) { return '' }
+    }
+    const dup = vaultState.entries.find(e =>
+      (e.entryType || 'website') === 'website' &&
+      (e.username || '') === username &&
+      hostOf(e.url || '') === domain
+    )
+    if (dup) {
+      if (dup.password === password) {
+        window.Utils.showToast(t('ext.capture.exists'), 'success')
+        return 'exists'
+      }
+      const now = new Date().toISOString()
+      recordEntryHistory(dup.id, { ...dup }, { ...dup, password }, now)
+      dup.password = password
+      dup.updatedAt = now
+      vaultState.entries = [...vaultState.entries]
+      const ok = await saveVault()
+      if (!ok) return 'error'
+      window.Utils.showToast(t('ext.capture.updated', { title: dup.title || domain }), 'success')
+      return 'updated'
+    }
+
+    const now = new Date().toISOString()
+    const entry = {
+      id: crypto.randomUUID(),
+      title: domain,
+      entryType: 'website',
+      tags: [],
+      notes: '',
+      url: 'https://' + domain,
+      username,
+      password,
+      showPassword: false,
+      sensitive: false,
+      createdAt: now,
+      updatedAt: now,
+    }
+    vaultState.entries.unshift(entry)
+    const ok = await saveVault()
+    if (!ok) {
+      const dropped = vaultState.entries.indexOf(entry)
+      if (dropped >= 0) vaultState.entries.splice(dropped, 1)
+      return 'error'
+    }
+    window.Utils.showToast(t('ext.capture.created', { title: entry.title }), 'success')
+    return 'created'
+  }
+
+  try { window.ExtBridge && window.ExtBridge.setCaptureHandler(handleExtensionCapture) } catch (e) {}
 
   async function saveEntry(payload) {
-    const { title, type, fields, tags, notes, customFields, totp, expiresAt } = payload
+    const { title, type, fields, tags, notes, customFields, totp, expiresAt, sensitive } = payload
     if (!title || !title.trim()) {
       window.Utils.showToast(t('toast.titleRequired'), 'error')
       return false
@@ -1500,6 +1607,8 @@ export function useVault() {
       updatedAt: now,
     }
     if (expiresAt) base.expiresAt = expiresAt
+    // 旅行模式（v1.1.3）：条目级敏感标记（未标记时不写入字段，保持数据结构干净）
+    if (sensitive) base.sensitive = true
     if (!vaultState.editingEntryId) base.createdAt = now
 
     const entry = { ...base, ...fields }
@@ -1618,6 +1727,9 @@ export function useVault() {
     restoreFilterFromHash,
     getFilteredEntries,
     getEntryById,
+    toggleTravelMode,
+    isTravelHidden,
+    visibleEntries,
     computeSidebarStats,
     getTopTags,
     selectEntry,

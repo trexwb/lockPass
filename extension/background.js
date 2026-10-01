@@ -382,6 +382,34 @@ async function activeTab() {
   return tabs && tabs[0] ? tabs[0] : null
 }
 
+// ── 自动捕获（v1.1.4） ─────────────────────────────
+// 登录 submit 凭据按 tab 暂存（仅 Service Worker 内存，15s TTL，不落盘）；
+// 新页面加载时内容脚本 LP_CAPTURE_CHECK 判定「已跳转或密码框消失」→ 弹保存浮层；
+// LP_CAPTURE_SAVE 经 LockPass 页面桥（lockpass-bridge → 页面 ExtBridge）入库，等待 capture-result。
+const CAPTURE_TTL_MS = 15000
+const capturePending = new Map() // tabId -> { payload, at }
+let captureResultWaiter = null // { resolve }：等待 LockPass 页面回传保存结果
+
+function captureRemember(tabId, payload) {
+  capturePending.set(tabId, { payload, at: Date.now() })
+  setTimeout(() => {
+    const cur = capturePending.get(tabId)
+    if (cur && cur.payload === payload) capturePending.delete(tabId)
+  }, CAPTURE_TTL_MS)
+}
+
+async function forwardCaptureToLockPassPage(payload) {
+  const tabs = await chrome.tabs.query({})
+  for (const tab of tabs) {
+    if (!tab.id) continue
+    try {
+      const r = await chrome.tabs.sendMessage(tab.id, { type: 'LP_CAPTURE_FORWARD', payload })
+      if (r && r.forwarded) return true
+    } catch (e) { /* 非 LockPass 页面无监听，跳过 */ }
+  }
+  return false
+}
+
 // ── 消息路由 ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
@@ -609,6 +637,79 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         fillCurrentTab(entryId).then(sendResponse)
       }
       return true // 异步响应
+    }
+
+    // ── 自动捕获（v1.1.4）─────────────────────────
+    // 登录表单 submit：暂存凭据
+    case 'LP_CAPTURE_PENDING': {
+      const tabId = sender.tab && sender.tab.id
+      if (!tabId || !msg.password) {
+        sendResponse({ ok: false })
+        break
+      }
+      captureRemember(tabId, {
+        href: msg.href || (sender.tab && sender.tab.url) || '',
+        domain: msg.domain || extractDomain(sender.tab && sender.tab.url),
+        username: msg.username || '',
+        password: msg.password,
+      })
+      sendResponse({ ok: true })
+      break
+    }
+
+    // 新页面加载：已跳转或密码框消失 → 下发待确认凭据（消费即删）
+    case 'LP_CAPTURE_CHECK': {
+      const tabId = sender.tab && sender.tab.id
+      const rec = tabId ? capturePending.get(tabId) : null
+      if (!rec || Date.now() - rec.at > CAPTURE_TTL_MS) {
+        if (rec) capturePending.delete(tabId)
+        sendResponse({ pending: null })
+        break
+      }
+      const navigated = rec.payload.href && rec.payload.href !== msg.href
+      if (navigated || !msg.hasPasswordField) {
+        capturePending.delete(tabId)
+        sendResponse({ pending: rec.payload })
+      } else {
+        // 仍停在原登录页（可能登录失败），不打扰
+        sendResponse({ pending: null })
+      }
+      break
+    }
+
+    // 浮层点击保存：转发到 LockPass 页面入库，等待结果回传
+    case 'LP_CAPTURE_SAVE': {
+      const waitResult = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          captureResultWaiter = null
+          resolve({ ok: false, error: 'timeout' })
+        }, 8000)
+        captureResultWaiter = {
+          resolve: (r) => {
+            clearTimeout(timer)
+            captureResultWaiter = null
+            resolve(r)
+          },
+        }
+      })
+      forwardCaptureToLockPassPage(msg.payload || {}).then((forwarded) => {
+        if (!forwarded) {
+          if (captureResultWaiter) {
+            captureResultWaiter.resolve({ ok: false, error: 'no-lockpass' })
+          }
+          return
+        }
+        waitResult.then(sendResponse)
+      })
+      return true // 异步响应
+    }
+
+    // LockPass 页面（经页面桥）回传的保存结果
+    case 'LP_CAPTURE_RESULT': {
+      const result = { ok: !!msg.ok, action: msg.action, error: msg.error }
+      if (captureResultWaiter) captureResultWaiter.resolve(result)
+      sendResponse({ ok: true })
+      break
     }
 
     default:

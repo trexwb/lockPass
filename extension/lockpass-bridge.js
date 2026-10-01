@@ -24,6 +24,9 @@ window.addEventListener('message', (e) => {
     forward({ type: 'LP_ENTRIES', entries: d.entries })
   } else if (d.type === 'password') {
     forward({ type: 'LP_PASSWORD', id: d.id, password: d.password })
+  } else if (d.type === 'capture-result') {
+    // 自动捕获（v1.1.4）：页面保存结果回传后台，唤醒 LP_CAPTURE_SAVE 的等待
+    forward({ type: 'LP_CAPTURE_RESULT', ok: d.ok, action: d.action, error: d.error })
   }
 })
 
@@ -35,6 +38,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg.type === 'LP_GET_PASSWORD') {
     window.postMessage({ __lpExt: true, type: 'get-password', token, id: msg.id }, '*')
     sendResponse({ ok: true })
+  } else if (msg.type === 'LP_CAPTURE_FORWARD') {
+    // 自动捕获（v1.1.4）：把网页登录凭据转发给页面 ExtBridge 入库；未解锁时拒收
+    if (!token) {
+      sendResponse({ forwarded: false })
+    } else {
+      window.postMessage({ __lpExt: true, type: 'capture', token, payload: msg.payload }, '*')
+      sendResponse({ forwarded: true })
+    }
   }
 })
 

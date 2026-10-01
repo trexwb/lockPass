@@ -9,7 +9,7 @@ import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { getSession, closeModal } = useVault()
+const { getSession, closeModal, isTravelHidden } = useVault()
 const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
@@ -27,10 +27,12 @@ const qrContainer = ref(null)
 const entry = ref(null)
 
 // 当前选中条目变化时刷新二维码（selectedEntry 存的是条目 id）
+// 旅行模式（v1.1.3）：敏感条目不可分享，视同无选中条目
 watch(
   () => vaultState.selectedEntry,
   id => {
-    entry.value = id ? vaultState.entries.find(e => e.id === id) || null : null
+    const found = id ? vaultState.entries.find(e => e.id === id) || null : null
+    entry.value = found && !isTravelHidden(found) ? found : null
     generate()
   },
   { immediate: true }

@@ -438,7 +438,12 @@ const detailCtxItems = computed(() => {
         class="detail-header"
         @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'title' }, { w: 280, h: 400 })"
       >
-        <h3 id="detail-title" :title="t('detail.tipTitleCtx')">{{ entry.title || t('detail.untitled') }}</h3>
+        <h3 id="detail-title" :title="t('detail.tipTitleCtx')">{{ entry.title || t('detail.untitled') }}<span
+            v-if="entry.sensitive"
+            class="detail-sensitive-badge"
+            :title="t('detail.sensitiveBadge')"
+            v-html="Icons?.shield?.(12)"
+        ></span></h3>
         <div class="detail-header-actions">
           <button
             v-if="!isRecycleView"

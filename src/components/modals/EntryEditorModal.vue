@@ -38,6 +38,8 @@ const fields = reactive({})
 const selectedTags = ref([])
 const notes = ref('')
 const expiresAt = ref('')
+// 旅行模式（v1.1.3）：条目级敏感标记
+const sensitive = ref(false)
 const newTag = ref('')
 const showFields = reactive({})
 
@@ -159,6 +161,7 @@ function currentFormObject() {
     fields: { ...fields },
     tags: selectedTags.value.slice(),
     notes: notes.value,
+    sensitive: sensitive.value,
     customFields: customFields.value.map(cf => ({ ...cf })),
     totp: totpSecret.value ? {
       secret: totpSecret.value.toUpperCase().replace(/\s/g, ''),
@@ -190,6 +193,7 @@ function fillFromEntry(e) {
   selectedTags.value = (e.tags || []).slice()
   notes.value = e.notes || ''
   expiresAt.value = e.expiresAt ? e.expiresAt.slice(0, 10) : ''
+  sensitive.value = !!e.sensitive
   customFields.value = (e.customFields || []).map(cf => ({ ...cf }))
   totpSecret.value = e.totp?.secret || ''
   totpIssuer.value = e.totp?.issuer || ''
@@ -210,6 +214,7 @@ function applyDraft(draft) {
   Object.keys(draft.fields || {}).forEach(k => { fields[k] = draft.fields[k] })
   selectedTags.value = (draft.tags || []).slice()
   if (draft.notes != null) notes.value = draft.notes
+  if (draft.sensitive != null) sensitive.value = !!draft.sensitive
   if (Array.isArray(draft.customFields)) {
     if (memHasInMemoryDraft(draftKey())) {
       customFields.value = draft.customFields.map(cf => ({ ...cf }))
@@ -425,6 +430,7 @@ async function onSave() {
     tags: selectedTags.value.slice(),
     notes: notes.value,
     expiresAt: expiresAt.value || '',
+    sensitive: sensitive.value,
     customFields: customFields.value.map(cf => ({ ...cf })),
     totp: totpSecret.value ? {
       secret: totpSecret.value.toUpperCase().replace(/\s/g, ''),
@@ -450,6 +456,7 @@ function snapshotForm() {
     fields: { ...fields },
     tags: selectedTags.value.slice(),
     notes: notes.value,
+    sensitive: sensitive.value,
     customFields: customFields.value.map(cf => ({ ...cf })),
     totp: totpSecret.value || null,
   })
@@ -515,7 +522,7 @@ onMounted(async () => {
   finalizeMount()
 })
 
-watch([title, entryType, fields, selectedTags, notes, customFields], () => persistDraft(), { deep: true })
+watch([title, entryType, fields, selectedTags, notes, sensitive, customFields], () => persistDraft(), { deep: true })
 
 /* ════════════════════════════════════════════════════════════════
    右键菜单（类型 Tab / 字段 / 生成面板 / 标签 / 保存 等）
@@ -1166,6 +1173,20 @@ const editorCtxItems = computed(() => {
             <span v-html="Icons?.close?.(14) || '×'"></span>
           </button>
         </div>
+      </div>
+
+      <!-- 敏感标记（旅行模式 v1.1.3） -->
+      <div class="form-group">
+        <label class="switch-row sensitive-switch-row" :title="t('editor.sensitiveHint')">
+          <span>
+            {{ t('editor.label.sensitive') }}
+            <span class="text-muted text-sm">{{ t('editor.sensitiveHint') }}</span>
+          </span>
+          <span class="switch" :class="{ on: sensitive }">
+            <input type="checkbox" v-model="sensitive" />
+            <span class="switch-slider"></span>
+          </span>
+        </label>
       </div>
 
       <!-- ══ TOTP 两步验证（v1.1.0） ══ -->

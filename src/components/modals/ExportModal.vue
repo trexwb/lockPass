@@ -10,11 +10,11 @@ import ModalBase from '../common/ModalBase.vue'
 import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { closeModal } = useVault()
+const { closeModal, isTravelHidden } = useVault()
 const { t } = useI18n()
 
 const exportScopeOptions = computed(() => [
-  { value: '', label: t('export.allEntries', { n: vaultState.entries.length }) },
+  { value: '', label: t('export.allEntries', { n: visibleList.value.length }) },
   ...availableTags.value.map(tag => ({ value: tag, label: tag })),
 ])
 
@@ -27,10 +27,13 @@ const exportTagFilter = ref('') // 空 = 全部
 
 const availableTags = computed(() => Object.keys(vaultState.tagDefs).sort())
 
+// 旅行模式（v1.1.3）：敏感条目不进入任何导出出口（.vault / CSV 均排除）
+const visibleList = computed(() => vaultState.entries.filter(e => !isTravelHidden(e)))
+
 // 按标签筛选后的条目
 const entriesToExport = computed(() => {
-  if (!exportTagFilter.value) return vaultState.entries
-  return vaultState.entries.filter(e => (e.tags || []).includes(exportTagFilter.value))
+  if (!exportTagFilter.value) return visibleList.value
+  return visibleList.value.filter(e => (e.tags || []).includes(exportTagFilter.value))
 })
 
 async function exportEncryptedVault() {
