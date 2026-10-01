@@ -280,3 +280,21 @@ body {
     transform: translateY(0);
   }
 }
+
+/* 本地文件页面信任开关（默认关，见 background.js isTrustedAppPageUrl） */
+.trust-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.trust-row input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}

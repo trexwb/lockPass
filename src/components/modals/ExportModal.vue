@@ -10,7 +10,7 @@ import ModalBase from '../common/ModalBase.vue'
 import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { closeModal, isTravelHidden } = useVault()
+const { closeModal, isTravelHidden, visibleEntries } = useVault()
 const { t } = useI18n()
 
 const exportScopeOptions = computed(() => [
@@ -28,7 +28,21 @@ const exportTagFilter = ref('') // 空 = 全部
 const availableTags = computed(() => Object.keys(vaultState.tagDefs).sort())
 
 // 旅行模式（v1.1.3）：敏感条目不进入任何导出出口（.vault / CSV 均排除）
-const visibleList = computed(() => vaultState.entries.filter(e => !isTravelHidden(e)))
+const visibleList = computed(() => visibleEntries())
+
+// 回收站与编辑历史同属 .vault 负载：敏感条目（含已软删的）本身被排除后，
+// 其回收站整条与历史快照（含改密前明文）也必须一并排除，否则解密即可还原。
+const travelHiddenIds = computed(() => new Set(
+  [...vaultState.entries, ...vaultState.deleted].filter(e => isTravelHidden(e)).map(e => e.id)
+))
+const visibleDeleted = computed(() => vaultState.deleted.filter(e => !isTravelHidden(e)))
+const visibleHistory = computed(() => {
+  const out = {}
+  Object.keys(vaultState.history).forEach(id => {
+    if (!travelHiddenIds.value.has(id)) out[id] = vaultState.history[id]
+  })
+  return out
+})
 
 // 按标签筛选后的条目
 const entriesToExport = computed(() => {
@@ -62,11 +76,12 @@ async function exportEncryptedVault() {
       {
         entries: entriesToExport.value,
         // 数据完整性修复：补齐 deleted（回收站）与 history（编辑历史），
-        // 与 saveVault 落盘负载对齐，确保 .vault 导出文件可完整还原
-        history: vaultState.history,
+        // 与 saveVault 落盘负载对齐，确保 .vault 导出文件可完整还原；
+        // 旅行模式开启时这三处按同一口径过滤（导出有意与完整落盘内容不同）
+        history: visibleHistory.value,
         tagDefs: vaultState.tagDefs,
         tags: vaultState.tags,
-        deleted: vaultState.deleted,
+        deleted: visibleDeleted.value,
       },
       vaultState.cryptoKey
     )

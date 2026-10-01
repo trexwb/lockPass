@@ -350,7 +350,8 @@ export function useVault() {
     await window.DBUtils.dbPut(window.DBUtils.STORE_VAULT, { id: 'main', iv, data })
     await window.FileSync.syncNow()
     // 保存完成后同步最新条目到 Tauri 本地服务（桌面版扩展自动填充用）
-    try { window.TauriServer && window.TauriServer.setEntries(vaultState.entries) } catch (e) {}
+    // 旅行模式：本地服务是扩展的数据来源之一，必须与页面桥同口径过滤敏感条目
+    try { window.TauriServer && window.TauriServer.setEntries(visibleEntries()) } catch (e) {}
   }
 
   function flushSaveResolvers() {
@@ -573,13 +574,13 @@ export function useVault() {
   async function afterUnlock() {
     closeModal()
     // 同步明文条目到 Tauri 本地服务（桌面版扩展自动填充用；内存级，不落盘）
-    try { window.TauriServer && window.TauriServer.setEntries(vaultState.entries) } catch (e) {}
+    try { window.TauriServer && window.TauriServer.setEntries(visibleEntries()) } catch (e) {}
     // 备份提醒 + 自动快照检查（BackupManager 内部容错，失败不阻断解锁）
     try { window.BackupManager && window.BackupManager.checkAfterUnlock() } catch (e) {}
-    // 密码过期提醒（v1.1.2）
+    // 密码过期提醒（v1.1.2）：旅行模式下敏感条目不参与提醒计数（否则暴露隐藏条目存在）
     try {
       const warnDays = loadSettingInt('lockpass_expiry_warn', 30)
-      const expiring = window.VaultAudit && window.VaultAudit.getExpiringEntries(vaultState.entries, warnDays)
+      const expiring = window.VaultAudit && window.VaultAudit.getExpiringEntries(visibleEntries(), warnDays)
       if (expiring) {
         if (expiring.expired.length > 0) {
           window.Utils.showToast(t('toast.expiryExpired', { n: expiring.expired.length }), 'warning', 6000)
@@ -866,6 +867,9 @@ export function useVault() {
     try { localStorage.setItem('lockpass_travel_mode', vaultState.travelMode ? '1' : '0') } catch (e) {}
     const hiddenCount = vaultState.entries.filter(e => e.sensitive).length
     if (vaultState.travelMode) {
+      // 正在编辑敏感条目时先关编辑器，避免明文表单面板残留并被继续保存
+      const editing = vaultState.editingEntryId && getEntryById(vaultState.editingEntryId)
+      if (editing && isTravelHidden(editing)) closeModal()
       const sel = vaultState.selectedEntry && getEntryById(vaultState.selectedEntry)
       if (sel && isTravelHidden(sel)) {
         closeDetail()
@@ -875,6 +879,8 @@ export function useVault() {
     } else {
       window.Utils.showToast(t('travel.off'), 'success')
     }
+    // 桌面版本地服务与页面桥共用同一口径，切换后立即重推
+    try { window.TauriServer && window.TauriServer.setEntries(visibleEntries()) } catch (e) {}
     return hiddenCount
   }
 
@@ -924,7 +930,8 @@ export function useVault() {
       if (type in typeMap) typeMap[type]++
       ;(e.tags || []).forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1 })
     })
-    stats.recycle = vaultState.deleted.length
+    // 回收站数量同口径过滤：列表已隐藏敏感条目，计数不能暴露差值
+    stats.recycle = vaultState.deleted.filter(e => !isTravelHidden(e)).length
     stats.byType = typeMap
     stats.byTag = tagCount
     return stats
@@ -1278,7 +1285,7 @@ export function useVault() {
 
   async function copyPassword(id, btnEl = null) {
     const entry = getEntryById(id)
-    if (!entry) return
+    if (!entry || isTravelHidden(entry)) return
     // 与原生 copyDetailPassword 一致：app 类型取 App ID（无则取公钥/密码）
     let val = entry.password
     if ((entry.entryType || 'website') === 'app') val = entry.appId || entry.password
@@ -1292,7 +1299,8 @@ export function useVault() {
   /* v1.1.1：密码 + TOTP 验证码组合复制（同周期内动态码一致，同步取值） */
   async function copyPasswordWithTotp(id, btnEl = null) {
     const entry = getEntryById(id)
-    if (!entry || !entry.totp || !entry.totp.secret || !window.TOTPUtils) {
+    if (!entry || isTravelHidden(entry)) return
+    if (!entry.totp || !entry.totp.secret || !window.TOTPUtils) {
       return copyPassword(id, btnEl)
     }
     let code = ''
@@ -1352,6 +1360,11 @@ export function useVault() {
   /* ── 模态框 ────────────────────────────────── */
 
   function openEntryModal(entryId = null, opts = null) {
+    // 旅行模式：敏感条目不可进入编辑器（关联跳转 / 快捷键等间接入口同样拦住）
+    if (entryId) {
+      const target = getEntryById(entryId)
+      if (target && isTravelHidden(target)) return
+    }
     vaultState.sidebarOpen = false
     vaultState.editingEntryId = entryId
     // 草稿生命周期 v1.1.12b：打开意图（presetType / draftAction）随模态框传递，
@@ -1515,7 +1528,7 @@ export function useVault() {
     const password = String((payload && payload.password) || '')
     if (!domain || !password) return 'error'
 
-    // 条目 url 域名与登录域名匹配（登录域 === 条目域 或 为其子域）
+    // 条目 url 主机名与登录主机名精确相等才算同一账号（不做子域归并）
     const hostOf = (u) => {
       try { return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname.toLowerCase() } catch (e) { return '' }
     }
@@ -1530,13 +1543,25 @@ export function useVault() {
         return 'exists'
       }
       const now = new Date().toISOString()
+      const prevPassword = dup.password
+      const prevUpdatedAt = dup.updatedAt
+      const prevHistory = vaultState.history[dup.id]
       recordEntryHistory(dup.id, { ...dup }, { ...dup, password }, now)
       dup.password = password
       dup.updatedAt = now
       vaultState.entries = [...vaultState.entries]
       const ok = await saveVault()
-      if (!ok) return 'error'
-      window.Utils.showToast(t('ext.capture.updated', { title: dup.title || domain }), 'success')
+      if (!ok) {
+        // 与 created 分支对称：写盘失败回滚内存（含密码修改记录），避免下次保存把未确认密码刷落盘
+        dup.password = prevPassword
+        dup.updatedAt = prevUpdatedAt
+        if (prevHistory) vaultState.history[dup.id] = prevHistory
+        else delete vaultState.history[dup.id]
+        return 'error'
+      }
+      // 旅行模式下命中隐藏条目时只报域名，不泄漏敏感条目标题
+      const shownTitle = isTravelHidden(dup) ? domain : (dup.title || domain)
+      window.Utils.showToast(t('ext.capture.updated', { title: shownTitle }), 'success')
       return 'updated'
     }
 

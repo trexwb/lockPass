@@ -57,8 +57,9 @@
     if (!token || d.token !== token) return
 
     if (d.type === 'capture') {
-      // 扩展自动捕获（v1.1.4）：登录凭据入库，结果经 capture-result 回传扩展
-      const done = (ok, extra) => post('capture-result', Object.assign({ token, ok }, extra || {}))
+      // 扩展自动捕获（v1.1.4）：登录凭据入库，结果按同一 requestId 回传扩展
+      if (!d.requestId) return
+      const done = (ok, extra) => post('capture-result', Object.assign({ token, requestId: d.requestId, ok }, extra || {}))
       try {
         Promise.resolve(captureHandler(d.payload || {}))
           .then((action) => done(true, { action }))

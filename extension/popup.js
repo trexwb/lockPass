@@ -99,6 +99,7 @@ async function getState() {
 }
 
 function renderState(state) {
+  syncTrustRow(state)
   // 配对进行中：显示 nonce，等待桌面端确认
   if (state.pairing) {
     showState(statePairing)
@@ -191,6 +192,29 @@ $('btn-all').addEventListener('click', () => {
 })
 
 search.addEventListener('input', () => render(filterEntries(search.value)))
+
+/* 「信任本地页面」开关：默认关。
+   捕获凭据只投递给后台按浏览器提供的 sender.url 判定的应用页面；file:// 页面之间
+   浏览器无法区分，故双击 dist/index.html 的用法需用户在此显式放行一次（storage.local 持久）。 */
+const trustRow = $('trust-file-row')
+const trustFile = $('trust-file')
+
+function syncTrustRow(state) {
+  if (!state || typeof state.trustFilePages !== 'boolean') return
+  trustFile.checked = state.trustFilePages
+  // 仅在确实用到本地页面（或已放行）时占位，线上 / localhost 用户看不到该开关
+  trustRow.classList.toggle('hidden', !state.trustFilePages && !state.fileAppSeen)
+}
+
+trustFile.addEventListener('change', async () => {
+  const resp = await chrome.runtime.sendMessage({ type: 'POPUP_SET_TRUST', value: trustFile.checked })
+  if (!resp || !resp.ok) {
+    trustFile.checked = !trustFile.checked
+    setStatus('设置失败，请重试', 'warn')
+    return
+  }
+  setStatus(trustFile.checked ? '已允许本地页面接收凭据' : '已禁止本地页面接收凭据', 'warn')
+})
 
 async function init() {
   const state = await getState()

@@ -174,7 +174,9 @@ function getVaultState() {
  */
 function getRelatedEntries(entry) {
   const state = getVaultState();
-  const entries = state && Array.isArray(state.entries) ? state.entries : [];
+  const all = state && Array.isArray(state.entries) ? state.entries : [];
+  // 旅行模式：敏感条目不参与关联计算，避免其标题/账号经关联面板泄漏
+  const entries = state && state.travelMode ? all.filter(e => !e.sensitive) : all;
   if (!entry || entries.length === 0) return [];
 
   const self = collectEntryKeys(entry);

@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-10-01 · 旅行模式 / 扩展捕获安全审查修复（基准 v1.1.2，不推进版本号）
+
+同日对同一批功能（旅行模式、扩展自动捕获）的代码审查追加修复，按规范不推进版本号（`npm run version:check` 仍为 v1.1.2）。
+
+### 修复
+
+- **扩展桥接凭据可被任意本地页面窃取（extension/background.js、lockpass-bridge.js、content.js）**：捕获凭据、条目列表与密码取回此前按 `chrome.tabs.query({})` 向所有标签页广播，谁先应答 `forwarded/ok` 就把数据交给谁；而页面桥注入 `file:///*`，任意本地 HTML 只需自报一个 `ready` 令牌即可冒充 LockPass 应用页面，收到其它站点登录时用户点「保存」的**明文密码**（反向还能污染后台 `passwordCache`）。现改为：后台维护 `appBridgeTabs` 登记表，登记与投递均以浏览器注入、页面无法伪造的 `sender.url` 命中应用地址白名单（GitHub Pages `/lockPass/`、`localhost:1420`、`127.0.0.1:1420`）为准，取消全量广播；页面桥在检测到应用标记 `data-lockpass-app` 前完全静默。`file://` 双击用法因本地页面之间无法区分，默认拒绝投递，需用户在扩展弹窗显式勾选「允许本地页面接收捕获凭据」（`storage.local` 持久，关闭时立即回收已登记的本地 tab；仅当探测到以 `file://` 打开的 LockPass 页面时才显示该开关）
+- **浮层保存的凭据不再采信页面提交的 payload（extension/background.js）**：`LP_CAPTURE_SAVE` 改为按标签页取后台此前下发的待确认记录（含 15s TTL 校验）作为数据来源，避免任意站点脚本直接 `sendMessage` 伪造凭据写入用户库
+- **桌面版旅行模式失效（useVault.js）**：`TauriServer.setEntries()` 两处（解锁、保存后）由原始 `vaultState.entries` 改为 `visibleEntries()`，并在切换旅行模式后立即重推——此前敏感条目（含密码）仍会整份同步进本地 HTTP 服务供扩展填充，与页面桥口径矛盾
+- **`.vault` 导出经回收站与编辑历史泄漏（ExportModal.vue）**：导出负载中 `deleted` 与 `history` 未过滤，敏感条目在回收站里的整条内容、以及编辑历史快照中改密前的明文密码均可随导出文件解密还原。现按同一旅行模式口径过滤（含已软删的敏感条目，其历史按条目 id 一并剔除）
+- **关联密码绕过旅行模式（core/related.js、DetailPanel.vue）**：`getRelatedEntries` 读取未过滤的全量条目，敏感条目标题与账号会出现在关联面板；`selectRelated()` 直接给 `vaultState.selectedEntry` 赋值，绕过 `selectEntry` 守卫，点击即可打开敏感条目详情并复制。现在关联计算前置过滤敏感条目，`selectRelated` 统一走 `selectEntry()`；`openEntryModal(entryId)`、`copyPassword(id)`、`copyPasswordWithTotp(id)` 同样加守卫，覆盖键盘与右键菜单等间接入口
+- **密码健康报告泄漏（SettingsModal.vue）**：审计输入由全量条目改为 `visibleEntries()`（弱 / 复用 / 过期分组会带出敏感条目标题并暴露跨条目密码复用关系），「关于 → 条目数」同步改为可见条目计数
+- **捕获更新密码写盘失败不回滚 + 提示泄漏标题（useVault.js）**：`handleExtensionCapture` 的 updated 分支先改内存再 `saveVault()`，失败时仅返回 error，内存与磁盘分叉且后续任意保存会把未确认的新密码刷落盘（created 分支本就有回滚）。现对称回滚密码 / `updatedAt` / 该条编辑历史；旅行模式下命中隐藏条目时提示只报域名，不再打出敏感条目标题
+- **开启旅行模式时编辑器与草稿不关闭（useVault.js、EntryEditorModal.vue）**：正在编辑敏感条目时开启开关，明文表单面板会保留且仍可保存；现随开关一并关闭编辑器。编辑器内把条目标为敏感时不再落草稿骨架（并清掉既有草稿），避免刷新前 `flushDrafts` 把其标题 / 账号写进 sessionStorage
+- **并发保存结果互相覆盖（extension/background.js）**：保存结果等待由单槽 `captureResultWaiter` 改为按 `requestId` 的 `Map`（requestId 贯穿 background → 页面桥 → `ExtBridge` → `capture-result` 回传），两个站点同时点保存不再让先超时的那次误报「保存失败」
+- **隐藏条目计数泄漏（useVault.js）**：侧边栏回收站数量与解锁时的过期提醒 toast 改用过滤后集合，列表已隐藏敏感条目而计数暴露差值的问题消除
+
+### 说明
+
+- 页面桥与后台的应用地址白名单为 `extension/background.js` 的 `isTrustedAppPageUrl()`；如自建部署（非 GitHub Pages / 非 1420 端口）需同步该白名单
+- `file://` 本地页面无法与攻击性本地 HTML 区分，故捕获投递默认关闭；这是产品级取舍，双击用法需一次性勾选信任开关
+- 浏览器回归：旅行模式开关列表 3/5 条与统计同口径、健康报告 4→3 条、关联面板在开启后整体消失（关闭后重现 Bank-Secret）、捕获 created / updated / exists 与 `requestId` 回传、命中隐藏条目时提示仅报域名、无 `requestId` 的 capture 消息被拒；`npm run vite:build` 与 `npm run version:check`（11 处 v1.1.2）通过
+
+---
+
 ## 2026-10-01 · v1.1.2
 
 ### 新增

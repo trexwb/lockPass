@@ -17,7 +17,7 @@ import { saveDraft as memSaveDraft } from '../../composables/editorDraftStore.js
 
 const {
   getEntryById, closeDetail, toggleFavorite, copyPassword, copyPasswordWithTotp, copyField,
-  softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
+  softDelete, permanentDelete, restoreEntry, openEntryModal, openModal, selectEntry,
   rollbackEntry, snapDiffers, describeHistoryFields, saveVault,
   toggleDetailPassword, revealDetailPasswordOnce,
 } = useVault()
@@ -162,7 +162,8 @@ const relatedEntries = computed(() => {
 })
 
 function selectRelated(id) {
-  vaultState.selectedEntry = id
+  // 走 selectEntry：旅行模式下敏感条目不可选中（直接赋值会绕过守卫）
+  selectEntry(id)
 }
 
 function onDelete() {

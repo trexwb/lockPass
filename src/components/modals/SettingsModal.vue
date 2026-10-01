@@ -14,7 +14,7 @@ import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 
-const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession, selectEntry, openEntryModal } = useVault()
+const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession, selectEntry, openEntryModal, visibleEntries } = useVault()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -480,7 +480,7 @@ function formatBytes(bytes) {
 
 async function refreshDataInfo() {
   const info = dataInfo.value
-  info.entries = t('data.info.entries', { n: (vaultState.entries || []).length })
+  info.entries = t('data.info.entries', { n: visibleEntries().length })
   info.tags = t('data.info.tags', { n: (vaultState.tags || []).length })
 
   // 数据大小：vault 加密负载（密文 base64 解码后的字节数）
@@ -534,8 +534,8 @@ async function refreshDataInfo() {
 /* ── 密码健康审计 ── */
 const auditResult = computed(() => {
   if (!window.VaultAudit) return null
-  const entries = (vaultState.entries || []).filter(e => !e.deleted)
-  return window.VaultAudit.auditVault(entries)
+  // 旅行模式：敏感条目不参与健康报告（弱/复用分组会带出标题与复用关系）
+  return window.VaultAudit.auditVault(visibleEntries())
 })
 
 const auditScoreColor = computed(() => {

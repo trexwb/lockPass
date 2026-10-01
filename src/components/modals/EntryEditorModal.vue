@@ -151,6 +151,12 @@ let _mounting = true
 
 function persistDraft() {
   if (_mounting) return
+  // 旅行模式：编辑中标为敏感的条目不落草稿（并清掉既有草稿），
+  // 否则刷新前 flushDrafts 会把其标题/账号骨架写进 sessionStorage
+  if (vaultState.travelMode && sensitive.value) {
+    memClearDraft(draftKey())
+    return
+  }
   memSaveDraft(draftKey(), currentFormObject())
 }
 

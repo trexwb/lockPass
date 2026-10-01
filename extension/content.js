@@ -518,6 +518,21 @@ function isLockPassAppPage() {
   try { return document.documentElement.hasAttribute('data-lockpass-app') } catch (e) { return false }
 }
 
+/* 本地文件方式打开的 LockPass 页面：通知后台，弹窗据此显示「信任本地页面」开关。
+   file:// 页面之间浏览器无法区分，凭据投递默认整体拒绝（见 background.js），
+   故双击 dist/index.html 的用法需要用户显式放行一次。 */
+function announceFileAppPage(tries) {
+  if (window !== window.top) return
+  if (!location.protocol.startsWith('file')) return
+  if (isLockPassAppPage()) {
+    try { chrome.runtime.sendMessage({ type: 'LP_FILE_APP_SEEN' }, () => void chrome.runtime.lastError) } catch (e) { /* 忽略 */ }
+    return
+  }
+  if (tries <= 0) return
+  setTimeout(() => announceFileAppPage(tries - 1), 400)
+}
+announceFileAppPage(20)
+
 /** 在指定范围（form 优先，回退全文档）内找已填值的密码框 + 用户名框 */
 function findCaptureInputs(root) {
   let pw = null
