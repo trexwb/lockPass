@@ -473,6 +473,81 @@ async function forwardCaptureToLockPassPage(payload, requestId) {
   return false
 }
 
+/* 桌面版捕获入库（v1.1.2 未闭环项补齐）：LockPass 跑在 Tauri 窗口里没有页面桥，
+   改走本地 HTTP 通道 —— POST /capture 交给桌面端确认（用户必须在桌面窗口点「保存」才入库），
+   再轮询 /capture/status 拿结果回浮层。等待上限 45s：桌面确认要等人操作，
+   比页面桥的 8s 宽松；Rust 侧槽位 60s 超时自动丢弃凭据。 */
+const CAPTURE_DESKTOP_TIMEOUT_MS = 45000
+const CAPTURE_DESKTOP_POLL_MS = 700
+// MV3 后台 30s 空闲即回收，而轮询里的 fetch 不算扩展事件（在途的 sendResponse 也不保证续命）：
+// 等待期间每 20s 真走一次扩展 API 把空闲计时器顶回去，否则后台被杀后浮层永远收不到结果
+const CAPTURE_SW_KEEPALIVE_MS = 20000
+
+async function captureViaLocalServer(payload) {
+  await checkHttpStatus() // 感知桌面端刚解锁/刚锁定
+  if (!httpReadyFlag) return { ok: false, error: 'no-lockpass' }
+  const { [STORAGE_TOKEN_KEY]: token } = await chrome.storage.local.get(STORAGE_TOKEN_KEY)
+  if (!token) return { ok: false, error: 'no-lockpass' }
+  let posted
+  try {
+    posted = await fetch(LOCAL_BASE + '/capture', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        domain: payload.domain || '',
+        username: payload.username || '',
+        password: payload.password || '',
+      }),
+    })
+  } catch (e) {
+    return { ok: false, error: 'no-lockpass' }
+  }
+  if (posted.status === 401 || posted.status === 409) {
+    // 401：token 失效（桌面端重置过）→ 清掉本地 token；409：桌面端未解锁
+    if (posted.status === 401) {
+      httpPaired = false
+      httpReadyFlag = false
+      await chrome.storage.local.remove(STORAGE_TOKEN_KEY)
+    }
+    return { ok: false, error: 'desktop-locked' }
+  }
+  if (!posted.ok) return { ok: false, error: 'desktop-error' }
+  const data = await posted.json().catch(() => ({}))
+  if (!data.id) return { ok: false, error: 'desktop-error' }
+
+  const deadline = Date.now() + CAPTURE_DESKTOP_TIMEOUT_MS
+  let lastKeepAlive = Date.now()
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, CAPTURE_DESKTOP_POLL_MS))
+    if (Date.now() - lastKeepAlive >= CAPTURE_SW_KEEPALIVE_MS) {
+      lastKeepAlive = Date.now()
+      // 扩展 API 调用才算后台活动：顺带确认 token 还在（桌面端重置过就无需再等）
+      const { [STORAGE_TOKEN_KEY]: live } = await chrome.storage.local.get(STORAGE_TOKEN_KEY)
+      if (!live) return { ok: false, error: 'desktop-locked' }
+    }
+    let resp
+    try {
+      resp = await fetch(LOCAL_BASE + '/capture/status?id=' + encodeURIComponent(data.id), {
+        headers: { Authorization: 'Bearer ' + token },
+        cache: 'no-store',
+      })
+    } catch (e) {
+      continue // 桌面端瞬不可达，继续等
+    }
+    if (resp.status === 401) return { ok: false, error: 'desktop-locked' }
+    if (resp.status === 404 || resp.status === 410) return { ok: false, error: 'desktop-error' }
+    const d = await resp.json().catch(() => ({}))
+    if (d.status === 'created' || d.status === 'updated' || d.status === 'exists') {
+      return { ok: true, action: d.status }
+    }
+    if (d.status === 'rejected') return { ok: false, error: 'rejected' }
+    if (d.status === 'error') return { ok: false, error: 'desktop-error' }
+    // pending / 其它：继续等用户确认
+  }
+  return { ok: false, error: 'desktop-timeout' }
+}
+
 // ── 消息路由 ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
@@ -796,8 +871,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         captureWaiters.set(requestId, { resolve, timer })
       })
       forwardCaptureToLockPassPage(issued.payload, requestId).then((forwarded) => {
-        if (!forwarded) settleCaptureWaiter(requestId, { ok: false, error: 'no-lockpass' })
-        else waitResult.then(sendResponse)
+        if (forwarded) {
+          waitResult.then(sendResponse)
+          return
+        }
+        // 没有可用的 LockPass 页面桥：放弃页面侧等待，改走桌面版本地服务通道
+        settleCaptureWaiter(requestId, { ok: false, error: 'no-lockpass' })
+        captureViaLocalServer(issued.payload).then(sendResponse)
       })
       return true // 异步响应
     }

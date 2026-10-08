@@ -4,9 +4,99 @@
 
 ---
 
-## 2026-10-01 · 旅行模式 / 扩展捕获安全审查修复（基准 v1.1.2，不推进版本号）
+## 2026-10-08 · v1.1.3
 
-同日对同一批功能（旅行模式、扩展自动捕获）的代码审查追加修复，按规范不推进版本号（`npm run version:check` 仍为 v1.1.2）。
+用户明确指示将本日的三批改动归入修订版本发布（PATCH 自增：v1.1.2 → v1.1.3）。下方同日三条记录撰写时按「同类问题延续修复不推进版本号」规则标注，正文依「发布日志只增不改」原则保留原样，版本归属以本节为准。
+
+### 包含内容
+
+- 旅行模式与扩展自动捕获的代码审查跟进修复 9 项（见下「旅行模式 / 扩展捕获安全审查修复」）
+- §5 / §6 两处未闭环口子（见下「两处未闭环口子」）：QR 扫码导入的 TOTP 绑定目标改为只在旅行模式可见集合内挑选；桌面版本地 HTTP 通道接入扩展自动捕获
+- 四项遗留收尾（见上「收尾四项遗留」）：删除已排除的密钥文件双因素孤立源码；待确认捕获槽位支持并发；扩展等待期间顶住 MV3 后台回收并给浮层加兜底；`server.rs` 抽出可注入事件发射后补 13 项 `cargo test`
+
+### 用户可见变化
+
+- **桌面版可用浏览器扩展自动保存密码**：扩展浮层点「保存」后，凭据经 `127.0.0.1:33555` 本地通道交给桌面窗口，仍必须在桌面窗口点「保存」才入库；首次使用需在扩展弹窗点「连接桌面版 LockPass」并核对桌面窗口「允许配对」上的一致数字
+- 扩展浮层新增失败文案：桌面端未解锁 / 45s 内未点保存 / 已在桌面版忽略 / 未收到保存结果（50s 兜底后按钮恢复可点，不再永久停在「保存中…」）
+- 旅行模式开启时，扫码导入的 TOTP 只会绑到可见条目，不会静默改写被隐藏的敏感条目
+- 密钥文件双因素的未接线源码被删除；该功能从未在发布版本中提供入口，**不影响任何已有保险箱数据与解锁方式**
+
+### 边界与不变量
+
+- 明文密码不经 Rust 留存：`POST /capture` 只登记 `{id, created_at, status}`，凭据随 `lockpass:capture-request` 事件交给窗口，槽位 60s 过期即丢弃，锁定即清空
+- 同时待确认最多 4 个槽位，按 id 独立回报、各自一次性领取；超出上限挤掉最旧一次并让其轮询得到明确失败
+- 扩展捕获凭据只投递给浏览器提供、页面无法伪造的 `sender.url` 命中白名单的应用页面；`file://` 本地页面需在扩展弹窗显式放行
+- 无数据模型变更，v1.1.0 ~ v1.1.2 的保险箱可直接升级
+
+### 文档
+
+- 面向用户的 GitHub Release 正文另存为 `docs/version/RELEASE-v1.1.3-github.md`（含产物清单、扩展包 Pages 地址、macOS 首次打开需执行的 `xattr -dr com.apple.quarantine "/Applications/LockPass.app"`），`docs/version/README.md` 索引与「GitHub Release 正文单独成文」约定同步
+- 同步补齐此前缺失的用户文档：`README.md`（功能清单补 TOTP / 健康报告 / 过期提醒 / 旅行模式 / 自动捕获，数据存储与安全特性补旅行模式与捕获确认，扩展章节补自动捕获与连接桌面版）、`extension/README.md`（自动捕获与桌面配对流程、失败文案对照、权限与安全模型更正为 `activeTab` + `storage` + 本机 host 权限、限制更新至 v1.1.3）、`docs/spec.md`（§3.16 补捕获与桌面通道、新增 §3.21 旅行模式、§8 未来规划勾选状态更正为实际落地情况）、`docs/lockpass-扩展使用指南.md`（本地服务接口表补 `/capture` 与 `/capture/status`）
+
+### 勘误
+
+- 下方同日「两处未闭环口子」条目把 `/capture/status` 的等待态写成「未决 202」，实际实现（`src-tauri/src/server.rs`）对 `pending` 返回 **200 `{status:"pending"}`**，扩展据此继续轮询；历史条目正文依「只增不改」保留原样，以本节为准
+
+### 验证
+
+- `cargo test --lib` 13/13（3 轮复跑一致）、`cargo check` 无 warning
+- `npm run vite:build` 通过（`index.js` 643.72 kB / gzip 199.75 kB），`dist/sw.js` 缓存名 `lockpass-v1.1.3`
+- `npm run version:set 1.1.3` 覆盖 8 文件 9 处，`npm run version:check` 11 处一致（含 `extension/manifest.json` 随主应用同步至 1.1.3）
+- 浏览器回归（`file://` dist，测试库用后即毁）：创建保险箱 → 3 笔并发捕获（恰好 3 次确认框，`created / created / rejected`）→ 刷新解锁读回 2 条条目；扩展浮层三条回调路径（永不返回 / `lastError` / 正常回 `created`）用一次性夹具验证
+- 未覆盖：真实 Tauri 窗口的 GUI 端到端（macOS WKWebView 无 CDP，解锁与配对确认无法程序化注入）；成功腿由「真实 `127.0.0.1` 监听 + 真实 `route()` 分派」的 Rust 用例承担
+
+---
+
+## 2026-10-08 · 收尾四项遗留（基准 v1.1.2，不推进版本号）
+
+同日 §5/§6 同类问题的延续收尾，按规范不推进版本号（`npm run version:check` 仍为 v1.1.2）。
+
+### 新增
+
+- **桌面本地服务首次有测试覆盖（src-tauri/src/server.rs）**：`route()` 原先直接依赖具体类型 `AppHandle`（`tauri::Emitter` 含泛型方法，非 object-safe），无法在测试里替换，两条 `/capture` HTTP 腿此前只有 `cargo check` + 人工审查。现把事件发射抽成可注入的 `EventSender` 闭包、worker 循环抽成 `spawn_workers`，`cargo test --lib` 新增 13 项用例，其中多数在 `127.0.0.1` 随机端口上起**真实 tiny_http 监听**并用裸 TCP 发 HTTP 请求，覆盖：无令牌 / 错令牌 401、已配对未解锁 409、载荷校验 400（空域名、域名含空白或 `/`、空口令、账号与口令含控制字符、非法 JSON）、槽位登记与 `lockpass:capture-request` 事件字段（域名归一化小写去空白）、槽位内不含明文、`pending → 回报 → 一次性领取 → 再轮询 404`、未知 id 404、TTL 过期 410 且丢弃、并发两笔各自独立回报、超过上限淘汰最旧、锁定即清空待确认，以及「配对 → 领取令牌 → 用该令牌成功捕获」的真实串联。3 轮复跑无抖动
+
+### 修复
+
+- **待确认捕获槽位并发互相顶掉（server.rs）**：`/capture` 只保留单槽，两个标签页几乎同时点保存时，先发起的那次轮询会因 id 已被覆盖而拿到 404，浮层误报「保存失败」而用户其实只在桌面端看到一个确认框。现改为最多 4 个槽位（`MAX_PENDING_CAPTURES`）按 id 独立登记、独立回报、各自一次性领取，超出上限挤掉最旧槽位并让该次轮询得到 404 明确失败；每次登记前先清超时槽位，`lock()` 清空全部
+- **MV3 后台在等待桌面确认期间被回收（extension/background.js、content.js）**：桌面通道要等用户在桌面窗口点「保存」，扩展轮询上限 45s，而后台 30s 空闲即被回收且纯 `fetch` 不算扩展事件——后台一旦被杀，`sendResponse` 通道随之消失，浮层永远停在「保存中…」且按钮禁用。现在轮询每 20s 真走一次 `chrome.storage.local.get`（顺带确认令牌仍在，桌面端重置过就立即结束等待）顶回空闲计时器；浮层再加 50s 兜底 `watchdog` 恢复按钮并提示「未收到保存结果：请在桌面版 LockPass 窗口查看是否已入库」，`settled` 标志保证兜底与迟到结果不会互相覆盖
+- **`chrome.runtime.lastError` 未消费（extension/content.js）**：后台不可达时回调收到 `lastError` 而此前未读取，除误报文案外还会在控制台留下 Unchecked runtime.lastError。现显式分支处理并给出通用失败文案
+
+### 清理
+
+- **删除已排除功能的孤立源码（src/core/keyfile.js、src/main.js、src/core/crypto.js）**：密钥文件双因素已于同日判定排除，其零调用方实现随之删除——`window.KeyFileUtils`（`.key` 文件生成 / 解析 / SHA-256 指纹）整模块、`main.js` 的 import，以及 `CryptoUtils.composeMaterial` / `deriveKeyMaterial` / `deriveKeyBytesMaterial` 三个派生函数与导出。删除后 `CryptoUtils` 仅剩在用的 12 个成员，`window.KeyFileUtils` 不再存在
+
+### 说明
+
+- 回归：`cargo test --lib` 13/13（3 轮复跑一致）、`cargo check` 无 warning、`npm run vite:build` 通过（645.52 → 643.72 kB）、`node --check` 扩展两文件通过、`npm run version:check` 11 处 v1.1.2
+- 前端回归（`file://` dist 新建测试库，验证删码后的加解密链路）：创建保险箱 → 3 笔并发捕获（恰好 3 次确认框，`created / created / rejected`，被拒站点未落库）→ 刷新后用同一主密码解锁并读回 2 条条目；测试库已清毁，未留数据
+- 扩展浮层三条回调路径用一次性夹具验证（假 `chrome` + 压缩定时器，验证后已删除）：回调永不返回 → 命中 50s 兜底且迟到结果不覆盖文案；回调带 `lastError` → 通用失败且按钮恢复；正常回 `created` → 成功文案并 1.6s 自动收起
+- 后台保活本身（`chrome.storage.local.get` 顶回空闲计时器）无法在无扩展宿主的环境验证，验证的是其后果（浮层不再可能永久卡住）
+- 真实 Tauri 窗口的端到端（窗口内输入主密码解锁 + 点「允许」配对）仍无可编程注入点（macOS WKWebView 无 CDP，IPC 只能从 webview 内部发起），故成功腿以「真实监听 + 真实 route 分派」的 Rust 用例覆盖，不含 GUI 交互
+
+---
+
+## 2026-10-08 · 旅行模式 / 扩展捕获的两处未闭环口子（基准 v1.1.2，不推进版本号）
+
+延续同日的安全审查跟进（属 §5 旅行模式 / §6 扩展自动捕获的同类问题补全，按规范不推进版本号，`npm run version:check` 仍为 v1.1.2）。
+
+### 修复
+
+- **QR 扫码导入的 TOTP 绑定目标未过滤旅行模式隐藏条目（QrImportModal.vue）**：`pickBindingCandidate()` 从全量 `vaultState.entries` 挑选「无 TOTP 且无敏感数据」的条目，开启旅行模式时扫描到的密钥可能落到已被隐藏的敏感条目上——用户看不见这条改动，等同于静默改写隐藏数据。现改为只在 `visibleEntries()` 集合内挑选；`autoImport()` 的合并写盘路径仍按全量集合，避免覆盖隐藏条目而丢数据
+- **桌面版本地 HTTP 通道未接入扩展自动捕获（server.rs / lib.rs / tauri-server-bridge.js / useVault.js / extension/background.js / content.js）**：桌面端没有页面桥时，扩展浮层点「保存」只会得到「请先打开并解锁 LockPass 页面」。现补齐整链路：Rust 新增 `POST /capture`（Bearer 令牌校验 + 未解锁返回 409 + 域名/账号/密码长度与控制字符校验），只登记 `{id, created_at, status}` 的待确认槽位（**明文不经 Rust 内存保留**，凭据随 `lockpass:capture-request` 事件交给窗口；槽位 60s TTL，锁定即清空），`GET /capture/status?id=` 一次性领取结果（未决 202 / 过期 410 / id 非法 404）；新增 `server_capture_report` 命令回报 `created | updated | exists | error | rejected`；扩展侧在无可用页面桥且本地服务就绪时改走 HTTP 通道并轮询结果回浮层，45s 超时与「桌面端未解锁 / 已超时 / 已取消」分别给出对应文案。入库仍必须经桌面窗口的用户确认，绝不自动写盘
+- **捕获确认随 `useVault()` 实例数重复注册（useVault.js）**：`lockpass:capture-request` 监听写在 composable 函数体内，而 `useVault()` 被 20 余个组件调用，一次捕获会弹出多个确认框并重复回报结果。现把监听与串行链收敛到模块作用域（只注册一次），确认逻辑由最新实例提供，与既有 `activityResetFn` 同一约定
+
+### 说明
+
+- 授权依据仍是已配对的一次性 Bearer 令牌（扩展身份无法在 HTTP 层自证 origin），配对流程不变
+- 桌面窗口确认要等人操作，扩展侧等待上限取 45s（短于 Rust 槽位 60s TTL）；若这期间 MV3 Service Worker 被回收，浮层只会显示「保存失败，请稍后重试」，桌面端确认后的入库不受影响（无数据丢失，重试即可）
+- 浏览器回归（`file://` dist）：4 次捕获请求 → 恰好 4 次确认框、回报依次为 `created / updated / exists / rejected`，被拒绝的站点未落库；缺 `password` / 缺 `id` / 空域名的畸形事件被忽略且不留槽；未解锁态直接回报 `rejected` 且不弹框；otpauth 二维码在旅行模式开启时把 TOTP 绑到可见条目、隐藏敏感条目仍无 TOTP；`npm run vite:build`、`cargo check`、`node --check`（扩展两个文件 + 桥）通过
+- 回归覆盖了「事件 → 确认 → 入库 → 回报」的前端链路（以 stub 的 `window.TauriServer.reportCapture` 记录回报）；`POST /capture` 与 `/capture/status` 两条 HTTP 腿经代码审查 + 编译校验，未在真实 Tauri 窗口内做端到端联调
+
+---
+
+## 2026-10-08 · 旅行模式 / 扩展捕获安全审查修复（基准 v1.1.2，不推进版本号）
+
+对 v1.1.2 刚发布的旅行模式与扩展自动捕获做代码审查后的同类问题跟进修复，按规范不推进版本号（`npm run version:check` 仍为 v1.1.2）。
 
 ### 修复
 
@@ -20,6 +110,12 @@
 - **开启旅行模式时编辑器与草稿不关闭（useVault.js、EntryEditorModal.vue）**：正在编辑敏感条目时开启开关，明文表单面板会保留且仍可保存；现随开关一并关闭编辑器。编辑器内把条目标为敏感时不再落草稿骨架（并清掉既有草稿），避免刷新前 `flushDrafts` 把其标题 / 账号写进 sessionStorage
 - **并发保存结果互相覆盖（extension/background.js）**：保存结果等待由单槽 `captureResultWaiter` 改为按 `requestId` 的 `Map`（requestId 贯穿 background → 页面桥 → `ExtBridge` → `capture-result` 回传），两个站点同时点保存不再让先超时的那次误报「保存失败」
 - **隐藏条目计数泄漏（useVault.js）**：侧边栏回收站数量与解锁时的过期提醒 toast 改用过滤后集合，列表已隐藏敏感条目而计数暴露差值的问题消除
+
+### 文档
+
+- **计划调整：移除「密钥文件双因素」（原 Phase 2 §7 / v1.1.5）**：经评估判定不必要——第二因子的收益不抵代价（密钥文件丢失即保险箱永久无法解锁，离线无找回路径；浏览器版每次刷新还须重新选择 `.key` 文件，与「双击即用、低摩擦」定位冲突）。`docs/v1.1-plan.md` 删除该项章节、计入 §三 已排除项与 §四 总览空缺，Phase 2 范围收敛为 v1.1.3 / v1.1.4 两项。已就位的 `src/core/keyfile.js`（`window.KeyFileUtils`）与 `CryptoUtils.composeMaterial/deriveKeyMaterial/deriveKeyBytesMaterial` 不再接线，当前无调用方，可随后续清理删除
+- **计划调整：移除「演示模式」（原 Phase 3 §12）**：经评估判定不必要——获客型功能与安全定位冲突，演示态要在同一页面内维持「未解锁的真保险箱不可达」这条边界，`saveVault` / 导入 / 改主密码 / 文件同步 / 扩展桥捕获 / `.vault` 导出等全部写路径，以及自动锁屏、旅行模式、会话恢复语义都需额外打标分流，任一处漏判就可能把示例数据写成真实数据或让演示态被误认为已解锁；当前用户来自主动搜索密码管理器，不存在需要预置数据转化的冷启动漏斗。`docs/v1.1-plan.md` 删除 Phase 3 表内该行、计入 §三 已排除项。本节为纯文档修改，不推进版本号
+- **计划调整：移除 Phase 3 §9 HIBP 泄露检测 / §10 活动时间线视图 / §11 卡片显示自定义**：源码核查三项均为零实现（`src/` 与 `extension/` 内无对应代码，HIBP 仅出现在 `docs/spec.md` 规划清单），经评估判定不必要——HIBP 是本产品唯一需要联网的功能，与「离线优先 · 零网络请求」底线直接冲突，且 `core/audit.js` 的弱 / 复用 / 空 / 长期未更新 / 过期五类本地审计已给出同样行动建议；时间线浏览已被卡片与详情页的 `updatedAt`、编辑历史、安全报告 stale 分类覆盖，属重复建设；卡片字段自定义需持久化 + 设置页 + 移动端与桌面端分别适配，而现有固定卡片信息密度已够、用户未表达过诉求。`docs/v1.1-plan.md` 删除 Phase 3 表内三行并补齐排除理由，§四 总览 Phase 3 范围收敛为仅剩 §8 WebAuthn 全平台（macOS 单端已落地）；`docs/spec.md` §未来规划同步将 HIBP 标记为已排除。纯文档修改，不推进版本号
 
 ### 说明
 

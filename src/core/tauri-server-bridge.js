@@ -4,7 +4,9 @@
 //   1. 解锁后把明文条目经 Tauri invoke 同步到 Rust 内存（仅内存，不落盘）；
 //   2. 锁定/登出时清空 Rust 内存；
 //   3. 转发 Rust 侧「配对请求」事件给前端弹窗组件（PairRequestModal）；
-//   4. 提供配对确认/拒绝的 invoke 封装。
+//   4. 提供配对确认/拒绝的 invoke 封装；
+//   5. 转发 Rust 侧「扩展捕获请求」事件给前端（useVault 确认后入库），
+//      并提供捕获结果回报的 invoke 封装。
 //
 // 仅当运行在 Tauri 环境（window.__TAURI__ 存在）时生效；
 // 网页版（file:// / localhost dev / GitHub Pages）不加载本桥逻辑，
@@ -83,6 +85,15 @@
     rejectPair(nonce) {
       return invoke('server_pair_reject', { nonce: nonce });
     },
+
+    /**
+     * 回报扩展自动捕获的用户确认结果，供扩展侧轮询领取
+     * @param {string} id - 捕获请求 id（由 /capture 下发）
+     * @param {string} status - created | updated | exists | error | rejected
+     */
+    reportCapture(id, status) {
+      return invoke('server_capture_report', { id: id, status: status });
+    },
   };
 
   window.TauriServer = TauriServer;
@@ -93,6 +104,10 @@
     if (globalT && globalT.event && typeof globalT.event.listen === 'function') {
       globalT.event.listen('lockpass:pair-request', (event) => {
         window.dispatchEvent(new CustomEvent('lockpass:pair-request', { detail: event.payload }));
+      });
+      // 转发扩展捕获请求为 window 事件，供 useVault 走用户确认后入库
+      globalT.event.listen('lockpass:capture-request', (event) => {
+        window.dispatchEvent(new CustomEvent('lockpass:capture-request', { detail: event.payload }));
       });
     }
   } catch (e) {

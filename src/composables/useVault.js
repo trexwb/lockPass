@@ -244,6 +244,28 @@ function migrateVaultData(data) {
   return { entries, history: data.history || {}, tagDefs, tags: data.tags || [], deleted, changed }
 }
 
+/* ── 桌面版自动捕获入口（本地 HTTP 通道）──────────────────────
+   useVault() 会被多个组件调用，监听必须只在模块作用域注册一次，
+   否则一次捕获请求会弹多个确认框并重复回报结果。
+   确认逻辑本身由最新实例提供（与 activityResetFn 同一约定）。 */
+let desktopCaptureHandler = null
+let desktopCaptureChain = Promise.resolve()
+
+window.addEventListener('lockpass:capture-request', (ev) => {
+  const detail = (ev && ev.detail) || {}
+  if (!window.TauriServer || !detail.id || !detail.domain || !detail.password) return
+  if (typeof desktopCaptureHandler !== 'function') return
+  if (!vaultState.isUnlocked) {
+    // 理论上 Rust 侧已按 unlocked 拒绝，此处兜底：绝不把凭据留在待确认槽
+    try { window.TauriServer.reportCapture(detail.id, 'rejected') } catch (e) {}
+    return
+  }
+  // 捕获确认逐条串行：并发到达时不会叠两个确认框，回报结果也不会与槽位错配
+  desktopCaptureChain = desktopCaptureChain
+    .then(() => desktopCaptureHandler(detail))
+    .catch(() => {})
+})
+
 /* ── 主 composable ────────────────────────────────────────── */
 
 export function useVault() {
@@ -1592,6 +1614,30 @@ export function useVault() {
   }
 
   try { window.ExtBridge && window.ExtBridge.setCaptureHandler(handleExtensionCapture) } catch (e) {}
+
+  /**
+   * 桌面版自动捕获入库（本地 HTTP 通道）：扩展 POST /capture → Rust 登记待确认槽位
+   * → Tauri 事件把凭据交给前端 → 用户确认后才落库，结果经 server_capture_report 回报，
+   * 扩展轮询 /capture/status 后回显到网页浮层。未解锁 / 取消 / 失败都绝不写盘。
+   * @param {{id: string, domain: string, username: string, password: string}} detail
+   */
+  async function confirmDesktopCapture(detail) {
+    const domain = String(detail.domain || '')
+    const username = String(detail.username || '')
+    let status = 'rejected'
+    const okToSave = await window.Utils.confirm({
+      title: t('ext.capture.confirmTitle'),
+      message: t('ext.capture.confirmMsg', { domain, username: username || t('common.unnamed') }),
+      confirmText: t('ext.capture.confirmSave'),
+      cancelText: t('ext.capture.confirmCancel'),
+    })
+    if (okToSave) {
+      const action = await handleExtensionCapture({ domain, username, password: detail.password })
+      status = action === 'error' ? 'error' : action
+    }
+    try { await window.TauriServer.reportCapture(detail.id, status) } catch (e) {}
+  }
+  desktopCaptureHandler = confirmDesktopCapture
 
   async function saveEntry(payload) {
     const { title, type, fields, tags, notes, customFields, totp, expiresAt, sensitive } = payload

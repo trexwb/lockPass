@@ -9,7 +9,7 @@ import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { saveVault, closeModal, getSession } = useVault()
+const { saveVault, closeModal, getSession, visibleEntries } = useVault()
 const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
@@ -199,9 +199,10 @@ async function qrStringToEntry(qrText, masterPassword) {
 
 /* ── otpauth:// 动态口令绑定（v1.1.1：消费 TOTPUtils.parseOTPAuthURI） ── */
 
-/* 绑定目标挑选：优先无 TOTP 且无敏感数据的条目，同级取最近更新 */
+/* 绑定目标挑选：优先无 TOTP 且无敏感数据的条目，同级取最近更新
+   只在旅行模式可见集合内挑选，避免把扫描到的密钥静默写入已隐藏的敏感条目 */
 function pickBindingCandidate() {
-  const all = vaultState.entries.filter(e => !e.totp)
+  const all = visibleEntries().filter(e => !e.totp)
   if (!all.length) return null
   const safe = all.filter(e => !e.privateKey && !e.root && !(e.customFields || []).some(cf => cf && cf.sensitive))
   const pool = safe.length ? safe : all

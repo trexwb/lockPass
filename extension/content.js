@@ -623,7 +623,24 @@ const CAPTURE_TEXTS = {
   exists: '条目已存在，无需重复保存 ✓',
   saving: '保存中…',
   failLocked: '保存失败：请先打开并解锁 LockPass 页面后重试',
+  failDesktopLocked: '保存失败：请先解锁桌面版 LockPass',
+  failDesktopTimeout: '未收到确认：请在桌面版 LockPass 窗口点「保存」',
+  failRejected: '已在桌面版 LockPass 中忽略',
+  failNoResult: '未收到保存结果：请在桌面版 LockPass 窗口查看是否已入库',
   failOther: '保存失败，请稍后重试',
+}
+
+// 后台等待桌面端确认最长 45s；这里 50s 兜底：后台若在等待中被 MV3 回收，
+// 回调永远不来，浮层会卡在「保存中…」且按钮禁用
+const CAPTURE_RESULT_WATCHDOG_MS = 50000
+
+/* 后台返回的错误码 → 浮层文案（未知码统一走 failOther） */
+function captureFailText(error) {
+  if (error === 'no-lockpass') return CAPTURE_TEXTS.failLocked
+  if (error === 'desktop-locked') return CAPTURE_TEXTS.failDesktopLocked
+  if (error === 'desktop-timeout') return CAPTURE_TEXTS.failDesktopTimeout
+  if (error === 'rejected') return CAPTURE_TEXTS.failRejected
+  return CAPTURE_TEXTS.failOther
 }
 
 function showCapturePrompt(p) {
@@ -651,32 +668,65 @@ function showCapturePrompt(p) {
   userEl.textContent = p.username || '（未识别）'
   const msgEl = root.querySelector('.lp-cp-msg')
   const saveBtn = root.querySelector('.lp-cp-save')
+  let saving = false // 保存请求在途：桌面通道需等用户在桌面窗口确认，最长 45s
   saveBtn.addEventListener('click', () => {
     saveBtn.disabled = true
+    saving = true
     msgEl.className = 'lp-cp-msg'
     msgEl.textContent = CAPTURE_TEXTS.saving
+    let settled = false
+    const settle = (fn) => {
+      if (settled) return
+      settled = true
+      clearTimeout(watchdog)
+      saving = false
+      fn()
+    }
+    // 后台若在此期间被浏览器回收，回调永远不会来：兜底恢复浮层，
+    // 避免按钮卡在禁用态、用户在桌面端已保存却看不到结果
+    const watchdog = setTimeout(() => {
+      settle(() => {
+        msgEl.className = 'lp-cp-msg err'
+        msgEl.textContent = CAPTURE_TEXTS.failNoResult
+        saveBtn.disabled = false
+      })
+    }, CAPTURE_RESULT_WATCHDOG_MS)
     try {
       chrome.runtime.sendMessage({ type: 'LP_CAPTURE_SAVE', payload: p }, (resp) => {
-        const action = resp && resp.action
-        if (resp && resp.ok && (action === 'created' || action === 'updated' || action === 'exists')) {
-          msgEl.className = 'lp-cp-msg ok'
-          msgEl.textContent = CAPTURE_TEXTS[action]
-          setTimeout(removeCapturePrompt, 1600)
-        } else {
-          msgEl.className = 'lp-cp-msg err'
-          msgEl.textContent = resp && resp.error === 'no-lockpass' ? CAPTURE_TEXTS.failLocked : CAPTURE_TEXTS.failOther
-          saveBtn.disabled = false
+        if (chrome.runtime.lastError) {
+          settle(() => {
+            msgEl.className = 'lp-cp-msg err'
+            msgEl.textContent = CAPTURE_TEXTS.failOther
+            saveBtn.disabled = false
+          })
+          return
         }
+        const action = resp && resp.action
+        settle(() => {
+          if (resp && resp.ok && (action === 'created' || action === 'updated' || action === 'exists')) {
+            msgEl.className = 'lp-cp-msg ok'
+            msgEl.textContent = CAPTURE_TEXTS[action]
+            setTimeout(removeCapturePrompt, 1600)
+          } else {
+            msgEl.className = 'lp-cp-msg err'
+            msgEl.textContent = captureFailText(resp && resp.error)
+            saveBtn.disabled = false
+          }
+        })
       })
     } catch (e) {
-      msgEl.className = 'lp-cp-msg err'
-      msgEl.textContent = CAPTURE_TEXTS.failOther
-      saveBtn.disabled = false
+      settle(() => {
+        msgEl.className = 'lp-cp-msg err'
+        msgEl.textContent = CAPTURE_TEXTS.failOther
+        saveBtn.disabled = false
+      })
     }
   })
   ;(document.body || document.documentElement).appendChild(root)
-  // 20s 无操作自动收起（凭据仅在扩展内存暂存，超时由后台 TTL 清理）
+  // 20s 无操作自动收起（凭据仅在扩展内存暂存，超时由后台 TTL 清理）；
+  // 保存请求在途时不收起，否则用户看不到桌面端的确认结果
   setTimeout(() => {
+    if (saving) return
     if (document.getElementById('lp-capture-root') === root) removeCapturePrompt()
   }, 20000)
 }

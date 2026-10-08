@@ -43,79 +43,6 @@ async function deriveKey(password, salt, iterations = DEFAULT_ITERATIONS) {
 }
 
 /**
- * 组合密钥材料：主密码 UTF-8 字节 ‖ 密钥文件字节（密钥文件双因素 v1.1.1）
- * 无密钥文件时等价于纯密码 UTF-8 字节（与 deriveKey 内部行为一致）。
- * @param {string} password - 用户主密码
- * @param {Uint8Array|null} [keyFileBytes] - 密钥文件原始字节（可选）
- * @returns {Uint8Array} 拼接后的 PBKDF2 输入材料
- */
-function composeMaterial(password, keyFileBytes) {
-  const encoder = new TextEncoder();
-  const pwBytes = encoder.encode(String(password ?? ''));
-  if (!keyFileBytes || !keyFileBytes.byteLength) return pwBytes;
-  const out = new Uint8Array(pwBytes.byteLength + keyFileBytes.byteLength);
-  out.set(pwBytes, 0);
-  out.set(new Uint8Array(keyFileBytes), pwBytes.byteLength);
-  return out;
-}
-
-/**
- * 从组合材料派生 AES-256-GCM 密钥（密钥文件双因素 v1.1.1 主链路）
- * @param {Uint8Array} material - composeMaterial 的输出
- * @param {Uint8Array} salt - 盐值（32字节）
- * @param {number} [iterations=DEFAULT_ITERATIONS] - PBKDF2 迭代次数
- * @returns {Promise<CryptoKey>} AES-256-GCM 密钥
- */
-async function deriveKeyMaterial(material, salt, iterations = DEFAULT_ITERATIONS) {
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    material,
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: iterations,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
-/**
- * 从组合材料派生 32 字节原始密钥（密钥文件双因素：生物识别 guard 重注册用）
- * @param {Uint8Array} material - composeMaterial 的输出
- * @param {Uint8Array} salt - 盐值（32字节）
- * @param {number} [iterations=DEFAULT_ITERATIONS] - PBKDF2 迭代次数
- * @returns {Promise<ArrayBuffer>} 32 字节原始密钥（仅内存，不落盘）
- */
-async function deriveKeyBytesMaterial(material, salt, iterations = DEFAULT_ITERATIONS) {
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    material,
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-  return crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: iterations,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    256
-  );
-}
-
-/**
  * 加密数据
  * @param {any} data - 要加密的数据（会被 JSON 序列化）
  * @param {CryptoKey} key - AES-256-GCM 密钥
@@ -273,9 +200,6 @@ window.CryptoUtils = {
   LEGACY_ITERATIONS,
   deriveKey,
   deriveKeyBytes,
-  composeMaterial,
-  deriveKeyMaterial,
-  deriveKeyBytesMaterial,
   importRawAesKey,
   bytesToHex,
   encrypt,
