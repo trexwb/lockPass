@@ -2,14 +2,15 @@
    LockPass — 生物识别解锁（Passkey，macOS 单端 MVP）
    ───────────────────────────────────────────────────────────────────
    方案 A：设备生物识别解锁
-   - 启用 enroll：生成随机 Device Unlock Key（256-bit 对称随机数），
-     先用 Secure Enclave 非对称密钥（Keychain 持有，访问控制
-     userPresence | BiometryCurrentSet | PrivateKeyUsage，仅本机不可同步）
-     将其加密后写入 guard 文件（passkey_guard.json）。
-     注：真正落入 Secure Enclave 的是每次启用时新建的 ECIES 密钥对，
-         Device Unlock Key 由 OS CSPRNG 生成后经公钥加密存储。
-   - 解锁 unlock：系统生物验证（Touch ID/面容/密码回退）通过后，
-     Secure Enclave 私钥解密 guard，返回 Device Unlock Key hex；
+   - 启用 enroll：新建 ECIES 密钥对（私钥落入 Secure Enclave，访问控制
+     BiometryCurrentSet | PrivateKeyUsage，仅本机不可同步），用它加密
+     前端交来的 32B Vault Key（主密码按保险箱同一盐值/迭代派生，仅内存
+     传递）后写入 guard 文件（passkey_guard.json）。
+     注：被封装的对象就是 Vault Key 本身，本模块不另生成随机 Device Key；
+         因此启用一次即绑定当前主密码派生物，改主密码后需重新启用。
+   - 解锁 unlock：SecKeyCreateDecryptedData 使用私钥时由 SE 自行弹出
+     系统生物验证（面容/触控 ID，无系统密码回退），通过后返回
+     Vault Key hex；
      前端仅用于内存内还原 Vault Key（Web Crypto），不落盘。
    - 停用 remove：删除 Keychain item 与 guard 文件。
    - 状态 status：available（本机是否支持）+ enabled（是否已启用）。
@@ -19,6 +20,14 @@
    - guard 文件 0600 原子写（同 data_root 下）；
    - 失败 / 取消一律返回结构化错误 LKPK:<CODE>:<detail>，前端可映射
      文案，禁止静默降级（不会在生物识别失败后自动跳过安全校验）。
+
+   运行前提（实测）：Secure Enclave 私钥必须写入数据保护钥匙串，而写该
+   钥匙串要求 app 携带 keychain-access-groups entitlement（见
+   src-tauri/entitlements.plist）。ad-hoc / 未签名构建拿不到该 entitlement
+   （强行注入会被内核直接 kill），SecKeyCreateRandomKey 返回
+   errSecMissingEntitlement(-34018)，本功能整体不可用 —— 生物识别解锁只能
+   在用 Apple 开发者证书签名的构建里启用/验证，开发机构建应看到明确报错而非
+   「加密操作失败」。
 
    注：CFString 常量字符串值取自本机 Security 框架动态库导出符号
    （ctypes 实测），AccessControl 标志位取 SDK 头文件 SecAccessControl.h。
@@ -44,6 +53,8 @@ pub const E_AUTH_FAILED: &str = "AUTH_FAILED";
 pub const E_KEYCHAIN: &str = "KEYCHAIN_ERR";
 pub const E_CRYPTO: &str = "CRYPTO_ERR";
 pub const E_FILE: &str = "FILE_ERR";
+/// 未签名 / 缺 keychain-access-groups entitlement：Secure Enclave 密钥无法入库
+pub const E_ENTITLEMENT: &str = "ENTITLEMENT_ERR";
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
@@ -103,26 +114,34 @@ mod imp {
     const ATTR_SYNC: &str = "sync";
     // kSecAttrAccessControl（访问控制对象）
     const ATTR_ACCESS_CTL: &str = "accc";
+    // kSecAttrAccessibleWhenUnlockedThisDeviceOnly（保护等级：解锁前不可用、仅本机）
+    const PROTECTION_ACCESSIBLE_TDO: &str = "aku";
     // kSecUseDataProtectionKeychain=true（macOS 也启用数据保护钥匙串）
     const USE_DP_KEYCHAIN: &str = "nleg";
     // kSecAttrTokenID = Secure Enclave
     const ATTR_TOKEN_ID: &str = "tkid";
     const TOKEN_SECURE_ENCLAVE: &str = "com.apple.setoken";
+    // kSecPrivateKeyAttrs（私钥属性子字典）/ kSecAttrIsPermanent（私钥持久化入库）
+    const ATTR_PRIVATE_KEY_SUB: &str = "private";
+    const ATTR_IS_PERMANENT: &str = "perm";
     // kSecReturnRef
     const RETURN_REF: &str = "r_Ref";
-    // ECIES-Cofactor-X963-SHA256-AES-GCM（Secure Enclave 支持，v1 使用）
+    // ECIES-Cofactor-VariableIV-X963-SHA256-AES-GCM（本机实测常量值一致）
     const ALG_ECIES: &str = "algid:encrypt:ECIES:ECDHC:KDFX963:SHA256:AESGCM-KDFIV";
 
-    // SecAccessControlCreateFlags（SDK 头文件实测）
-    const FLAG_USER_PRESENCE: u32 = 1u32 << 0;        // 生物识别或系统密码
+    // SecAccessControlCreateFlags（SDK 头文件 + 本机实测）
+    // 注：userPresence(1<<0) 只能与 applicationPassword / privateKeyUsage 组合，
+    //     与 biometryCurrentSet 同时给出会被拒（OSStatus -50），故不叠加。
     const FLAG_BIOMETRY_CURRENT: u32 = 1u32 << 3;     // 仅当前录入的生物特征集合
-    const FLAG_PRIVATE_KEY_USAGE: u32 = 1u32 << 30;   // 允许本应用使用私钥解密
+    const FLAG_PRIVATE_KEY_USAGE: u32 = 1u32 << 30;   // 使用私钥需生物验证
 
     // OSStatus 常用错误
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_AUTH_FAILED: i32 = -25293;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+    // 本机实测：未签名构建写数据保护钥匙串被拒（enroll 全链失败）
+    const ERR_SEC_MISSING_ENTITLEMENT: i32 = -34018;
 
     /// 保证 Keychain/guard 串行变更，避免并发 enroll/remove 互相踩踏
     static OP_LOCK: Mutex<()> = Mutex::new(());
@@ -293,11 +312,30 @@ mod imp {
     /* ── 生成 Secure Enclave 密钥对 ────────────────────────── */
 
     /// 创建带访问控制的 Secure Enclave ECIES 密钥对，返回保留私钥句柄（+1）
+    /// 属性布局按 Apple 文档：访问控制 / 标签 / 应用标识 / 持久化属于**私钥属性**，
+    /// 必须放在 kSecPrivateKeyAttrs 子字典里；写在顶层不属于文档化布局，
+    /// 最坏情况是私钥未带上访问控制（使用不再要求生物验证）——安全上不可接受，
+    /// 因此这里宁可让建钥失败并明确报错。
     fn create_se_key(
         label: &str,
         access_control: SecAccessControlRef,
     ) -> Result<CFType, String> {
         unsafe {
+            let private_attrs = CFDictionary::from_CFType_pairs(&[
+                (CFString::new(ATTR_LABEL).as_CFType(), CFString::new(label).as_CFType()),
+                (
+                    CFString::new(ATTR_APP_TAG).as_CFType(),
+                    CFData::from_buffer(KEY_APP_TAG).as_CFType(),
+                ),
+                (
+                    CFString::new(ATTR_ACCESS_CTL).as_CFType(),
+                    CFType::wrap_under_get_rule(access_control as CFTypeRef),
+                ),
+                (
+                    CFString::new(ATTR_IS_PERMANENT).as_CFType(),
+                    CFBoolean::true_value().as_CFType(),
+                ),
+            ]);
             let params = CFDictionary::from_CFType_pairs(&[
                 (
                     CFString::new("class").as_CFType(),
@@ -315,15 +353,6 @@ mod imp {
                     CFString::new(ATTR_TOKEN_ID).as_CFType(),
                     CFString::new(TOKEN_SECURE_ENCLAVE).as_CFType(),
                 ),
-                (CFString::new(ATTR_LABEL).as_CFType(), CFString::new(label).as_CFType()),
-                (
-                    CFString::new(ATTR_APP_TAG).as_CFType(),
-                    CFData::from_buffer(KEY_APP_TAG).as_CFType(),
-                ),
-                (
-                    CFString::new(ATTR_ACCESS_CTL).as_CFType(),
-                    CFType::wrap_under_get_rule(access_control as CFTypeRef),
-                ),
                 (
                     CFString::new(ATTR_SYNC).as_CFType(),
                     CFBoolean::false_value().as_CFType(),
@@ -331,6 +360,10 @@ mod imp {
                 (
                     CFString::new(USE_DP_KEYCHAIN).as_CFType(),
                     CFBoolean::true_value().as_CFType(),
+                ),
+                (
+                    CFString::new(ATTR_PRIVATE_KEY_SUB).as_CFType(),
+                    private_attrs.as_CFType(),
                 ),
             ]);
             let mut error: CFTypeRef = std::ptr::null();
@@ -357,6 +390,12 @@ mod imp {
             if code == ERR_SEC_AUTH_FAILED as isize || code == ERR_SEC_INTERACTION_NOT_ALLOWED as isize {
                 return err(E_AUTH_FAILED, format!("{action}: {desc}"));
             }
+            if code == ERR_SEC_MISSING_ENTITLEMENT as isize {
+                return err(
+                    E_ENTITLEMENT,
+                    "应用未携带 keychain-access-groups entitlement（ad-hoc / 未签名构建无法使用安全飞地）",
+                );
+            }
             err(E_CRYPTO, format!("{action} (code={code}): {desc}"))
         }
     }
@@ -374,7 +413,7 @@ mod imp {
         })
     }
 
-    /// 启用：1) 防重入 2) 生成 SE 密钥对 3) 公钥加密 Device Unlock Key
+    /// 启用：1) 防重入 2) 生成 SE 密钥对 3) 公钥加密 Vault Key
     /// 4) 写 guard 文件；任一步失败回滚已创建的 Keychain item
     pub fn enroll(app: &tauri::AppHandle, vault_key_hex: &str) -> Result<(), String> {
         let _g = OP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -392,12 +431,13 @@ mod imp {
         }
 
         unsafe {
-            // 1) 访问控制对象：生物识别(当前指纹集合) 或 系统密码，允许私钥使用
+            // 1) 访问控制对象：仅当前生物集合 + 私钥使用需验证
+            //    （userPresence 与 biometryCurrentSet 互斥，叠加返回 -50）
             let mut ac_err: CFTypeRef = std::ptr::null();
             let ac = SecAccessControlCreateWithFlags(
                 std::ptr::null(),
-                CFString::new("aku").as_concrete_TypeRef() as CFTypeRef, // kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-                FLAG_USER_PRESENCE | FLAG_BIOMETRY_CURRENT | FLAG_PRIVATE_KEY_USAGE,
+                CFString::new(PROTECTION_ACCESSIBLE_TDO).as_concrete_TypeRef() as CFTypeRef,
+                FLAG_BIOMETRY_CURRENT | FLAG_PRIVATE_KEY_USAGE,
                 &mut ac_err,
             );
             if ac.is_null() {
@@ -414,7 +454,7 @@ mod imp {
                 }
             };
 
-            // 3) 取公钥加密 32 字节 Device Unlock Key
+            // 3) 取公钥加密 32 字节 Vault Key
             let public_ref = SecKeyCopyPublicKey(se_key.as_concrete_TypeRef() as SecKeyRef);
             if public_ref.is_null() {
                 let _ = delete_keychain_item();
@@ -440,7 +480,7 @@ mod imp {
             // 4) 写 guard 文件
             let guard = json!({
                 "v": 1,
-                "alg": "ecies-cofactor-x963-sha256-aesgcm",
+                "alg": "ecies-cofactor-variableiv-x963-sha256-aesgcm",
                 "enc": to_hex(enc_bytes),
             });
             if let Err(e) = atomic_write_guard(&path, &guard.to_string()) {
@@ -451,7 +491,7 @@ mod imp {
         }
     }
 
-    /// 解锁：生物验证通过后释放 SE 私钥解密 guard，返回 Device Unlock Key hex
+    /// 解锁：生物验证通过后释放 SE 私钥解密 guard，返回 Vault Key hex
     pub fn unlock(app: &tauri::AppHandle) -> Result<String, String> {
         let _g = OP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 

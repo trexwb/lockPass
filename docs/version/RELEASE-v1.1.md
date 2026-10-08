@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-10-08 · 生物识别解锁启用失败（「加密操作失败」）修复 —— 不推进版本号（仍为 v1.1.3）
+
+用户在设置里打开「生物识别解锁（macOS 面容 / 触控 ID）」即提示「加密操作失败」。该文案是 `settings.security.bioErr.CRYPTO_ERR`，来自 Rust 兜底分支：任何未映射的 CFError 都被归为 `CRYPTO_ERR`，且前端把 `detail` 丢掉，于是系统侧真实原因完全不可见。用临时 `examples/probe_se.rs` 直接调 Security 框架复现后，确认是**两个相互独立的失败点**。
+
+### 根因
+
+1. **访问控制标志非法（代码缺陷，必现）**：`SecAccessControlCreateWithFlags(userPresence | BiometryCurrentSet | PrivateKeyUsage)` 返回 **OSStatus -50**，Apple 侧原文即 `kSecAccessControlUserPresence can be combined only with kSecAccessControlApplicationPassword and kSecAccessControlPrivateKeyUsage` —— `userPresence` 与 `biometryCurrentSet` 互斥，不能叠加。第一步就失败，SE 密钥根本不会创建。
+2. **未签名构建拿不到钥匙串访问权限（环境前提）**：标志修正后（`biometryCurrentSet | PrivateKeyUsage`，本机实测创建成功）继续建 SE 密钥，返回 **errSecMissingEntitlement(-34018) “failed to add key to keychain”**。`src-tauri/entitlements.plist` 里已声明 `keychain-access-groups`，但本机 `codesign -dv` 显示产物是 `adhoc,linker-signed` / `TeamIdentifier=not set`，`security find-identity -v -p codesigning` 为 **0 valid identities**，entitlement 从未生效；给 ad-hoc 二进制手工注入该 entitlement 会被内核直接 kill（退出 137）。即**生物识别解锁只在用 Apple 开发者证书签名的构建里可用**。
+3. 附带修正：`kSecAttrAccessControl` 原先写在创建字典顶层。Apple 文档的布局是私钥属性（访问控制 / 标签 / applicationTag / `kSecAttrIsPermanent`）置于 `kSecPrivateKeyAttrs` 子字典；顶层写法不属文档化布局，最坏情况是私钥没带上访问控制（使用不再要求生物验证）——安全上不可接受。缺 `kSecAttrIsPermanent` 也解释了「即使启用成功 `status.enabled` 仍恒 false」的隐患。
+
+### 改动
+
+- `src-tauri/src/passkey.rs`：标志改为 `FLAG_BIOMETRY_CURRENT | FLAG_PRIVATE_KEY_USAGE`（删除 `FLAG_USER_PRESENCE`，并注明互斥原因）；`create_se_key` 按文档布局把标签 / applicationTag / 访问控制 / `perm=true` 收进 `kSecPrivateKeyAttrs`；新增 `ENTITLEMENT_ERR` 错误码，把 -34018 从 `CRYPTO_ERR` 兜底里分出来并给出中文原因；文件头补齐签名前提，并修正「生成随机 Device Unlock Key」的过期描述（实际封装的是前端派生的 32B Vault Key）。手写的 CFString 字面量逐个与本机框架导出值比对（`perm` / `private` / `aku` / `nleg` / `tkid` / `com.apple.setoken` / ECIES 算法串均一致），且改用嵌套布局后建钥仍只停在 -34018 而非属性错误，说明 `class/type/bsiz/atag/labl/accc` 这些键也被框架正常识别。
+- `src/components/modals/SettingsModal.vue`：新增 `bioErrText(res)`，两处失败 toast 统一带出 `detail`（截断 160 字符），不再只剩一句无信息量的「加密操作失败」。
+- `src/i18n/zh.json` / `en.json`：补 `settings.security.bioErr.ENTITLEMENT_ERR` 与 `vault.lock.errBio.ENTITLEMENT_ERR`（后者防止未命中键直接显示键名）。
+- `docs/passkey.md`：按实测结论改写访问控制标志、私钥属性布局与签名前提三节；删除「系统密码回退」「随机 Device Unlock Key」等与实际实现不符的描述（生物验证只走面容/触控，被封装的就是主密码派生的 Vault Key）；补记「未签名构建必然 `ENTITLEMENT_ERR`」边界与本次实测证据。
+- `docs/spec.md` §8 未来规划：把「macOS Secure Enclave 已落地」改成「代码链路已落地但尚未在签名构建上端到端验证」，避免路线图文档给出超出证据的完成度。
+
+### 边界与验证状态
+
+- 已实测：-50 由标志叠加引起（去掉 `userPresence` 后创建成功）；`kSecPrivateKeyAttrs` 嵌套布局被框架接受，失败点仅剩 -34018，说明不是属性布局问题；`keychain-access-groups` 无法用于 ad-hoc 签名。
+- **未实测**：本机没有任何代码签名身份，`enroll → 生物验证 → unlock` 全链无法在此环境端到端验证。需在 Apple 开发者证书签名的构建上回归：启用一次 → 锁屏出现生物入口 → 面容/触控验证后解出保险箱；同时确认 `status.enabled` 为 true（验证 `kSecAttrIsPermanent` 的效果）。
+- 回归风险：本次只动 macOS 侧生物识别链路，不触碰保险箱数据模型与既有解锁方式；未启用过生物识别的用户不受影响。
+- 构建校验：`cargo check --all-targets` 无 warning、`cargo test --lib` 13/13、`npm run vite:build` 通过（`index.js` 644.37 kB / gzip 199.99 kB）、`npm run version:check` 11 处一致；临时探针 `src-tauri/examples/probe_se.rs` 已删除，不留在这份仓库里。
+- 版本号：属同日同一模块的延续修复，按规范**不推进**（仍为 v1.1.3）；是否单开 v1.1.4 由用户决定。
+
+---
+
 ## 2026-10-08 · v1.1.3
 
 用户明确指示将本日的三批改动归入修订版本发布（PATCH 自增：v1.1.2 → v1.1.3）。下方同日三条记录撰写时按「同类问题延续修复不推进版本号」规则标注，正文依「发布日志只增不改」原则保留原样，版本归属以本节为准。
