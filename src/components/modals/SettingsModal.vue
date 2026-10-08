@@ -14,7 +14,7 @@ import BaseSelect from '../common/BaseSelect.vue'
 import { useCtxMenu } from '../../composables/useCtxMenu'
 import CtxMenu from '../common/CtxMenu.vue'
 
-const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession, selectEntry, openEntryModal } = useVault()
+const { closeModal, openModal, saveVault, resetLockTimer, lockVault, setRecycleTtl, getSession, selectEntry, openEntryModal, visibleEntries } = useVault()
 
 // P3-4：图标统一走 Utils.SvgIcons
 const Icons = window.Utils.SvgIcons
@@ -40,6 +40,19 @@ const expiryWarn = ref(parseInt(localStorage.getItem('lockpass_expiry_warn') || 
 /* ── 生物识别解锁（Passkey，macOS 桌面单端 MVP） ── */
 const { supported: bioSupported, enabled: bioEnabled, refresh: refreshBioStatus } = usePasskey()
 const bioBusy = ref(false)
+
+/**
+ * 生物识别失败文案：按 Rust 错误码取 i18n 主消息，并附上结构化错误的 detail
+ * （截断到 160 字符避免超长 toast）。缺 detail 时历史失败只剩「加密操作失败」，
+ * 现场无法定位，故统一带出系统侧原因。
+ * @param {{code?: string, detail?: string}} res LockPasskey 归一化后的失败结果
+ * @returns {string} 可直接展示的文案
+ */
+function bioErrText(res) {
+  const base = t('settings.security.bioErr.' + (res.code || 'UNKNOWN'), { detail: res.detail || '' })
+  const detail = String(res.detail || '').slice(0, 160)
+  return detail && !base.includes(detail) ? `${base}：${detail}` : base
+}
 
 /**
  * 启用/停用生物识别解锁。
@@ -75,7 +88,7 @@ async function toggleBioEnabled(next) {
       const res = await window.LockPasskey.enroll(window.CryptoUtils.bytesToHex(raw))
       if (!res.ok) {
         bioEnabled.value = false
-        window.Utils.showToast(t('settings.security.bioErr.' + (res.code || 'UNKNOWN')), 'error')
+        window.Utils.showToast(bioErrText(res), 'error')
         return
       }
       bioEnabled.value = true
@@ -84,7 +97,7 @@ async function toggleBioEnabled(next) {
       const res = await window.LockPasskey.remove()
       if (!res.ok) {
         bioEnabled.value = true
-        window.Utils.showToast(t('settings.security.bioErr.' + (res.code || 'UNKNOWN')), 'error')
+        window.Utils.showToast(bioErrText(res), 'error')
         return
       }
       bioEnabled.value = false
@@ -480,7 +493,7 @@ function formatBytes(bytes) {
 
 async function refreshDataInfo() {
   const info = dataInfo.value
-  info.entries = t('data.info.entries', { n: (vaultState.entries || []).length })
+  info.entries = t('data.info.entries', { n: visibleEntries().length })
   info.tags = t('data.info.tags', { n: (vaultState.tags || []).length })
 
   // 数据大小：vault 加密负载（密文 base64 解码后的字节数）
@@ -534,8 +547,8 @@ async function refreshDataInfo() {
 /* ── 密码健康审计 ── */
 const auditResult = computed(() => {
   if (!window.VaultAudit) return null
-  const entries = (vaultState.entries || []).filter(e => !e.deleted)
-  return window.VaultAudit.auditVault(entries)
+  // 旅行模式：敏感条目不参与健康报告（弱/复用分组会带出标题与复用关系）
+  return window.VaultAudit.auditVault(visibleEntries())
 })
 
 const auditScoreColor = computed(() => {

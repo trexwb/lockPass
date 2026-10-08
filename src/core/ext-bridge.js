@@ -14,6 +14,11 @@
   const MSG_FLAG = '__lpExt'
 
   let entriesProvider = () => []
+  let captureHandler = null // 扩展自动捕获回调（v1.1.4，由 useVault 注册）
+
+  // 标记「这是 LockPass 主应用页面」：扩展 content script 运行在隔离世界看不到
+  // window.ExtBridge，只能借 DOM 属性判断，避免在锁屏页误捕获主密码输入
+  try { document.documentElement.setAttribute('data-lockpass-app', '1') } catch (e) {}
 
   function getToken() {
     try { return sessionStorage.getItem(TOKEN_KEY) || '' } catch (e) { return '' }
@@ -51,6 +56,20 @@
     const token = getToken()
     if (!token || d.token !== token) return
 
+    if (d.type === 'capture') {
+      // 扩展自动捕获（v1.1.4）：登录凭据入库，结果按同一 requestId 回传扩展
+      if (!d.requestId) return
+      const done = (ok, extra) => post('capture-result', Object.assign({ token, requestId: d.requestId, ok }, extra || {}))
+      try {
+        Promise.resolve(captureHandler(d.payload || {}))
+          .then((action) => done(true, { action }))
+          .catch(() => done(false, { error: 'save-failed' }))
+      } catch (e) {
+        done(false, { error: 'handler-missing' })
+      }
+      return
+    }
+
     if (d.type === 'get-entries') {
       const list = entriesProvider().map((x) => ({
         id: x.id,
@@ -82,6 +101,11 @@
     /** 由 useVault 注册条目数据源（锁定时 entries 清空，自然返回空列表） */
     setEntriesProvider(fn) {
       if (typeof fn === 'function') entriesProvider = fn
+    },
+
+    /** 由 useVault 注册扩展捕获回调：payload → 'created'|'updated'|'exists'|'error' */
+    setCaptureHandler(fn) {
+      if (typeof fn === 'function') captureHandler = fn
     },
 
     /** 解锁成功后调用：生成一次性令牌并广播就绪 */

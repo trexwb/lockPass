@@ -506,3 +506,229 @@ function showSuggestionEmpty() {
     if (document.getElementById('lp-suggest-root') === root) removeSuggestBubble()
   }, 3000)
 }
+
+/* ── 自动捕获（v1.1.4）──────────────────────────────
+   监听表单 submit：提取域名 + 用户名 + 密码上报后台暂存（仅内存，15s TTL）。
+   登录成功启发式（submit 后页面跳转 / 密码框消失）由新页面加载时的
+   LP_CAPTURE_CHECK 判定，命中则弹出「保存到 LockPass？」浮层。
+   安全：LockPass 主应用页面（data-lockpass-app 标记）不捕获，避免误抓主密码；
+   凭据只在扩展进程内存中短暂存在，不落盘。 */
+
+function isLockPassAppPage() {
+  try { return document.documentElement.hasAttribute('data-lockpass-app') } catch (e) { return false }
+}
+
+/* 本地文件方式打开的 LockPass 页面：通知后台，弹窗据此显示「信任本地页面」开关。
+   file:// 页面之间浏览器无法区分，凭据投递默认整体拒绝（见 background.js），
+   故双击 dist/index.html 的用法需要用户显式放行一次。 */
+function announceFileAppPage(tries) {
+  if (window !== window.top) return
+  if (!location.protocol.startsWith('file')) return
+  if (isLockPassAppPage()) {
+    try { chrome.runtime.sendMessage({ type: 'LP_FILE_APP_SEEN' }, () => void chrome.runtime.lastError) } catch (e) { /* 忽略 */ }
+    return
+  }
+  if (tries <= 0) return
+  setTimeout(() => announceFileAppPage(tries - 1), 400)
+}
+announceFileAppPage(20)
+
+/** 在指定范围（form 优先，回退全文档）内找已填值的密码框 + 用户名框 */
+function findCaptureInputs(root) {
+  let pw = null
+  let un = null
+  walkRoots(root || document, (el) => {
+    if (!(el instanceof HTMLInputElement)) return
+    const type = (el.type || '').toLowerCase()
+    if (el.disabled || el.readOnly) return
+    if (type === 'password') {
+      if (!pw && el.value) pw = el
+    } else if (!un && ['text', 'email', 'tel'].includes(type) && el.value) {
+      if (type === 'email' || isUsernameCandidate(el)) un = el
+    }
+  })
+  return { pw, un }
+}
+
+function captureOnSubmit(e) {
+  if (isLockPassAppPage()) return
+  const target = e.target
+  const form = target && target.tagName === 'FORM' ? target : null
+  const { pw, un } = findCaptureInputs(form)
+  if (!pw || !pw.value) return
+  try {
+    chrome.runtime.sendMessage({
+      type: 'LP_CAPTURE_PENDING',
+      href: location.href,
+      domain: location.hostname,
+      username: un ? String(un.value) : '',
+      password: String(pw.value),
+    })
+  } catch (err) { /* 后台不可达（扩展刚更新等），忽略 */ }
+}
+
+try {
+  document.addEventListener('submit', captureOnSubmit, { capture: true })
+} catch (e) { /* 忽略 */ }
+
+/** 页面加载后询问后台是否有待确认的捕获（仅顶层 frame 弹浮层） */
+function checkCapturePrompt() {
+  if (window !== window.top) return
+  if (isLockPassAppPage()) return
+  const hasPwField = !!findPasswordInput()
+  try {
+    chrome.runtime.sendMessage({ type: 'LP_CAPTURE_CHECK', href: location.href, hasPasswordField: hasPwField }, (resp) => {
+      const p = resp && resp.pending
+      if (!p) return
+      showCapturePrompt(p)
+    })
+  } catch (e) { /* 忽略 */ }
+}
+
+const captureDismissed = new Set() // 同一页面实例内，同域+同账号被忽略后不再重复弹
+
+function ensureCaptureStyle() {
+  if (document.getElementById('lp-capture-style')) return
+  const style = document.createElement('style')
+  style.id = 'lp-capture-style'
+  style.textContent =
+    '#lp-capture-root{position:fixed;right:16px;top:16px;z-index:2147483647;width:300px;max-width:calc(100vw - 32px);background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);font:13px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}' +
+    '#lp-capture-root .lp-cp-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#161b22;border-bottom:1px solid #30363d;font-weight:600}' +
+    '#lp-capture-root .lp-cp-close{cursor:pointer;color:#8b949e;font-size:16px;line-height:1;background:none;border:none;padding:2px 6px}' +
+    '#lp-capture-root .lp-cp-close:hover{color:#e6edf3}' +
+    '#lp-capture-root .lp-cp-body{padding:12px}' +
+    '#lp-capture-root .lp-cp-row{display:flex;gap:8px;margin-bottom:6px;min-width:0}' +
+    '#lp-capture-root .lp-cp-k{color:#8b949e;flex-shrink:0}' +
+    '#lp-capture-root .lp-cp-v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '#lp-capture-root .lp-cp-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}' +
+    '#lp-capture-root .lp-cp-btn{border:1px solid #30363d;border-radius:8px;background:#21262d;color:#e6edf3;padding:6px 14px;cursor:pointer;font:inherit}' +
+    '#lp-capture-root .lp-cp-btn:hover{background:#30363d}' +
+    '#lp-capture-root .lp-cp-btn.primary{background:#238636;border-color:#2ea043}' +
+    '#lp-capture-root .lp-cp-btn.primary:hover{background:#2ea043}' +
+    '#lp-capture-root .lp-cp-btn[disabled]{opacity:.6;cursor:default}' +
+    '#lp-capture-root .lp-cp-msg{margin-top:10px;font-size:12px;min-height:16px}' +
+    '#lp-capture-root .lp-cp-msg.ok{color:#3fb950}' +
+    '#lp-capture-root .lp-cp-msg.err{color:#f85149}'
+  ;(document.head || document.documentElement).appendChild(style)
+}
+
+function removeCapturePrompt() {
+  const el = document.getElementById('lp-capture-root')
+  if (el) el.remove()
+}
+
+const CAPTURE_TEXTS = {
+  saved: '已保存到 LockPass ✓',
+  updated: '已更新该条目密码 ✓',
+  exists: '条目已存在，无需重复保存 ✓',
+  saving: '保存中…',
+  failLocked: '保存失败：请先打开并解锁 LockPass 页面后重试',
+  failDesktopLocked: '保存失败：请先解锁桌面版 LockPass',
+  failDesktopTimeout: '未收到确认：请在桌面版 LockPass 窗口点「保存」',
+  failRejected: '已在桌面版 LockPass 中忽略',
+  failNoResult: '未收到保存结果：请在桌面版 LockPass 窗口查看是否已入库',
+  failOther: '保存失败，请稍后重试',
+}
+
+// 后台等待桌面端确认最长 45s；这里 50s 兜底：后台若在等待中被 MV3 回收，
+// 回调永远不来，浮层会卡在「保存中…」且按钮禁用
+const CAPTURE_RESULT_WATCHDOG_MS = 50000
+
+/* 后台返回的错误码 → 浮层文案（未知码统一走 failOther） */
+function captureFailText(error) {
+  if (error === 'no-lockpass') return CAPTURE_TEXTS.failLocked
+  if (error === 'desktop-locked') return CAPTURE_TEXTS.failDesktopLocked
+  if (error === 'desktop-timeout') return CAPTURE_TEXTS.failDesktopTimeout
+  if (error === 'rejected') return CAPTURE_TEXTS.failRejected
+  return CAPTURE_TEXTS.failOther
+}
+
+function showCapturePrompt(p) {
+  const key = (p.domain || '') + '|' + (p.username || '')
+  if (captureDismissed.has(key)) return
+  ensureCaptureStyle()
+  removeCapturePrompt()
+  const root = document.createElement('div')
+  root.id = 'lp-capture-root'
+  root.innerHTML =
+    '<div class="lp-cp-head"><span>保存到 LockPass？</span><button class="lp-cp-close" title="关闭">×</button></div>' +
+    '<div class="lp-cp-body">' +
+    '<div class="lp-cp-row"><span class="lp-cp-k">网站</span><span class="lp-cp-v"></span></div>' +
+    '<div class="lp-cp-row"><span class="lp-cp-k">账号</span><span class="lp-cp-v"></span></div>' +
+    '<div class="lp-cp-row"><span class="lp-cp-k">密码</span><span class="lp-cp-v">••••••••</span></div>' +
+    '<div class="lp-cp-actions"><button class="lp-cp-btn lp-cp-ignore">忽略</button><button class="lp-cp-btn primary lp-cp-save">保存</button></div>' +
+    '<div class="lp-cp-msg"></div>' +
+    '</div>'
+  const dismiss = () => { captureDismissed.add(key); removeCapturePrompt() }
+  root.querySelector('.lp-cp-close').addEventListener('click', dismiss)
+  root.querySelector('.lp-cp-ignore').addEventListener('click', dismiss)
+  const domainEl = root.querySelectorAll('.lp-cp-v')[0]
+  domainEl.textContent = p.domain || '未知网站'
+  const userEl = root.querySelectorAll('.lp-cp-v')[1]
+  userEl.textContent = p.username || '（未识别）'
+  const msgEl = root.querySelector('.lp-cp-msg')
+  const saveBtn = root.querySelector('.lp-cp-save')
+  let saving = false // 保存请求在途：桌面通道需等用户在桌面窗口确认，最长 45s
+  saveBtn.addEventListener('click', () => {
+    saveBtn.disabled = true
+    saving = true
+    msgEl.className = 'lp-cp-msg'
+    msgEl.textContent = CAPTURE_TEXTS.saving
+    let settled = false
+    const settle = (fn) => {
+      if (settled) return
+      settled = true
+      clearTimeout(watchdog)
+      saving = false
+      fn()
+    }
+    // 后台若在此期间被浏览器回收，回调永远不会来：兜底恢复浮层，
+    // 避免按钮卡在禁用态、用户在桌面端已保存却看不到结果
+    const watchdog = setTimeout(() => {
+      settle(() => {
+        msgEl.className = 'lp-cp-msg err'
+        msgEl.textContent = CAPTURE_TEXTS.failNoResult
+        saveBtn.disabled = false
+      })
+    }, CAPTURE_RESULT_WATCHDOG_MS)
+    try {
+      chrome.runtime.sendMessage({ type: 'LP_CAPTURE_SAVE', payload: p }, (resp) => {
+        if (chrome.runtime.lastError) {
+          settle(() => {
+            msgEl.className = 'lp-cp-msg err'
+            msgEl.textContent = CAPTURE_TEXTS.failOther
+            saveBtn.disabled = false
+          })
+          return
+        }
+        const action = resp && resp.action
+        settle(() => {
+          if (resp && resp.ok && (action === 'created' || action === 'updated' || action === 'exists')) {
+            msgEl.className = 'lp-cp-msg ok'
+            msgEl.textContent = CAPTURE_TEXTS[action]
+            setTimeout(removeCapturePrompt, 1600)
+          } else {
+            msgEl.className = 'lp-cp-msg err'
+            msgEl.textContent = captureFailText(resp && resp.error)
+            saveBtn.disabled = false
+          }
+        })
+      })
+    } catch (e) {
+      settle(() => {
+        msgEl.className = 'lp-cp-msg err'
+        msgEl.textContent = CAPTURE_TEXTS.failOther
+        saveBtn.disabled = false
+      })
+    }
+  })
+  ;(document.body || document.documentElement).appendChild(root)
+  // 20s 无操作自动收起（凭据仅在扩展内存暂存，超时由后台 TTL 清理）；
+  // 保存请求在途时不收起，否则用户看不到桌面端的确认结果
+  setTimeout(() => {
+    if (saving) return
+    if (document.getElementById('lp-capture-root') === root) removeCapturePrompt()
+  }, 20000)
+}
+
+checkCapturePrompt()

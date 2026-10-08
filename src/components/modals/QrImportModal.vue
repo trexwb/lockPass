@@ -9,7 +9,7 @@ import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { saveVault, closeModal, getSession } = useVault()
+const { saveVault, closeModal, getSession, visibleEntries } = useVault()
 const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
@@ -152,6 +152,11 @@ async function decodeImageFile(file) {
 async function handleQrText(text) {
   step.value = 'working'
   setStatus(t('qrimport.recognized'))
+  // v1.1.1：otpauth:// 动态口令二维码 → 挑选条目绑定 TOTP（无需解密，不消耗会话）
+  if (String(text || '').trim().startsWith('otpauth://')) {
+    await bindOtpauthToEntry(String(text).trim())
+    return
+  }
   // 对齐原版：自动取会话主密码解密，无需再次输入
   const password = getSession()
   if (!password) {
@@ -190,6 +195,47 @@ async function qrStringToEntry(qrText, masterPassword) {
   } catch (e) {
     throw new Error(t('qrimport.errPwOrCorrupt'))
   }
+}
+
+/* ── otpauth:// 动态口令绑定（v1.1.1：消费 TOTPUtils.parseOTPAuthURI） ── */
+
+/* 绑定目标挑选：优先无 TOTP 且无敏感数据的条目，同级取最近更新
+   只在旅行模式可见集合内挑选，避免把扫描到的密钥静默写入已隐藏的敏感条目 */
+function pickBindingCandidate() {
+  const all = visibleEntries().filter(e => !e.totp)
+  if (!all.length) return null
+  const safe = all.filter(e => !e.privateKey && !e.root && !(e.customFields || []).some(cf => cf && cf.sensitive))
+  const pool = safe.length ? safe : all
+  return pool.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0]
+}
+
+async function bindOtpauthToEntry(uri) {
+  let parsed
+  try {
+    parsed = window.TOTPUtils.parseOTPAuthURI(uri)
+  } catch (e) {
+    setStatus(t('qrimport.errOtpauth', { msg: (e && e.message) || e }), 'danger')
+    step.value = 'upload'
+    return
+  }
+  const target = pickBindingCandidate()
+  if (!target) {
+    setStatus(t('qrimport.errNoEntries'), 'danger')
+    step.value = 'upload'
+    return
+  }
+  target.totp = {
+    secret: parsed.secret,
+    issuer: parsed.issuer || target.title || '',
+    account: parsed.account || target.username || '',
+    period: parsed.period,
+    digits: parsed.digits,
+    algorithm: parsed.algorithm,
+  }
+  target.updatedAt = new Date().toISOString()
+  await saveVault()
+  window.Utils.showToast(t('qrimport.otpauthBound', { title: target.title || t('detail.untitled') }), 'success')
+  setTimeout(() => resetToUpload(), 1500)
 }
 
 /* 自动同步导入：无重复直接插入；有重复询问是否替换（对齐原版 _autoImport） */

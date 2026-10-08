@@ -16,8 +16,8 @@ import { useTotp } from '../../composables/useTotp'
 import { saveDraft as memSaveDraft } from '../../composables/editorDraftStore.js'
 
 const {
-  getEntryById, closeDetail, toggleFavorite, copyPassword, copyField,
-  softDelete, permanentDelete, restoreEntry, openEntryModal, openModal,
+  getEntryById, closeDetail, toggleFavorite, copyPassword, copyPasswordWithTotp, copyField,
+  softDelete, permanentDelete, restoreEntry, openEntryModal, openModal, selectEntry,
   rollbackEntry, snapDiffers, describeHistoryFields, saveVault,
   toggleDetailPassword, revealDetailPasswordOnce,
 } = useVault()
@@ -162,7 +162,8 @@ const relatedEntries = computed(() => {
 })
 
 function selectRelated(id) {
-  vaultState.selectedEntry = id
+  // 走 selectEntry：旅行模式下敏感条目不可选中（直接赋值会绕过守卫）
+  selectEntry(id)
 }
 
 function onDelete() {
@@ -438,7 +439,12 @@ const detailCtxItems = computed(() => {
         class="detail-header"
         @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'title' }, { w: 280, h: 400 })"
       >
-        <h3 id="detail-title" :title="t('detail.tipTitleCtx')">{{ entry.title || t('detail.untitled') }}</h3>
+        <h3 id="detail-title" :title="t('detail.tipTitleCtx')">{{ entry.title || t('detail.untitled') }}<span
+            v-if="entry.sensitive"
+            class="detail-sensitive-badge"
+            :title="t('detail.sensitiveBadge')"
+            v-html="Icons?.shield?.(12)"
+        ></span></h3>
         <div class="detail-header-actions">
           <button
             v-if="!isRecycleView"
@@ -585,6 +591,10 @@ const detailCtxItems = computed(() => {
               <button class="btn-icon" :title="t('detail.totp.copy')" :aria-label="t('detail.totp.copy')"
                 @click="copyField(totpCode, $event.currentTarget)">
                 <span v-html="Icons.copy(14)"></span>
+              </button>
+              <button v-if="entry.password" class="btn-icon totp-combo-btn" :title="t('detail.ctx.copyPwTotp')" :aria-label="t('detail.ctx.copyPwTotp')"
+                @click="copyPasswordWithTotp(entry.id, $event.currentTarget)">
+                <span v-html="Icons.key(14)"></span>
               </button>
             </div>
           </div>

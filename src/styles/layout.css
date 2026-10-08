@@ -110,6 +110,28 @@
   flex-shrink: 0;
 }
 .sidebar-section { padding: 16px 12px 8px; }
+
+/* 旅行模式开关（v1.1.3） */
+.travel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  transition: border-color var(--dur-fast) var(--ease-out-quart),
+              background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+.travel-row:hover { border-color: var(--text-faint); color: var(--text-secondary); }
+.travel-row.on { border-color: var(--accent); background: var(--accent-dim); color: var(--text-primary); }
+.travel-icon { display: inline-flex; flex-shrink: 0; }
+.travel-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.travel-hidden { font-size: 0.78rem; color: var(--warning); flex-shrink: 0; }
+
 .sidebar-section-title {
   font-size: 0.86rem;
   font-weight: 600;

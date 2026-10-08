@@ -308,13 +308,13 @@ async function sendSuggestions(tabId, entries) {
 // ── 页面桥通道（网页版兼容，原逻辑保留） ─────────────
 async function refreshEntries() {
   if (!pageBridgeReady) return
-  const tabs = await chrome.tabs.query({})
-  for (const tab of tabs) {
-    if (!tab.id) continue
+  for (const tabId of appBridgeTabIds()) {
     try {
-      const resp = await chrome.tabs.sendMessage(tab.id, { type: 'LP_GET_ENTRIES' })
+      const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_GET_ENTRIES' })
       if (resp && resp.ok) return
-    } catch (e) { /* 非 LockPass 页面无此监听，跳过 */ }
+    } catch (e) {
+      appBridgeTabs.delete(tabId) // 页面桥已卸载或刷新，回收登记
+    }
   }
 }
 
@@ -322,11 +322,9 @@ async function requestPassword(entryId) {
   if (passwordCache[entryId] !== undefined) {
     return { ok: true, password: passwordCache[entryId] }
   }
-  const tabs = await chrome.tabs.query({})
-  for (const tab of tabs) {
-    if (!tab.id) continue
+  for (const tabId of appBridgeTabIds()) {
     try {
-      const resp = await chrome.tabs.sendMessage(tab.id, { type: 'LP_GET_PASSWORD', id: entryId })
+      const resp = await chrome.tabs.sendMessage(tabId, { type: 'LP_GET_PASSWORD', id: entryId })
       if (resp && resp.ok) {
         return await new Promise((resolve) => {
           const timer = setTimeout(() => {
@@ -342,7 +340,9 @@ async function requestPassword(entryId) {
           }
         })
       }
-    } catch (e) { /* 非 LockPass 页面无此监听，跳过 */ }
+    } catch (e) {
+      appBridgeTabs.delete(tabId) // 页面桥已卸载或刷新，回收登记
+    }
   }
   return { ok: false, error: 'LockPass 未解锁或页面未打开' }
 }
@@ -382,10 +382,181 @@ async function activeTab() {
   return tabs && tabs[0] ? tabs[0] : null
 }
 
+// ── 自动捕获（v1.1.4） ─────────────────────────────
+// 登录 submit 凭据按 tab 暂存（仅 Service Worker 内存，15s TTL，不落盘）；
+// 新页面加载时内容脚本 LP_CAPTURE_CHECK 判定「已跳转或密码框消失」→ 弹保存浮层；
+// LP_CAPTURE_SAVE 经 LockPass 页面桥（lockpass-bridge → 页面 ExtBridge）入库，等待 capture-result。
+const CAPTURE_TTL_MS = 15000
+const CAPTURE_RESULT_TIMEOUT_MS = 8000
+const capturePending = new Map() // tabId -> { payload, at }
+const captureIssued = new Map() // tabId -> { payload, at }：已弹过浮层的凭据，SAVE 时以此为准
+const captureWaiters = new Map() // requestId -> { resolve, timer }：每次保存独立等待，互不覆盖
+let captureReqSeq = 0
+
+/** 唤醒（并移除）指定 requestId 的保存结果等待；重复调用无副作用 */
+function settleCaptureWaiter(requestId, result) {
+  const w = captureWaiters.get(requestId)
+  if (!w) return
+  clearTimeout(w.timer)
+  captureWaiters.delete(requestId)
+  w.resolve(result)
+}
+
+function captureRemember(tabId, payload) {
+  capturePending.set(tabId, { payload, at: Date.now() })
+  setTimeout(() => {
+    const cur = capturePending.get(tabId)
+    if (cur && cur.payload === payload) capturePending.delete(tabId)
+  }, CAPTURE_TTL_MS)
+}
+
+/* ── LockPass 应用页面白名单 ──────────────────────────
+   凡是「扩展主动送数据给页面」的请求（捕获转发 / 取条目 / 取密码）都只投递给
+   appBridgeTabs 里握手过的 tab。曾按 chrome.tabs.query({}) 全量广播：
+   桥脚本被注入到所有 file:// 页面，任意本地 HTML 自报 ready 即可抢答 forwarded:true，
+   从而收到别的站点登录时用户点保存的明文密码（还能反向污染 passwordCache）。
+   file:// 页面在浏览器侧无法彼此区分（同为 file:// origin），因此默认整体拒绝，
+   仅当用户在扩展弹窗显式勾选「信任本地页面」后放行，且限定 index.html。 */
+const TRUST_FILE_PAGES_KEY = 'lp_trust_file_app_pages'
+let trustFileAppPages = false
+chrome.storage.local.get(TRUST_FILE_PAGES_KEY).then((r) => {
+  trustFileAppPages = !!r[TRUST_FILE_PAGES_KEY]
+}).catch(() => {})
+
+/** sender.url 由浏览器注入，页面脚本无法伪造，作为唯一可信判据 */
+function isTrustedAppPageUrl(url) {
+  if (!url) return false
+  if (url.startsWith('file://')) return trustFileAppPages && url.endsWith('/index.html')
+  let u
+  try { u = new URL(url) } catch (e) { return false }
+  if (u.hostname === 'trexwb.github.io') return u.pathname.startsWith('/lockPass/')
+  return (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.port === '1420'
+}
+
+const appBridgeTabs = new Map() // tabId -> { url, at }：可信 LockPass 页面桥所在 tab
+let fileAppPageSeen = false // 本次会话出现过 file:// 的 LockPass 页面（弹窗据此显示信任开关）
+
+function registerAppBridgeTab(sender) {
+  const tabId = sender.tab && sender.tab.id
+  if (!tabId || !isTrustedAppPageUrl(sender.url)) return false
+  appBridgeTabs.set(tabId, { url: sender.url, at: Date.now() })
+  return true
+}
+
+function unregisterAppBridgeTab(sender) {
+  const tabId = sender.tab && sender.tab.id
+  if (tabId) appBridgeTabs.delete(tabId)
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  appBridgeTabs.delete(tabId)
+  capturePending.delete(tabId)
+  captureIssued.delete(tabId)
+})
+
+/** 最近握手的 LockPass 页面优先接收数据 */
+function appBridgeTabIds() {
+  return [...appBridgeTabs.entries()]
+    .sort((a, b) => b[1].at - a[1].at)
+    .map(([tabId]) => tabId)
+}
+
+async function forwardCaptureToLockPassPage(payload, requestId) {
+  for (const tabId of appBridgeTabIds()) {
+    try {
+      const r = await chrome.tabs.sendMessage(tabId, { type: 'LP_CAPTURE_FORWARD', payload, requestId })
+      if (r && r.forwarded) return true
+    } catch (e) {
+      appBridgeTabs.delete(tabId) // 页面桥已卸载或刷新，回收登记
+    }
+  }
+  return false
+}
+
+/* 桌面版捕获入库（v1.1.2 未闭环项补齐）：LockPass 跑在 Tauri 窗口里没有页面桥，
+   改走本地 HTTP 通道 —— POST /capture 交给桌面端确认（用户必须在桌面窗口点「保存」才入库），
+   再轮询 /capture/status 拿结果回浮层。等待上限 45s：桌面确认要等人操作，
+   比页面桥的 8s 宽松；Rust 侧槽位 60s 超时自动丢弃凭据。 */
+const CAPTURE_DESKTOP_TIMEOUT_MS = 45000
+const CAPTURE_DESKTOP_POLL_MS = 700
+// MV3 后台 30s 空闲即回收，而轮询里的 fetch 不算扩展事件（在途的 sendResponse 也不保证续命）：
+// 等待期间每 20s 真走一次扩展 API 把空闲计时器顶回去，否则后台被杀后浮层永远收不到结果
+const CAPTURE_SW_KEEPALIVE_MS = 20000
+
+async function captureViaLocalServer(payload) {
+  await checkHttpStatus() // 感知桌面端刚解锁/刚锁定
+  if (!httpReadyFlag) return { ok: false, error: 'no-lockpass' }
+  const { [STORAGE_TOKEN_KEY]: token } = await chrome.storage.local.get(STORAGE_TOKEN_KEY)
+  if (!token) return { ok: false, error: 'no-lockpass' }
+  let posted
+  try {
+    posted = await fetch(LOCAL_BASE + '/capture', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        domain: payload.domain || '',
+        username: payload.username || '',
+        password: payload.password || '',
+      }),
+    })
+  } catch (e) {
+    return { ok: false, error: 'no-lockpass' }
+  }
+  if (posted.status === 401 || posted.status === 409) {
+    // 401：token 失效（桌面端重置过）→ 清掉本地 token；409：桌面端未解锁
+    if (posted.status === 401) {
+      httpPaired = false
+      httpReadyFlag = false
+      await chrome.storage.local.remove(STORAGE_TOKEN_KEY)
+    }
+    return { ok: false, error: 'desktop-locked' }
+  }
+  if (!posted.ok) return { ok: false, error: 'desktop-error' }
+  const data = await posted.json().catch(() => ({}))
+  if (!data.id) return { ok: false, error: 'desktop-error' }
+
+  const deadline = Date.now() + CAPTURE_DESKTOP_TIMEOUT_MS
+  let lastKeepAlive = Date.now()
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, CAPTURE_DESKTOP_POLL_MS))
+    if (Date.now() - lastKeepAlive >= CAPTURE_SW_KEEPALIVE_MS) {
+      lastKeepAlive = Date.now()
+      // 扩展 API 调用才算后台活动：顺带确认 token 还在（桌面端重置过就无需再等）
+      const { [STORAGE_TOKEN_KEY]: live } = await chrome.storage.local.get(STORAGE_TOKEN_KEY)
+      if (!live) return { ok: false, error: 'desktop-locked' }
+    }
+    let resp
+    try {
+      resp = await fetch(LOCAL_BASE + '/capture/status?id=' + encodeURIComponent(data.id), {
+        headers: { Authorization: 'Bearer ' + token },
+        cache: 'no-store',
+      })
+    } catch (e) {
+      continue // 桌面端瞬不可达，继续等
+    }
+    if (resp.status === 401) return { ok: false, error: 'desktop-locked' }
+    if (resp.status === 404 || resp.status === 410) return { ok: false, error: 'desktop-error' }
+    const d = await resp.json().catch(() => ({}))
+    if (d.status === 'created' || d.status === 'updated' || d.status === 'exists') {
+      return { ok: true, action: d.status }
+    }
+    if (d.status === 'rejected') return { ok: false, error: 'rejected' }
+    if (d.status === 'error') return { ok: false, error: 'desktop-error' }
+    // pending / 其它：继续等用户确认
+  }
+  return { ok: false, error: 'desktop-timeout' }
+}
+
 // ── 消息路由 ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case 'LP_READY':
+      // 只接受来自白名单应用页面的握手：其余 tab 一律忽略，避免假桥污染状态
+      if (!registerAppBridgeTab(sender)) {
+        sendResponse({ ok: false, error: 'untrusted-app-page' })
+        break
+      }
       pageBridgeReady = true
       cachedEntries = []
       passwordCache = {}
@@ -394,18 +565,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break
 
     case 'LP_LOCKED':
-      pageBridgeReady = false
-      cachedEntries = []
-      passwordCache = {}
+      unregisterAppBridgeTab(sender)
+      // 仍有其它已握手的应用页面时保持就绪（并保留缓存条目），全部锁定才清空
+      pageBridgeReady = appBridgeTabs.size > 0
+      if (!pageBridgeReady) {
+        cachedEntries = []
+        passwordCache = {}
+      }
       sendResponse({ ok: true })
       break
 
     case 'LP_ENTRIES':
+      if (!registerAppBridgeTab(sender)) break
       cachedEntries = msg.entries || []
       sendResponse({ ok: true })
       break
 
     case 'LP_PASSWORD':
+      if (!registerAppBridgeTab(sender)) break
       passwordCache[msg.id] = msg.password
       if (pendingPassword && pendingPassword.id === msg.id) {
         pendingPassword.resolve({ ok: true, password: msg.password })
@@ -511,9 +688,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           httpPaired,
           pairing,
           pairNonce,
+          trustFilePages: trustFileAppPages,
+          fileAppSeen: fileAppPageSeen,
         })
       })
       return true // 异步响应
+    }
+
+    // popup 切换「信任本地文件页面」（默认关）：决定 file:// 页面能否接收捕获凭据
+    case 'POPUP_SET_TRUST': {
+      trustFileAppPages = !!msg.value
+      chrome.storage.local.set({ [TRUST_FILE_PAGES_KEY]: trustFileAppPages })
+      if (!trustFileAppPages) {
+        // 取消信任立即回收已登记的本地页面，防止切换前握手的 tab 继续接收数据
+        for (const [tabId, rec] of appBridgeTabs) {
+          if ((rec.url || '').startsWith('file://')) appBridgeTabs.delete(tabId)
+        }
+      }
+      sendResponse({ ok: true, value: trustFileAppPages })
+      break
     }
 
     // popup 请求一键配对
@@ -609,6 +802,92 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         fillCurrentTab(entryId).then(sendResponse)
       }
       return true // 异步响应
+    }
+
+    // ── 自动捕获（v1.1.4）─────────────────────────
+    // 登录表单 submit：暂存凭据
+    // file:// 方式打开的 LockPass 页面探测（仅用于决定是否展示「信任本地页面」开关）
+    case 'LP_FILE_APP_SEEN': {
+      if (sender.tab && (sender.url || '').startsWith('file://')) fileAppPageSeen = true
+      sendResponse({ ok: true })
+      break
+    }
+
+    case 'LP_CAPTURE_PENDING': {
+      const tabId = sender.tab && sender.tab.id
+      if (!tabId || !msg.password) {
+        sendResponse({ ok: false })
+        break
+      }
+      captureRemember(tabId, {
+        href: msg.href || (sender.tab && sender.tab.url) || '',
+        domain: msg.domain || extractDomain(sender.tab && sender.tab.url),
+        username: msg.username || '',
+        password: msg.password,
+      })
+      sendResponse({ ok: true })
+      break
+    }
+
+    // 新页面加载：已跳转或密码框消失 → 下发待确认凭据（消费即删）
+    case 'LP_CAPTURE_CHECK': {
+      const tabId = sender.tab && sender.tab.id
+      const rec = tabId ? capturePending.get(tabId) : null
+      if (!rec || Date.now() - rec.at > CAPTURE_TTL_MS) {
+        if (rec) capturePending.delete(tabId)
+        sendResponse({ pending: null })
+        break
+      }
+      const navigated = rec.payload.href && rec.payload.href !== msg.href
+      if (navigated || !msg.hasPasswordField) {
+        capturePending.delete(tabId)
+        if (tabId) captureIssued.set(tabId, { payload: rec.payload, at: Date.now() })
+        sendResponse({ pending: rec.payload })
+      } else {
+        // 仍停在原登录页（可能登录失败），不打扰
+        sendResponse({ pending: null })
+      }
+      break
+    }
+
+    // 浮层点击保存：转发到 LockPass 页面入库，等待结果回传
+    // 凭据取后台本 tab 下发记录（不用 msg.payload）：内容脚本运行在任意站点，
+    // 页面脚本可自行 sendMessage 伪造 payload 写入用户库。
+    case 'LP_CAPTURE_SAVE': {
+      const saveTabId = sender.tab && sender.tab.id
+      const issued = saveTabId ? captureIssued.get(saveTabId) : null
+      if (!issued || Date.now() - issued.at > CAPTURE_TTL_MS) {
+        if (saveTabId) captureIssued.delete(saveTabId)
+        sendResponse({ ok: false, error: 'expired' })
+        break
+      }
+      captureIssued.delete(saveTabId)
+      const requestId = 'cap-' + Date.now().toString(36) + '-' + (++captureReqSeq)
+      const waitResult = new Promise((resolve) => {
+        const timer = setTimeout(
+          () => settleCaptureWaiter(requestId, { ok: false, error: 'timeout' }),
+          CAPTURE_RESULT_TIMEOUT_MS
+        )
+        captureWaiters.set(requestId, { resolve, timer })
+      })
+      forwardCaptureToLockPassPage(issued.payload, requestId).then((forwarded) => {
+        if (forwarded) {
+          waitResult.then(sendResponse)
+          return
+        }
+        // 没有可用的 LockPass 页面桥：放弃页面侧等待，改走桌面版本地服务通道
+        settleCaptureWaiter(requestId, { ok: false, error: 'no-lockpass' })
+        captureViaLocalServer(issued.payload).then(sendResponse)
+      })
+      return true // 异步响应
+    }
+
+    // LockPass 页面（经页面桥）回传的保存结果：按 requestId 精确唤醒，不波及其它等待
+    case 'LP_CAPTURE_RESULT': {
+      if (!registerAppBridgeTab(sender)) break
+      settleCaptureWaiter(msg.requestId, { ok: !!msg.ok, action: msg.action, error: msg.error })
+      sendResponse({ ok: true })
+      break
     }
 
     default:

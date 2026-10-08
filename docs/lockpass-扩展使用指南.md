@@ -108,9 +108,10 @@ LockPass 扩展为 Manifest V3 单份代码，除 Safari 外主流浏览器均�
 
 ### 通信原理
 
-1. **解锁同步**：桌面端解锁时，前端经 `tauri-server-bridge.js`（`window.TauriServer`）调用 `server_ready` + `server_set_entries`，把明文条目同步到 Rust 内存（仅内存，不落盘）；锁定/登出调用 `server_lock` 清空；
+1. **解锁同步**：桌面端解锁时，前端经 `tauri-server-bridge.js`（`window.TauriServer`）调用 `server_ready` + `server_set_entries`，把明文条目同步到 Rust 内存（仅内存，不落盘；推的是**旅行模式可见集合**，敏感条目不外泄）；锁定/登出调用 `server_lock` 清空；
 2. **一键配对**：扩展首次使用时发起配对，桌面端弹窗展示 nonce，用户确认后发放 token（token 仅存 Rust 内存与扩展 `chrome.storage.local`）；
 3. **自动填充**：网页发现密码输入框时，`content.js` 上报 `LP_PAGE_READY(domain)`；扩展就绪后调用 `GET /credentials?domain=`（Bearer 鉴权）取回条目并填充。
+4. **自动捕获（v1.1.3）**：网站登录成功时扩展浮层询问「保存到 LockPass？」，用户点「保存」后经 `POST /capture` 登记待确认请求，桌面应用弹出确认框——**必须在桌面窗口点「保存」才入库**；扩展轮询 `GET /capture/status?id=` 领取结果（`created` / `updated` / `exists` / `rejected` / `error`）。Rust 侧只登记 `{id, created_at, status}`，凭据随事件交给窗口、不在后台进程留存。
 
 ### 一键配对流程
 
@@ -159,14 +160,17 @@ LockPass 扩展为 Manifest V3 单份代码，除 Safari 外主流浏览器均�
 | `/pair` | POST | 无 | 生成 6 位 nonce，通知桌面端弹窗确认，返回 `{ nonce }` |
 | `/pair/poll?nonce=` | GET | 无 | 轮询配对结果：`{ status: "pending" }` / `{ status: "confirmed", token }`；无效 404，超时（120s）410 |
 | `/pair/cancel` | POST | 无 | 取消当前待确认配对 |
-| `/credentials?domain=` | GET | Bearer token | 返回该域名匹配的条目数组（含密码）；无/错 token 401，缺 domain 400 |
+| `/credentials?domain=` | GET | Bearer token | 返回该域名匹配的条目数组（含密码，旅行模式已过滤）；无/错 token 401，缺 domain 400 |
+| `/capture` | POST | Bearer token | 登记一次待确认捕获 `{domain, username, password}` 并通知桌面窗口确认；无/错 token 401，未解锁 409，载荷非法 400；返回 `{ id }` |
+| `/capture/status?id=` | GET | Bearer token | 领取捕获结果：未决 200 `{status:"pending"}`，已回报 200（结果一次性领取后再查 404），槽位过期 410，id 非法 404 |
 
 ### 注意事项
 
 - 端口 **33555** 为固定值，三处必须一致：`server.rs` 的 `LOCAL_SERVER_PORT`、`extension/manifest.json` 的 `host_permissions`、`extension/background.js` 的 `LOCAL_PORT`；
 - 桌面端**锁定后**，扩展回到未解锁态（`/status` 返回 `unlocked: false`）；重新解锁后自动恢复，无需重新配对；
 - 桌面端 popup 列表**仅显示当前网站匹配的条目**（按域名匹配，含上级域），不提供全量浏览；浏览器版仍为全量列表；
-- 安全设计：仅绑定回环地址、Bearer 常数时间比较、明文仅存内存、锁定即清。
+- 捕获待确认槽位**最多 4 条、60s 过期即丢弃、锁定即清空**；扩展侧等待上限 45s（短于槽位 TTL），浮层另有 50s 兜底恢复按钮，超时只代表未收到结果，桌面端确认过的入库不受影响；
+- 安全设计：仅绑定回环地址、Bearer 常数时间比较、明文仅存内存、锁定即清、捕获必须经桌面窗口用户确认。
 
 ---
 

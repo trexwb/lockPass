@@ -7,7 +7,7 @@
    components/modals/ImportModal.vue 保持一致：
      • .vault 加密备份：用「当前会话密钥」解密（备份来自同一主密码时
        直接可解；否则解密失败，提示改用批量导入手动输密码）
-     • .json 明文备份：合并模式直接追加
+     • .json 明文备份：按「同类 + 同标题」覆盖合并
      • .csv 明文：按表头映射，标题+用户名查重，重复跳过
    合并完成后调用 window.App.saveVault()（boot 时由 useVault 挂载）
    触发一次真实加密写盘。
@@ -221,7 +221,25 @@
     }
   }
 
-  /* 合并条目：vault 备份直接追加；CSV 按标题+用户名查重跳过 */
+  /* 备份覆盖合并辅助（v1.1.1）：旧条目「同类型 + 同标题」时覆写，否则新建。
+     规则：entryType 归一化后相等且 title 精确相等（区分大小写）。
+     覆盖时保留旧条目 id / favorite / createdAt（编辑历史随 id 延续可回滚）；
+     备份未包含的字段（totp/expiresAt/root 等）按旧条目保留。 */
+  function normalizeBackupType(v) {
+    return toEntryType(v)
+  }
+
+  function findBackupDuplicate(state, e) {
+    const type = normalizeBackupType(e.entryType)
+    const title = String(e.title || '')
+    if (!title) return null
+    return state.entries.find(x =>
+      normalizeBackupType(x.entryType) === type &&
+      String(x.title || '') === title
+    ) || null
+  }
+
+  /* 合并条目：.vault/.json 备份按「同类 + 同标题」覆盖合并；CSV 走标题+用户名查重跳过 */
   function mergeEntries(entries, dedupe) {
     var state = window.App && window.App.state
     if (!state) {
@@ -229,6 +247,7 @@
     }
 
     var added = 0
+    var replaced = 0
     var skipped = 0
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i]
@@ -248,6 +267,21 @@
         })
         if (dup) { skipped++; continue }
       }
+      if (!dedupe) {
+        var rep = findBackupDuplicate(state, e)
+        if (rep) {
+          var merged = Object.assign({}, rep, e, {
+            id: rep.id,
+            favorite: !!rep.favorite,
+            createdAt: rep.createdAt || e.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          var idx = state.entries.indexOf(rep)
+          if (idx !== -1) state.entries.splice(idx, 1, merged)
+          replaced++
+          continue
+        }
+      }
       state.entries.push({
         ...e,
         entryType: e.entryType || 'website',
@@ -259,7 +293,7 @@
       })
       added++
     }
-    return { added, skipped }
+    return { added, replaced, skipped }
   }
 
   /* 数据完整性修复：合并恢复回收站（deleted）与编辑历史（history） */
@@ -355,7 +389,9 @@
         // 数据完整性修复：恢复回收站与编辑历史（与 .vault 导出负载对齐）
         restoreDeletedAndHistory(decrypted.deleted, decrypted.history)
         await window.App.saveVault()
-        window.Utils.showToast(window.I18n.t('import.backupDone', { added: result.added }), 'success')
+        window.Utils.showToast(result.replaced
+        ? window.I18n.t('import.backupDoneReplaced', { added: result.added, replaced: result.replaced })
+        : window.I18n.t('import.backupDone', { added: result.added }), 'success')
         return result
       }
       if (data.entries) {
@@ -369,7 +405,9 @@
         // 数据完整性修复：恢复回收站与编辑历史
         restoreDeletedAndHistory(data.deleted, data.history)
         await window.App.saveVault()
-        window.Utils.showToast(window.I18n.t('import.plainBackupDone', { added: result.added }), 'success')
+        window.Utils.showToast(result.replaced
+        ? window.I18n.t('import.plainBackupDoneReplaced', { added: result.added, replaced: result.replaced })
+        : window.I18n.t('import.plainBackupDone', { added: result.added }), 'success')
         return result
       }
       throw new Error(window.I18n ? window.I18n.t('import.errUnsupported') : '不支持的文件格式')

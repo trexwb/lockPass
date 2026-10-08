@@ -258,6 +258,16 @@ fn server_pair_reject(
     state.reject_pair(&nonce)
 }
 
+/// 前端确认/拒绝扩展捕获后回报结果，供扩展轮询 /capture/status 领取
+#[tauri::command]
+fn server_capture_report(
+    state: tauri::State<server::ServerState>,
+    id: String,
+    status: String,
+) -> Result<(), String> {
+    state.report_capture(&id, &status)
+}
+
 /// URL 字符白名单校验（C3 修复）
 /// 仅允许 ASCII 字母数字与 URL 合法符号（RFC 3986 保留/非保留字符及 % 编码符号），
 /// 非空且长度 ≤ 2048，其余字符一律拒绝，防止经 URL 注入 shell 元字符。
@@ -482,6 +492,7 @@ pub fn run() {
             server_get_pending_pair,
             server_pair_confirm,
             server_pair_reject,
+            server_capture_report,
             passkey_status,
             passkey_enroll,
             passkey_unlock,
