@@ -387,11 +387,53 @@ async function activeTab() {
 // 新页面加载时内容脚本 LP_CAPTURE_CHECK 判定「已跳转或密码框消失」→ 弹保存浮层；
 // LP_CAPTURE_SAVE 经 LockPass 页面桥（lockpass-bridge → 页面 ExtBridge）入库，等待 capture-result。
 const CAPTURE_TTL_MS = 15000
+// 已下发浮层的凭据：浮层可停留 20s 才自动收起，用户也可能在第 15–20s 之间才点「保存」，
+// 若沿用 CAPTURE_TTL_MS（15s）判定，等待中的点击会被必然判为过期，故独立放宽
+const CAPTURE_ISSUED_TTL_MS = 90000
 const CAPTURE_RESULT_TIMEOUT_MS = 8000
 const capturePending = new Map() // tabId -> { payload, at }
 const captureIssued = new Map() // tabId -> { payload, at }：已弹过浮层的凭据，SAVE 时以此为准
 const captureWaiters = new Map() // requestId -> { resolve, timer }：每次保存独立等待，互不覆盖
 let captureReqSeq = 0
+
+// MV3 Service Worker 空闲约 30s 被回收，capturePending / captureIssued 内存 Map 随之清零，
+// 用户看到的浮层还在，但点「保存」时 captureIssued 为空 → 判 expired → 显示「保存失败」。
+// chrome.storage.session 跨 SW 重启存活（浏览器关闭自动清除），作为持久化后备。
+// 只写不读：正常路径走内存（同步、快），SW 重启后的首次 LP_CAPTURE_CHECK / LP_CAPTURE_SAVE
+// 才从 session 恢复到内存 Map。
+const SESSION_PENDING_KEY = 'lp_capture_pending'
+const SESSION_ISSUED_KEY = 'lp_capture_issued'
+
+function sessionSave(key, map) {
+  try {
+    const obj = {}
+    for (const [k, v] of map) obj[k] = v
+    chrome.storage.session.set({ [key]: obj }).catch(() => {})
+  } catch (e) { /* session storage 不可用时降级纯内存 */ }
+}
+
+function sessionRemove(key, tabIdStr) {
+  try {
+    chrome.storage.session.get(key, (items) => {
+      const obj = items && items[key]
+      if (obj && obj[tabIdStr]) {
+        delete obj[tabIdStr]
+        chrome.storage.session.set({ [key]: obj }).catch(() => {})
+      }
+    })
+  } catch (e) { /* 忽略 */ }
+}
+
+/** 从 chrome.storage.session 恢复到内存 Map（SW 重启后首次调用） */
+async function sessionRestore(key, map) {
+  try {
+    const items = await chrome.storage.session.get(key)
+    const obj = items && items[key]
+    if (obj && typeof obj === 'object') {
+      for (const [k, v] of Object.entries(obj)) map.set(Number(k) || k, v)
+    }
+  } catch (e) { /* 忽略 */ }
+}
 
 /** 唤醒（并移除）指定 requestId 的保存结果等待；重复调用无副作用 */
 function settleCaptureWaiter(requestId, result) {
@@ -404,9 +446,13 @@ function settleCaptureWaiter(requestId, result) {
 
 function captureRemember(tabId, payload) {
   capturePending.set(tabId, { payload, at: Date.now() })
+  sessionSave(SESSION_PENDING_KEY, capturePending)
   setTimeout(() => {
     const cur = capturePending.get(tabId)
-    if (cur && cur.payload === payload) capturePending.delete(tabId)
+    if (cur && cur.payload === payload) {
+      capturePending.delete(tabId)
+      sessionRemove(SESSION_PENDING_KEY, String(tabId))
+    }
   }, CAPTURE_TTL_MS)
 }
 
@@ -452,6 +498,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   appBridgeTabs.delete(tabId)
   capturePending.delete(tabId)
   captureIssued.delete(tabId)
+  sessionRemove(SESSION_PENDING_KEY, String(tabId))
+  sessionRemove(SESSION_ISSUED_KEY, String(tabId))
 })
 
 /** 最近握手的 LockPass 页面优先接收数据 */
@@ -463,6 +511,12 @@ function appBridgeTabIds() {
 
 async function forwardCaptureToLockPassPage(payload, requestId) {
   for (const tabId of appBridgeTabIds()) {
+    // MV3 里 appBridgeTabs 是内存态：tab 已关闭但 onRemoved 尚未回收（或 SW 重启后残留旧握手的
+    // 极端竞态）时，直接 chrome.tabs.sendMessage 会 reject "No tab with id"。先校验存活，
+    // 不存活则跳过并清理登记，避免向失效 tab 发消息触发未捕获异常。
+    let alive = false
+    try { alive = !!(await chrome.tabs.get(tabId)) } catch (e) { alive = false }
+    if (!alive) { appBridgeTabs.delete(tabId); continue }
     try {
       const r = await chrome.tabs.sendMessage(tabId, { type: 'LP_CAPTURE_FORWARD', payload, requestId })
       if (r && r.forwarded) return true
@@ -551,18 +605,24 @@ async function captureViaLocalServer(payload) {
 // ── 消息路由 ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
-    case 'LP_READY':
+    case 'LP_READY': {
       // 只接受来自白名单应用页面的握手：其余 tab 一律忽略，避免假桥污染状态
+      const wasReady = pageBridgeReady
       if (!registerAppBridgeTab(sender)) {
         sendResponse({ ok: false, error: 'untrusted-app-page' })
         break
       }
       pageBridgeReady = true
-      cachedEntries = []
-      passwordCache = {}
+      // 页面桥心跳会周期性重发握手：无条件清缓存会让每 20s 丢掉已取到的条目，
+      // 徒增取数往返。仅首次握手（或此前未就绪）才重置缓存
+      if (!wasReady) {
+        cachedEntries = []
+        passwordCache = {}
+      }
       checkHttpStatus().then(maybeAutoFill)
       sendResponse({ ok: true })
       break
+    }
 
     case 'LP_LOCKED':
       unregisterAppBridgeTab(sender)
@@ -748,7 +808,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
           sendResponse({ ok: true, filled, frameId })
           try { chrome.action.setBadgeText({ tabId, text: '' }) } catch (e) { /* 忽略 */ }
-        })
+        }).catch((e) => { console.warn('[SUGGESTION_FILL]', e && e.message ? e.message : e); try { sendResponse({ ok: false, error: 'fill failed' }) } catch (_) {} })
       }
       if (cacheFresh) {
         const target = (lastSuggestCreds.entries || []).find((e) => e.id === entryId)
@@ -831,54 +891,77 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     // 新页面加载：已跳转或密码框消失 → 下发待确认凭据（消费即删）
     case 'LP_CAPTURE_CHECK': {
-      const tabId = sender.tab && sender.tab.id
-      const rec = tabId ? capturePending.get(tabId) : null
-      if (!rec || Date.now() - rec.at > CAPTURE_TTL_MS) {
-        if (rec) capturePending.delete(tabId)
-        sendResponse({ pending: null })
-        break
-      }
-      const navigated = rec.payload.href && rec.payload.href !== msg.href
-      if (navigated || !msg.hasPasswordField) {
-        capturePending.delete(tabId)
-        if (tabId) captureIssued.set(tabId, { payload: rec.payload, at: Date.now() })
-        sendResponse({ pending: rec.payload })
-      } else {
-        // 仍停在原登录页（可能登录失败），不打扰
-        sendResponse({ pending: null })
-      }
-      break
+      (async () => {
+        const tabId = sender.tab && sender.tab.id
+        let rec = tabId ? capturePending.get(tabId) : null
+        // SW 被回收后 capturePending 为空，从 chrome.storage.session 恢复
+        if (!rec && tabId) {
+          await sessionRestore(SESSION_PENDING_KEY, capturePending)
+          rec = capturePending.get(tabId)
+        }
+        if (!rec || Date.now() - rec.at > CAPTURE_TTL_MS) {
+          if (rec) capturePending.delete(tabId)
+          if (tabId) sessionRemove(SESSION_PENDING_KEY, String(tabId))
+          sendResponse({ pending: null })
+          return
+        }
+        const navigated = rec.payload.href && rec.payload.href !== msg.href
+        if (navigated || !msg.hasPasswordField) {
+          capturePending.delete(tabId)
+          sessionRemove(SESSION_PENDING_KEY, String(tabId))
+          if (tabId) {
+            captureIssued.set(tabId, { payload: rec.payload, at: Date.now() })
+            sessionSave(SESSION_ISSUED_KEY, captureIssued)
+          }
+          sendResponse({ pending: rec.payload })
+        } else {
+          // 仍停在原登录页（可能登录失败），不打扰
+          sendResponse({ pending: null })
+        }
+      })().catch((e) => { console.warn('[LP_CAPTURE_CHECK]', e && e.message ? e.message : e) })
+      return true // 异步响应（async IIFE 内部 sendResponse）
     }
 
     // 浮层点击保存：转发到 LockPass 页面入库，等待结果回传
     // 凭据取后台本 tab 下发记录（不用 msg.payload）：内容脚本运行在任意站点，
     // 页面脚本可自行 sendMessage 伪造 payload 写入用户库。
     case 'LP_CAPTURE_SAVE': {
-      const saveTabId = sender.tab && sender.tab.id
-      const issued = saveTabId ? captureIssued.get(saveTabId) : null
-      if (!issued || Date.now() - issued.at > CAPTURE_TTL_MS) {
-        if (saveTabId) captureIssued.delete(saveTabId)
-        sendResponse({ ok: false, error: 'expired' })
-        break
-      }
-      captureIssued.delete(saveTabId)
-      const requestId = 'cap-' + Date.now().toString(36) + '-' + (++captureReqSeq)
-      const waitResult = new Promise((resolve) => {
-        const timer = setTimeout(
-          () => settleCaptureWaiter(requestId, { ok: false, error: 'timeout' }),
-          CAPTURE_RESULT_TIMEOUT_MS
-        )
-        captureWaiters.set(requestId, { resolve, timer })
-      })
-      forwardCaptureToLockPassPage(issued.payload, requestId).then((forwarded) => {
-        if (forwarded) {
-          waitResult.then(sendResponse)
+      (async () => {
+        const saveTabId = sender.tab && sender.tab.id
+        let issued = saveTabId ? captureIssued.get(saveTabId) : null
+        // SW 被回收后 captureIssued 为空，从 chrome.storage.session 恢复
+        if (!issued && saveTabId) {
+          await sessionRestore(SESSION_ISSUED_KEY, captureIssued)
+          issued = captureIssued.get(saveTabId)
+        }
+        if (!issued || Date.now() - issued.at > CAPTURE_ISSUED_TTL_MS) {
+          if (saveTabId) {
+            captureIssued.delete(saveTabId)
+            sessionRemove(SESSION_ISSUED_KEY, String(saveTabId))
+          }
+          sendResponse({ ok: false, error: 'expired' })
           return
         }
-        // 没有可用的 LockPass 页面桥：放弃页面侧等待，改走桌面版本地服务通道
-        settleCaptureWaiter(requestId, { ok: false, error: 'no-lockpass' })
-        captureViaLocalServer(issued.payload).then(sendResponse)
-      })
+        captureIssued.delete(saveTabId)
+        sessionRemove(SESSION_ISSUED_KEY, String(saveTabId))
+        const requestId = 'cap-' + Date.now().toString(36) + '-' + (++captureReqSeq)
+        const waitResult = new Promise((resolve) => {
+          const timer = setTimeout(
+            () => settleCaptureWaiter(requestId, { ok: false, error: 'timeout' }),
+            CAPTURE_RESULT_TIMEOUT_MS
+          )
+          captureWaiters.set(requestId, { resolve, timer })
+        })
+        forwardCaptureToLockPassPage(issued.payload, requestId).then((forwarded) => {
+          if (forwarded) {
+            waitResult.then(sendResponse)
+            return
+          }
+          // 没有可用的 LockPass 页面桥：放弃页面侧等待，改走桌面版本地服务通道
+          settleCaptureWaiter(requestId, { ok: false, error: 'no-lockpass' })
+          captureViaLocalServer(issued.payload).then(sendResponse)
+        })
+      })().catch((e) => { console.warn('[LP_CAPTURE_SAVE]', e && e.message ? e.message : e) })
       return true // 异步响应
     }
 

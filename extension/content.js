@@ -627,6 +627,9 @@ const CAPTURE_TEXTS = {
   failDesktopTimeout: '未收到确认：请在桌面版 LockPass 窗口点「保存」',
   failRejected: '已在桌面版 LockPass 中忽略',
   failNoResult: '未收到保存结果：请在桌面版 LockPass 窗口查看是否已入库',
+  failExpired: '保存失败：捕获的凭据已过期，请重新在该网站登录后再保存',
+  failDesktopError: '保存失败：桌面版 LockPass 返回异常，请确认桌面端已解锁后重试',
+  failPageTimeout: '未收到保存结果：请确认 LockPass 页面仍处于解锁态',
   failOther: '保存失败，请稍后重试',
 }
 
@@ -640,6 +643,13 @@ function captureFailText(error) {
   if (error === 'desktop-locked') return CAPTURE_TEXTS.failDesktopLocked
   if (error === 'desktop-timeout') return CAPTURE_TEXTS.failDesktopTimeout
   if (error === 'rejected') return CAPTURE_TEXTS.failRejected
+  // expired：凭据暂存已超期（浮层停留过久），此前落入兜底文案导致真实原因不可见
+  if (error === 'expired') return CAPTURE_TEXTS.failExpired
+  // desktop-error：Rust 侧返回 400/404/410 等，此前落入兜底文案
+  if (error === 'desktop-error') return CAPTURE_TEXTS.failDesktopError
+  // timeout：页面桥 8s 内未回传 capture-result（页面被冻结/后台繁忙），
+  // 与桌面通道的 desktop-timeout 不同，提示不应指向桌面窗口
+  if (error === 'timeout') return CAPTURE_TEXTS.failPageTimeout
   return CAPTURE_TEXTS.failOther
 }
 

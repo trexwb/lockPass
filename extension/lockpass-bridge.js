@@ -75,3 +75,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 })
 
 watchAppMarker()
+
+/* MV3 Service Worker 空闲约 30s 会被回收，后台的 appBridgeTabs / pageBridgeReady 随之清零，
+   而页面解锁后只在首次广播 ready —— 表现为「LockPass 页面一直开着，过一会儿保存却提示未解锁」。
+   令牌有效期间定期重发握手，让后台重新登记本 tab（令牌仍是第一道闸，未解锁则静默等待）。 */
+function keepAliveBridge() {
+  if (!token) {
+    setTimeout(keepAliveBridge, 5000)
+    return
+  }
+  forward({ type: 'LP_READY' })
+  setTimeout(keepAliveBridge, 20000)
+}
+keepAliveBridge()

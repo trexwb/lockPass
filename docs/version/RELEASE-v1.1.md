@@ -4,6 +4,83 @@
 
 ---
 
+## 2026-10-09 · 捕获/填充链路未捕获 Promise：`No tab with id` 修复 —— 不推进版本号（仍为 v1.1.3）
+
+扩展控制台报错 `Uncaught (in promise) Error: No tab with id: <id>`。
+
+### 根因
+
+- 修复上一条「保存失败（expired）」前，`LP_CAPTURE_SAVE` 在 `captureIssued` 为空时**直接返回 expired**，根本不会调用 `forwardCaptureToLockPassPage`。修复后流程进入该函数：它遍历 `appBridgeTabs` 向已握手的 LockPass 页面桥 tab 发 `LP_CAPTURE_FORWARD`。若这些 tab 已关闭（`chrome.tabs.onRemoved` 尚未回收登记、或 SW 重启残留旧握手的竞态），`chrome.tabs.sendMessage` 即 reject `No tab with id`。
+- 多个异步入口的 `.then` 链 / 立即执行 async IIFE 没有 `.catch`，一旦内部 await 的 Promise reject 即泄漏为全局「Uncaught (in promise)」；`sessionSave`/`sessionRemove` 里的 `chrome.storage.session.set` 也未 `.catch` 其异步 reject。
+
+### 改动（`extension/background.js`）
+
+- `forwardCaptureToLockPassPage`：向页面桥发消息前先 `chrome.tabs.get(tabId)` 预校验 tab 存活，不存活则跳过并清理登记，从根上避免向已关闭 tab 发消息。
+- `LP_CAPTURE_CHECK`、`LP_CAPTURE_SAVE` 两个 async IIFE 末尾补 `.catch` 兜底（仅 `console.warn`）。
+- `SUGGESTION_FILL` 的 `sendMultiFill(...).then(...)` 链补 `.catch`（捕获后回 `sendResponse` 失败）。
+- `sessionSave`/`sessionRemove` 的 `chrome.storage.session.set` 补 `.catch(() => {})`。
+
+### 边界与验证状态
+
+- `chrome.tabs.sendMessage` 对不存在 tab 的 reject 原本已在 `forwardCaptureToLockPassPage` 的 try/catch 内被吞，但预校验可彻底消除该次 API 调用，更干净；预校验存在 TOCTOU（极小概率校验后 tab 才关闭），此时仍由原有 try/catch 兜底。
+- **未实测（需人工回归）**：在 `chrome://extensions` 重新加载后，确认控制台不再出现 `No tab with id` 报错；网页版（开 lockpass.html）与桌面版两种配对场景各保存一次。
+- 版本号：同类捕获链路健壮性修复，**不推进**（仍为 v1.1.3）。
+- 未执行任何 Git 提交类操作。
+
+---
+
+## 2026-10-09 · 桌面版配对场景保存失败（MV3 SW 回收丢失捕获态 + desktop-error 文案）—— 不推进版本号（仍为 v1.1.3）
+
+用户反馈「浏览器扩展保存新密码时没有保存成功」，确认为**桌面版已配对**场景。此前已修复 TTL 倒挂与 expired/timeout 文案（网页版页面桥），但桌面版的核心断点不同：`capturePending`/`captureIssued` 是 MV3 Service Worker 纯内存 Map，SW 空闲约 30s 被回收后全部清零——用户看到的浮层还在，但点「保存」时 `captureIssued` 为空 → 判 `expired` → 显示「保存失败」。
+
+### 根因
+
+1. **MV3 Service Worker 回收丢失捕获态（主因）**：`capturePending`（`LP_CAPTURE_PENDING` 登记）和 `captureIssued`（`LP_CAPTURE_CHECK` 转移）均为 SW 内存 Map。SW 被回收后，这两个 Map 清零。用户在网页上看到保存浮层并点「保存」→ `LP_CAPTURE_SAVE` → `captureIssued.get(saveTabId)` 返回 `undefined` → 判 `expired` → 保存失败。
+2. **`desktop-error` 错误码无文案映射**：`captureViaLocalServer` 返回的 `desktop-error`（Rust 侧 400/404/410 等）在 `captureFailText()` 里无对应分支，落入兜底「保存失败，请稍后重试」，掩盖桌面端真实异常。
+
+### 改动
+
+- `extension/background.js`：`capturePending`/`captureIssued` 双写到 `chrome.storage.session`（MV3 专有，跨 SW 重启存活，浏览器关闭自动清除）。正常路径走内存（同步快），SW 重启后的首次 `LP_CAPTURE_CHECK`/`LP_CAPTURE_SAVE` 才从 session 恢复到内存 Map。新增 `sessionSave`/`sessionRemove`/`sessionRestore` 三个辅助函数。
+- `extension/background.js`：`LP_CAPTURE_CHECK` 和 `LP_CAPTURE_SAVE` 因 `await sessionRestore` 变为异步，改用 async IIFE + `return true` 保持 `sendResponse` 有效。
+- `extension/content.js`：`CAPTURE_TEXTS` 新增 `failDesktopError`，`captureFailText()` 增加 `desktop-error` 分支。
+
+### 边界与验证状态
+
+- 安全边界未变：`chrome.storage.session` 只能由扩展写入，内容脚本无法伪造（与原内存 Map 安全模型一致）；凭据在浏览器关闭后自动清除。
+- **未实测（需人工回归）**：需在 `chrome://extensions` 点「重新加载」后测：①登录后静置 ≥30s（等 SW 被回收）再点保存；②确认桌面端确认框弹出后点「保存」入库成功。
+- 版本号：属 v1.1.3 同模块同类问题的延续修复，**不推进**（仍为 v1.1.3）。
+- 未执行任何 Git 提交类操作，改动只留在工作树。
+
+---
+
+## 2026-10-09 · 浏览器扩展保存新密码失败（三处根因修复）—— 不推进版本号（仍为 v1.1.3）
+
+用户反馈「浏览器扩展保存新密码时没有保存成功」。完整走查保存链路 `content.js`（submit 捕获）→ `background.js`（`LP_CAPTURE_SAVE`）→ `lockpass-bridge.js` → 页面 `ext-bridge.js`（`capture`）→ `useVault.handleExtensionCapture()` 落库，并核对桌面 HTTP 通道（`POST /capture` → Rust 槽位 → `server_capture_report` → `GET /capture/status`），确认**协议本身无缺陷**（requestId 回传、`capture-result` 均齐全；`is_report_status()` 白名单含 `error`；`server_capture_report(id, status)` 与前端 `invoke` 参数名一致）。问题出在凭据有效期、后台内存态两处硬伤，外加一处错误码被吞。
+
+### 根因
+
+1. **MV3 Service Worker 回收导致页面桥失联（主因）**：`background.js` 的 `appBridgeTabs` / `pageBridgeReady` 均为 Service Worker 内存态，空闲约 30s 被回收清零；而 `lockpass-bridge.js` 只在首次发现页面标记时 `post('probe')` 一次，LockPass 页面也只在解锁瞬间广播 `ready`。于是「先开着 LockPass 页面 → 过一会儿去网站登录 → 点保存」必然走到 `forwarded=false` → 回退桌面通道 → 未配对即返回 `no-lockpass`，浮层提示「请先打开并解锁 LockPass 页面后重试」，而用户视角里页面明明一直开着。
+2. **浮层展示时长与凭据 TTL 倒挂（确定性缺陷）**：`LP_CAPTURE_CHECK` 登记 `captureIssued` 后，浮层可停留 20s 才自动收起，但 `LP_CAPTURE_SAVE` 仍按 `CAPTURE_TTL_MS`（15s）判定有效性 —— 用户在第 15–20s 之间点「保存」，必然拿到 `{ok:false, error:'expired'}`。
+3. **错误码被吞**：`content.js` 的 `captureFailText()` 未处理 `'expired'`（后台实际会下发），落入兜底文案「保存失败，请稍后重试」，掩盖真实原因，使上述两类问题表现为同一句话。
+
+### 改动
+
+- `extension/lockpass-bridge.js`：末尾新增 `keepAliveBridge()`，令牌有效期间每 20s 重发 `LP_READY`，抵消 SW 回收导致的失联；无令牌时 5s 静默轮询等待，解锁后自动接上。
+- `extension/background.js`：新增 `CAPTURE_ISSUED_TTL_MS = 90000`，`LP_CAPTURE_SAVE` 的有效期判定由 `CAPTURE_TTL_MS` 改为它；`capturePending`（用于「新页面加载时判定是否跳转/密码框消失」）仍沿用 15s，两者语义分离。
+- `extension/background.js`：`LP_READY` 原先无条件 `cachedEntries = []` / `passwordCache = {}`，心跳每 20s 触发一次会反复清空已取条目、徒增取数往返；改为仅「首次握手 / 此前未就绪」时重置缓存。
+- `extension/content.js`：`CAPTURE_TEXTS` 新增 `failExpired`，`captureFailText()` 增加 `expired` 分支，让真实失败原因可见。
+
+### 边界与验证状态
+
+- 安全边界未变：令牌仍是第一道闸（未解锁不广播心跳），凭据仍只在扩展进程内存短暂存在、不落盘；`file://` 本地页面信任开关、`sender.url` 白名单、一次性领取等机制均未改动。
+- **未实测（需人工回归）**：本轮未在真实浏览器验证。需在 `chrome://extensions` 点「重新加载」后测：①解锁后静置 ≥1min 再去网站登录保存（心跳）；②浮层出现后等 20s 以上再点保存（TTL 倒挂）。仅执行了 `node --check` 语法校验与 IDE 诊断（`read_lints` 无输出）。
+- 待用户确认实际通道：若为桌面版配对而非网页版页面桥，根因 1 不适用，需改沿桌面通道继续排查。
+- 回归风险：仅改 `extension/` 下三个扩展脚本，不涉及 `dist/` 产物、保险箱数据模型与既有解锁方式。
+- 版本号：属 v1.1.3「扩展捕获」同模块同类问题的延续修复，按规范**不推进**（仍为 v1.1.3）；是否单开 v1.1.4 由用户决定。未执行 `npm run version:set`，`version:check` 仍为 11 处一致。
+- 未执行任何 Git 提交类操作，改动只留在工作树。
+
+---
+
 ## 2026-10-08 · 生物识别解锁启用失败（「加密操作失败」）修复 —— 不推进版本号（仍为 v1.1.3）
 
 用户在设置里打开「生物识别解锁（macOS 面容 / 触控 ID）」即提示「加密操作失败」。该文案是 `settings.security.bioErr.CRYPTO_ERR`，来自 Rust 兜底分支：任何未映射的 CFError 都被归为 `CRYPTO_ERR`，且前端把 `detail` 丢掉，于是系统侧真实原因完全不可见。用临时 `examples/probe_se.rs` 直接调 Security 框架复现后，确认是**两个相互独立的失败点**。
