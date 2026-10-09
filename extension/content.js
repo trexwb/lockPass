@@ -297,6 +297,13 @@ function observeLoginForms() {
 
 /* ── 消息处理 ────────────────────────────────────── */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // 浮层转发：非顶层 frame 的登录框 submit 后，由后台把待确认凭据下发给顶层 frame 弹层
+  if (msg.type === 'LP_CAPTURE_SHOW') {
+    if (window === window.top && !isLockPassAppPage() && msg.payload) showCapturePrompt(msg.payload)
+    sendResponse({ ok: true })
+    return
+  }
+
   // 多字段填充（upgrade-design.md §2.2 主路径）：fields = [{ key, value }]
   // key ∈ username/password/email/phone/otp/url，按页面能力位匹配输入框逐项填充
   if (msg.type === 'LP_MULTI_FILL') {
@@ -508,9 +515,10 @@ function showSuggestionEmpty() {
 }
 
 /* ── 自动捕获（v1.1.4）──────────────────────────────
-   监听表单 submit：提取域名 + 用户名 + 密码上报后台暂存（仅内存，15s TTL）。
+   监听表单 submit：提取域名 + 用户名 + 密码上报后台暂存（仅内存，25s TTL）。
    登录成功启发式（submit 后页面跳转 / 密码框消失）由新页面加载时的
-   LP_CAPTURE_CHECK 判定，命中则弹出「保存到 LockPass？」浮层。
+   LP_CAPTURE_CHECK 或 submit 所在 frame 的就页观察（armCaptureWatch）判定，
+   命中则弹出「保存到 LockPass？」浮层。
    安全：LockPass 主应用页面（data-lockpass-app 标记）不捕获，避免误抓主密码；
    凭据只在扩展进程内存中短暂存在，不落盘。 */
 
@@ -550,21 +558,99 @@ function findCaptureInputs(root) {
   return { pw, un }
 }
 
+/**
+ * 捕获身份域名：优先当前文档主机名；无主机名帧（srcdoc / about:blank 等内嵌登录框）
+ * 退用 referrer 的宿主页面主机名；仍取不到返回 ''，由后台退用顶层 tab URL 解析。
+ * @returns {string} 小写主机名或空串
+ */
+function captureDomain() {
+  if (location.hostname) return location.hostname
+  try { return new URL(document.referrer).hostname.toLowerCase() } catch (e) { return '' }
+}
+
+/**
+ * 捕获页面标题：优先顶层 frame 的 document.title（跨域不可读时退本 frame），
+ * 保存时作为 LockPass 条目标题；截断到 200 字符防止超长页面标题。
+ * @returns {string} 清洗后的标题或空串
+ */
+function captureTitle() {
+  let raw = ''
+  try { raw = (window.top && window.top.document.title) || document.title || '' } catch (e) { raw = document.title || '' }
+  return String(raw).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200)
+}
+
 function captureOnSubmit(e) {
   if (isLockPassAppPage()) return
   const target = e.target
   const form = target && target.tagName === 'FORM' ? target : null
   const { pw, un } = findCaptureInputs(form)
   if (!pw || !pw.value) return
+  // 帧内取不到主机身份也照常上报：后台会用顶层 tab URL 兜底解析站点身份，
+  // 真正无主机身份的页面（如 file://）由后台拒绝暂存，这里不静默丢弃。
   try {
     chrome.runtime.sendMessage({
       type: 'LP_CAPTURE_PENDING',
       href: location.href,
-      domain: location.hostname,
+      domain: captureDomain(),
+      title: captureTitle(),
       username: un ? String(un.value) : '',
       password: String(pw.value),
+    }, (resp) => {
+      if (!resp || !resp.ok) return
+      // 新的显式 submit 视为用户再次要求保存：解除此前「忽略/关闭」对该域+账号的
+      // 浮层抑制，否则同一页面实例里第二次登录永远不弹（看起来像扩展失灵）
+      if (resp.domain) captureDismissed.delete(resp.domain + '|' + (un ? String(un.value) : ''))
+      armCaptureWatch()
     })
   } catch (err) { /* 后台不可达（扩展刚更新等），忽略 */ }
+}
+
+/* SPA 登录通常不重载页面：仅靠页面加载时的 LP_CAPTURE_CHECK，浮层要等用户
+   手动刷新才出现。submit 暂存成功后在来源 frame 内轮询「地址变化 / 密码框消失」
+   （与后台 CHECK 判定同一启发式），命中即主动请求确认。
+   观察窗 24s 略小于后台 CAPTURE_TTL_MS（25s）：两侧曾贴边（14s/15s）在慢登录下
+   出现 CHECK 到达即被判过期的竞态，放宽后仍须保证观察窗 < 暂存 TTL。 */
+const CAPTURE_WATCH_MS = 24000
+const CAPTURE_WATCH_TICK_MS = 400
+let captureWatchTimer = null
+
+/** 启动（或重启）当前 frame 的登录成功观察窗口 */
+function armCaptureWatch() {
+  if (captureWatchTimer) clearInterval(captureWatchTimer)
+  const submitHref = location.href
+  const startedAt = Date.now()
+  captureWatchTimer = setInterval(() => {
+    if (Date.now() - startedAt > CAPTURE_WATCH_MS) {
+      clearInterval(captureWatchTimer)
+      captureWatchTimer = null
+      return
+    }
+    const navigated = location.href !== submitHref
+    const pwGone = !findPasswordInput()
+    if (!navigated && !pwGone) return
+    clearInterval(captureWatchTimer)
+    captureWatchTimer = null
+    console.log('[LP_CAPTURE] watch fired navigated=' + navigated + ' pwGone=' + pwGone)
+    requestCaptureConfirm()
+  }, CAPTURE_WATCH_TICK_MS)
+}
+
+/** 观察命中：向后台请求下发待确认凭据；顶层 frame 直接走既有 CHECK，
+    非顶层 frame 带 forwardToTop，由后台把浮层转发给顶层 frame 显示 */
+function requestCaptureConfirm() {
+  if (isLockPassAppPage()) return
+  if (window === window.top) {
+    checkCapturePrompt()
+    return
+  }
+  try {
+    chrome.runtime.sendMessage({
+      type: 'LP_CAPTURE_CHECK',
+      href: location.href,
+      hasPasswordField: !!findPasswordInput(),
+      forwardToTop: true,
+    })
+  } catch (e) { /* 后台不可达，忽略 */ }
 }
 
 try {
@@ -575,6 +661,7 @@ try {
 function checkCapturePrompt() {
   if (window !== window.top) return
   if (isLockPassAppPage()) return
+  // findPasswordInput 已过滤 0×0 渲染框：display:none 隐藏的登录框按「密码框消失」判定
   const hasPwField = !!findPasswordInput()
   try {
     chrome.runtime.sendMessage({ type: 'LP_CAPTURE_CHECK', href: location.href, hasPasswordField: hasPwField }, (resp) => {
@@ -629,6 +716,7 @@ const CAPTURE_TEXTS = {
   failNoResult: '未收到保存结果：请在桌面版 LockPass 窗口查看是否已入库',
   failExpired: '保存失败：捕获的凭据已过期，请重新在该网站登录后再保存',
   failDesktopError: '保存失败：桌面版 LockPass 返回异常，请确认桌面端已解锁后重试',
+  failNoDomain: '当前页面没有主机名（如本地文件页面），无法保存到 LockPass',
   failPageTimeout: '未收到保存结果：请确认 LockPass 页面仍处于解锁态',
   failOther: '保存失败，请稍后重试',
 }
@@ -648,6 +736,8 @@ function captureFailText(error) {
   if (error === 'expired') return CAPTURE_TEXTS.failExpired
   // desktop-error：Rust 侧返回 400/404/410 等，此前落入兜底文案
   if (error === 'desktop-error') return CAPTURE_TEXTS.failDesktopError
+  // no-domain：file:// 等无主机名页面在发请求前被拦截，给出可行动的明确提示
+  if (error === 'no-domain') return CAPTURE_TEXTS.failNoDomain
   // timeout：页面桥 8s 内未回传 capture-result（页面被冻结/后台繁忙），
   // 与桌面通道的 desktop-timeout 不同，提示不应指向桌面窗口
   if (error === 'timeout') return CAPTURE_TEXTS.failPageTimeout
@@ -656,7 +746,10 @@ function captureFailText(error) {
 
 function showCapturePrompt(p) {
   const key = (p.domain || '') + '|' + (p.username || '')
-  if (captureDismissed.has(key)) return
+  if (captureDismissed.has(key)) {
+    console.log('[LP_CAPTURE] prompt suppressed：该页面实例此前对此站点+账号点过忽略/关闭')
+    return
+  }
   ensureCaptureStyle()
   removeCapturePrompt()
   const root = document.createElement('div')

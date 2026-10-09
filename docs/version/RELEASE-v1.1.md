@@ -4,6 +4,94 @@
 
 ---
 
+## 2026-10-09 · v1.1.4 发布汇总 —— 版本号推进 PATCH：v1.1.3 → v1.1.4（用户明确授权）
+
+本轮浏览器扩展「保存新密码到桌面端」链路经多轮修复与增强，已具备完整可用闭环，经用户授权推进末位版本号至 **v1.1.4**（`npm run version:set 1.1.4` 已同步 package.json / tauri.conf.json / extension manifest / Cargo.toml / AGENTS.md / docs/spec.md 共 11 处，`version:check` 全绿）。以下分节为本版本包含的明细（最新在前，同日各节标注的「不推进版本号」为当时过程记录，统一由本节收尾）：
+
+- **捕获浮层排查**（同日首节）：修复「保存一次后同页不再弹窗」的 dismiss 永久抑制与 TTL 贴边竞态；暂存 TTL 15s→25s、观察窗 14s→24s；补 `[LP_CAPTURE]` 形状诊断日志（不落凭据）。
+- **标题增强**：新条目标题优先取网页 `document.title`（content → background → Rust `CapturePayload.title` 宽松清洗 → useVault 入库，缺省回退域名；`cargo test --lib` 14/14）。
+- **SPA 免刷新弹层**：submit 后 frame 内观察器（地址变化/密码框消失启发式）主动触发确认，登录框在 iframe 内时经 `forwardToTop` 由顶层 frame 弹层。
+- **无主机名帧回归修复**：三级域名解析（帧 hostname → referrer → 顶层 tab URL），manifest 补 `tabs` 权限；file:// 真·无身份页由后台明确拒绝。
+- **「返回异常」误报三处根因**：Rust 终态槽位不再被 TTL 误删、410 单独映射 `expired`、浮层看门狗 195s 对齐后台 185s；capabilities 无效权限项导致的构建失败已修复。
+
+发布验证：`cargo test --lib` 14/14、`node --check` 全部通过、`npm run vite:build` 通过、`npm run version:check` 11 处一致。GitHub Release 正文见 [`RELEASE-v1.1.4-github.md`](RELEASE-v1.1.4-github.md)。
+
+---
+
+## 2026-10-09 · 捕获浮层排查：保存一次后同页不再弹窗的两处根因 —— 不推进版本号（仍为 v1.1.3）
+
+用户反馈：成功保存过一个密码后，同一页面里新的登录不再触发浮层。静态排查整条状态机（PENDING 暂存 / CHECK 消费 / SAVE 清理 / session 恢复 / TTL 定时器）后，浮层链路本身无残留态阻塞下一次暂存，可确认的抑制点有两处：
+
+1. **`captureDismissed` 页面实例级抑制过强（`extension/content.js` `showCapturePrompt`）**：浮层被点「忽略/×」一次后，同一文档实例内**同域名+同账号**的后续捕获永久静默——用户在同一测试页换路径重测（域名账号相同），若此前关过一次浮层，就表现为「触发过一次就不再弹」。修复：每次新的显式 submit（后台 `LP_CAPTURE_PENDING` 回 `ok:true` 且回传解析后的 `domain`）即解除对应键的抑制，与浏览器密码管理器「重新登录 = 重新询问」口径一致；被抑制时页面 console 输出 `[LP_CAPTURE] prompt suppressed` 便于识别。
+2. **观察窗与暂存 TTL 贴边竞态（14s vs 15s）**：慢登录场景（提交后表单驻留 >14s）观察器命中时 CHECK 经两次往返到达后台，可能恰好超过 `CAPTURE_TTL_MS=15s` 新鲜度判定 → 静默不过滤弹层。修复：后台暂存 TTL 15s→**25s**、前端观察窗 14s→**24s**（保持观察窗 < TTL 的约束，两侧注释同步更新）。
+
+另补非敏感诊断日志（仅形状：tabId / 域名 / 布尔 / 长度，不落凭据）：后台 `[LP_CAPTURE] pending stored / check 无暂存或已过期 / check 命中 / check 未命中启发式`，前端 `[LP_CAPTURE] watch fired`。下次复现时 `chrome://extensions` SW 控制台 + 页面 Console 可直接判定卡在哪一环。
+
+### 验证状态
+
+- `node --check` content.js / background.js 通过。
+- **需人工回归**：重载扩展 → 同页保存一条成功后（含此前点过忽略的账号）再次登录 → 浮层应重新弹出；若仍不弹，把 SW 控制台与页面 Console 的 `[LP_CAPTURE]` 输出贴回定位。
+- 同类问题持续修复，**不推进版本号**（仍为 v1.1.3）；未执行任何 Git 提交类操作。
+
+---
+
+## 2026-10-09 · 捕获保存增强：新条目标题优先取网页 document.title —— 不推进版本号（仍为 v1.1.3）
+
+扩展捕获入库新建的条目此前标题固定为域名（`title: domain`），可读性差。现贯通标题链路：网页 `document.title` → 扩展暂存 → 桌面端确认入库时优先作为新条目标题，取不到（空/全空白）回退域名。
+
+### 改动
+
+- `extension/content.js`：新增 `captureTitle()`——优先顶层 frame `document.title`（跨域不可读时退本 frame），去换行/制表符、trim、截 200 字符；`LP_CAPTURE_PENDING` 载荷带 `title`。
+- `extension/background.js`：`LP_CAPTURE_PENDING` 暂存载荷记录 `title`（剔除控制字符、截 200）；桌面通道 `POST /capture` 请求体带 `title`。页面桥通道整体转发暂存载荷，`title` 自动随行，无需改动 `ext-bridge.js`。
+- `src-tauri/src/server.rs`：`CapturePayload` 新增 `#[serde(default)] title`（旧版扩展缺字段仍兼容）；标题为展示性字段，**宽松清洗**（去控制符、截 200 字符）而非参与 400 拒绝；`lockpass:capture-request` 事件载荷透传 `title`。
+- `src/composables/useVault.js`：`handleExtensionCapture` 新建条目 `title = 清洗后的 payload.title || domain`；`confirmDesktopCapture` 把 `detail.title` 传入。已有条目（updated 分支）不改标题，去重/旅行模式口径不变。
+
+### 验证状态
+
+- `cargo test --lib`：14/14 通过（新增 `capture_sanitizes_page_title_and_defaults_when_absent`：控制符剔除、200 字符截断、缺省兼容）。
+- `node --check` content.js / background.js / useVault.js 通过；`npm run vite:build` 通过。
+- **需人工回归**：重载扩展 + 重启 `tauri:dev` → 在带 `<title>` 的测试页登录并保存 → 桌面端新条目标题应显示页面标题（无标题页回退域名）。
+- 同日同模块追加改进，**不推进版本号**（仍为 v1.1.3）；未执行任何 Git 提交类操作。
+
+---
+
+## 2026-10-09 · 捕获浮层补强：SPA 登录后无需刷新页面即弹「保存到 LockPass？」 —— 不推进版本号（仍为 v1.1.3）
+
+回归确认：上一条修复后浮层恢复弹出，但**需要手动刷新页面才出现**。根因是浮层触发完全依赖「新页面加载时的 `LP_CAPTURE_CHECK`」——SPA / fetch 登录不重载页面、也不跳转时，加载时机永远不出现，只有用户刷新才命中；登录框在无主机名 iframe 内时同理（顶层 frame 未变）。
+
+### 改动
+
+- `extension/content.js`：`LP_CAPTURE_PENDING` 暂存成功（后台回 `ok:true`）后，在**发起 submit 的 frame 内**启动登录成功观察器 `armCaptureWatch()`——400ms 轮询、上限 14s（刻意小于后台 15s TTL），判定「本 frame 地址变化（含 pushState）或密码框消失」（与后台 CHECK 同一启发式；`findPasswordInput` 已过滤 0×0 渲染框，`display:none` 隐藏的登录卡按消失判定）。命中即主动发起确认请求。
+- `extension/content.js`：顶层 frame 走既有 `checkCapturePrompt()`；非顶层 frame 带 `forwardToTop: true` 发 `LP_CAPTURE_CHECK`，并由新增消息 `LP_CAPTURE_SHOW` 在顶层 frame 弹浮层（登录框在 iframe 内时用户也能即时看到）。
+- `extension/background.js`：`LP_CAPTURE_CHECK` 命中后，若 `forwardToTop` 则 `chrome.tabs.sendMessage(tabId, { type:'LP_CAPTURE_SHOW', payload }, { frameId:0 })` 把凭据转发给顶层 frame（凭据仍取自后台暂存，不信任页面传入）。
+- 传统整页跳转登录不受影响：新页面加载时的 `LP_CAPTURE_CHECK` 路径原样保留，两条路径谁先到谁消费（pending 消费即删，不会双弹）。
+
+### 验证状态
+
+- `node --check` content.js / background.js 通过。
+- **需人工回归**：重新加载扩展 → SPA 测试页提交登录（不刷新）→ 数秒内浮层应自动弹出；登录框在 iframe 内的场景，浮层应出现在顶层页面右上角；登录失败（密码框保留且不跳转）不应打扰。
+- 同类问题持续修复，**不推进版本号**（仍为 v1.1.3）；未执行任何 Git 提交类操作。
+
+---
+
+## 2026-10-09 · 回归修复：无主机名帧且 referrer 为空时保存浮层完全不弹 —— 不推进版本号（仍为 v1.1.3）
+
+上一条 `captureDomain()` 修复引入了回归：测试后扩展**完全不弹「保存到 LockPass？」浮层**。根因是 content.js 中 `if (!capDomain) return` 的静默抑制——登录框位于无主机名帧（`all_frames: true` 注入的 srcdoc/about:blank iframe）且 `document.referrer` 为空时（受限 referrer 策略下很常见），submit 上报被直接丢弃，后台从未暂存凭据，浮层判定（`LP_CAPTURE_CHECK`）无从触发。此前旧行为虽 domain 为空但仍暂存弹层（保存时才 400），故浮层消失即为本抑制分支所致。
+
+### 改动
+
+- `extension/content.js` `captureOnSubmit`：删除 `!capDomain` 静默抑制，取不到主机身份也照常上报 `LP_CAPTURE_PENDING`；站点身份判定下沉到后台。
+- `extension/background.js` `LP_CAPTURE_PENDING`：三级解析 `msg.domain`（帧 hostname → referrer）→ `extractDomain(sender.tab.url)`（顶层 tab URL 兜底，依赖新增 `tabs` 权限）；解析后仍为空（真·无站点身份，如 file:// 顶层页）才拒绝暂存 = 不弹浮层，与浏览器自身不保存本地页密码一致。
+- `captureViaLocalServer` 的 `no-domain` 预检保留，覆盖 session 恢复出的旧空域记录等竞态。
+
+### 验证状态
+
+- `node --check` content.js / background.js 通过；解析链以四种场景模拟验证：顶层 http 页 / referrer 可用 iframe / referrer 为空 iframe（回归场景，tab URL 兜底命中）均正常暂存弹层，仅 file:// 顶层页拒绝。
+- **需人工回归**：`chrome://extensions` 重新加载扩展（首次需接受新增的「读取浏览历史」`tabs` 权限提示）→ 原测试页提交登录 → 浮层应恢复弹出，点「保存」后桌面端弹确认框并入库；表单在无主机名帧内时条目应落在**宿主站点**域名下。
+- 同类问题持续修复，**不推进版本号**（仍为 v1.1.3）；未执行任何 Git 提交类操作。
+
+---
+
 ## 2026-10-09 · 桌面捕获「返回异常」误报三处根因修复 —— 不推进版本号（仍为 v1.1.3）
 
 用户反馈扩展点「保存」仍提示：`保存失败：桌面版 LockPass 返回异常，请确认桌面端已解锁后重试`（`desktop-error`）。代码审查确认 `desktop-error` 有四个出口（POST 400 / 响应缺 id / 轮询 404·410 / 桌面回报 `error`），其中三处存在误报。
@@ -19,10 +107,51 @@
 
 - `cargo test --lib`：13/13 通过（含 expired→410、锁屏清槽、并发挤兑用例；改动后即跑通过首次全量）。
 - `node --check` background.js / content.js 通过。
+- **打包版无 DevTools 的诊断补强**：用户以 `npm run build` 产物复测仍报「返回异常」，release 包看不到桌面端 console 日志。桌面捕获入库异常与结果回报失败两处新增可见 toast（`ext.capture.saveError` / `ext.capture.reportLost`，zh/en 双语键），点桌面「保存」后真实异常原因直接在窗口弹出，无需控制台。`npm run vite:build` 通过；需再次 `tauri:build` 打包后此增强才进包。
 - **未实测（需人工回归）**：①桌面端确认弹窗正常弹出并入库、扩展回显成功；②静置 >180s 再确认，验证扩展提示为「凭据已过期」而非「返回异常」；③若仍报 `desktop-error`，看桌面端控制台 `[LockPass] 桌面捕获入库异常` 与 SW 控制台 `/capture 被拒 status=` 定位真实原因。
 - ⚠️ 验证期间发现 `src-tauri/capabilities/default.json` 被并行改动加入 22 条 `lockpass:allow-*` 权限项，导致 `cargo build/test` 构建脚本校验失败。已修复：这些命令均为应用自身 `generate_handler!` 自定义命令，Tauri v2 中不经 capability ACL（仅插件命令有权限项），无对应 schema 的引用串只会卡死构建；已删除无效权限项恢复提交版列表，前端 invoke 调用行为不变。修复后 `cargo test --lib` 13/13 通过。
 - 同类捕获链路问题持续修复，**不推进版本号**（仍为 v1.1.3）。
 - 未执行任何 Git 提交类操作。
+
+---
+
+## 2026-10-09 · 「返回异常」根因更正：无主机名帧 + `tabs` 权限缺失导致兜底失效 —— 不推进版本号（仍为 v1.1.3）
+
+用户澄清测试页**并非 file:// 打开**，上一条对「本地页面」的归因不成立，更正如下。`domain_len=0` 这一 Rust 日志证据仍然有效，完整根因链是两条叠加：
+
+1. **content.js 以 `all_frames: true` 注入所有框架**：登录表单若位于无主机名的帧（`srcdoc` / `about:blank` 动态创建的内嵌登录框等，真实站点常见），帧内 `location.hostname` 为空。
+2. **manifest 缺少 `tabs` 权限**：`background.js` 中 `domain: msg.domain || extractDomain(sender.tab.url)` 的兜底里 `sender.tab.url` 恒为 `undefined`，兜底形同虚设 → 载荷 domain 为空 → Rust 必拒 400 → 扩展显示「桌面版返回异常」。
+
+### 改动
+
+- `extension/content.js`：新增 `captureDomain()` 主机名解析链（当前帧 hostname → `document.referrer` 宿主页面 hostname → 空则不弹保存浮层），`captureOnSubmit` 改用其结果。
+- `extension/manifest.json`：`permissions` 补 `"tabs"`，使既有的顶层 tab URL 兜底真正生效。**注意：重新加载扩展时 Chrome 会提示新增「读取浏览历史」权限，需确认一次；若不接受可回退此权限项，仅靠 referrer 链兜底。**
+- 上一条的 `no-domain` 预检与文案保留，作为最后一道明确提示。
+
+### 验证状态
+
+- `node --check` content.js、manifest JSON 校验通过。
+- **需人工回归**：`chrome://extensions` 重新加载扩展（接受新权限）→ 原测试页登录 → ①不再报「返回异常」，桌面端弹出确认框；②若该页表单在无主机名帧内，入库条目应落在**宿主站点**域名下。
+- 同类问题持续修复，**不推进版本号**（仍为 v1.1.3）；未执行任何 Git 提交类操作。
+
+---
+
+## 2026-10-09 · 「返回异常」真实根因确诊：file:// 页面无主机名被 Rust 400 拒绝 —— 不推进版本号（仍为 v1.1.3）
+
+dev 复测仍报 `保存失败：桌面版 LockPass 返回异常`。通过 Rust 侧新增的 `[capture]` 终端追踪日志确诊：`POST /capture -> 400 invalid payload: domain_len=0 username_len=4 password_len=9` —— 测试页以 **file:// 打开**，`location.hostname` 为空串，载荷在入口即被拒，与超时/回报/TTL 等此前修的所有分支无关。
+
+### 改动（三层）
+
+- `extension/content.js` `captureOnSubmit`：`location.hostname` 为空的页面（file:// 等无站点身份）不再弹保存浮层，与浏览器自身不保存本地页密码的行为一致。
+- `extension/background.js` `captureViaLocalServer`：POST 前预检 `payload.domain`，为空直接回 `no-domain`，不再向 Rust 发注定 400 的请求。
+- `extension/content.js`：新增 `failNoDomain` 文案与 `no-domain` 错误码映射：「当前页面没有主机名（如本地文件页面），无法保存到 LockPass」，desktop-error 文案此后只对应真实的 400（其他形状）/404/前端 error。
+
+### 验证状态
+
+- `node --check` content.js / background.js 通过；Rust 测试 13/13 保持通过（未改 Rust）。
+- **需人工回归**：`chrome://extensions` 重新加载扩展后，①file:// 本地测试页：登录不再弹保存浮层；②http(s) 页面（如本地起 `python3 -m http.server` 的测试站）：登录→浮层保存→桌面确认→入库成功，扩展回显成功。
+- 提示：捕获/保存功能仅适用于 http(s) 站点；用 file:// 双击打开的测试页验证会命中本条拦截，请改经本地 HTTP 服务访问。
+- 同类问题根因确诊修复，**不推进版本号**（仍为 v1.1.3）；未执行任何 Git 提交类操作。
 
 ---
 

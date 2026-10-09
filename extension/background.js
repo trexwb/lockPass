@@ -383,12 +383,14 @@ async function activeTab() {
 }
 
 // ── 自动捕获（v1.1.4） ─────────────────────────────
-// 登录 submit 凭据按 tab 暂存（仅 Service Worker 内存，15s TTL，不落盘）；
+// 登录 submit 凭据按 tab 暂存（仅 Service Worker 内存，25s TTL，不落盘）；
 // 新页面加载时内容脚本 LP_CAPTURE_CHECK 判定「已跳转或密码框消失」→ 弹保存浮层；
 // LP_CAPTURE_SAVE 经 LockPass 页面桥（lockpass-bridge → 页面 ExtBridge）入库，等待 capture-result。
-const CAPTURE_TTL_MS = 15000
-// 已下发浮层的凭据：浮层可停留 20s 才自动收起，用户也可能在第 15–20s 之间才点「保存」，
-// 若沿用 CAPTURE_TTL_MS（15s）判定，等待中的点击会被必然判为过期，故独立放宽
+// 15s 曾与内容侧观察窗（14s）贴边竞态：CHECK 经两次消息往返最迟 ~14.5s+ 到达时，
+// 15s 新鲜度判定可能已过 → 浮层不弹。两侧同步放宽：暂存 25s、观察窗 24s。
+const CAPTURE_TTL_MS = 25000
+// 已下发浮层的凭据：浮层可停留 20s 才自动收起，用户也可能在暂存到期前后才点「保存」，
+// 若沿用 CAPTURE_TTL_MS 判定，等待中的点击会被必然判为过期，故独立放宽
 const CAPTURE_ISSUED_TTL_MS = 90000
 const CAPTURE_RESULT_TIMEOUT_MS = 8000
 const capturePending = new Map() // tabId -> { payload, at }
@@ -543,6 +545,8 @@ async function captureViaLocalServer(payload) {
   if (!httpReadyFlag) return { ok: false, error: 'no-lockpass' }
   const { [STORAGE_TOKEN_KEY]: token } = await chrome.storage.local.get(STORAGE_TOKEN_KEY)
   if (!token) return { ok: false, error: 'no-lockpass' }
+  // 无主机名页面（file:// 等）没有站点身份，Rust 侧必拒 400：提前拦截，给浮层明确文案
+  if (!String(payload.domain || '')) return { ok: false, error: 'no-domain' }
   let posted
   try {
     posted = await fetch(LOCAL_BASE + '/capture', {
@@ -553,6 +557,7 @@ async function captureViaLocalServer(payload) {
         domain: payload.domain || '',
         username: payload.username || '',
         password: payload.password || '',
+        title: String(payload.title || '').slice(0, 200),
       }),
     })
   } catch (e) {
@@ -891,13 +896,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: false })
         break
       }
+      // 站点身份三级解析：帧主机名 → referrer → 顶层 tab URL（tabs 权限）；
+      // 仍为空（如 file:// 页）则无身份可入库，拒绝暂存 = 不弹保存浮层
+      const capDomain = msg.domain || extractDomain(sender.tab && sender.tab.url)
+      if (!capDomain) {
+        sendResponse({ ok: false })
+        break
+      }
       captureRemember(tabId, {
         href: msg.href || (sender.tab && sender.tab.url) || '',
-        domain: msg.domain || extractDomain(sender.tab && sender.tab.url),
+        domain: capDomain,
+        title: String(msg.title || '').replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, 200),
         username: msg.username || '',
         password: msg.password,
       })
-      sendResponse({ ok: true })
+      // 诊断日志只记形状（tab/域名/长度），绝不落凭据内容
+      console.log('[LP_CAPTURE] pending stored tab=' + tabId + ' domain=' + capDomain +
+        ' user_len=' + String(msg.username || '').length + ' pw_len=' + String(msg.password).length)
+      // 回传解析后的域名：内容脚本据此解除「同一域+账号曾被忽略」的抑制
+      sendResponse({ ok: true, domain: capDomain })
       break
     }
 
@@ -912,6 +929,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           rec = capturePending.get(tabId)
         }
         if (!rec || Date.now() - rec.at > CAPTURE_TTL_MS) {
+          console.log('[LP_CAPTURE] check 无暂存或已过期 tab=' + tabId +
+            ' hasRec=' + !!rec + ' ageMs=' + (rec ? Date.now() - rec.at : -1))
           if (rec) capturePending.delete(tabId)
           if (tabId) sessionRemove(SESSION_PENDING_KEY, String(tabId))
           sendResponse({ pending: null })
@@ -925,9 +944,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             captureIssued.set(tabId, { payload: rec.payload, at: Date.now() })
             sessionSave(SESSION_ISSUED_KEY, captureIssued)
           }
+          // 非顶层 frame 的观察器命中（forwardToTop）：浮层只能在顶层 frame 展示，转发下发
+          if (msg.forwardToTop && tabId) {
+            try {
+              chrome.tabs.sendMessage(tabId, { type: 'LP_CAPTURE_SHOW', payload: rec.payload }, { frameId: 0 },
+                () => void chrome.runtime.lastError)
+            } catch (e) { /* 顶层 frame 无内容脚本（如 chrome:// 页），忽略 */ }
+          }
+          console.log('[LP_CAPTURE] check 命中，下发浮层 tab=' + tabId +
+            ' navigated=' + navigated + ' pwGone=' + !msg.hasPasswordField)
           sendResponse({ pending: rec.payload })
         } else {
           // 仍停在原登录页（可能登录失败），不打扰
+          console.log('[LP_CAPTURE] check 未命中启发式（仍在登录页且有密码框）tab=' + tabId)
           sendResponse({ pending: null })
         }
       })().catch((e) => { console.warn('[LP_CAPTURE_CHECK]', e && e.message ? e.message : e) })

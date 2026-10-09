@@ -305,6 +305,8 @@
   "ext.capture.confirmMsg": "浏览器扩展捕获到一次登录：\n网站：{domain}\n账号：{username}\n\n是否保存到当前保险箱？",
   "ext.capture.confirmSave": "保存",
   "ext.capture.confirmCancel": "忽略",
+  "ext.capture.saveError": "扩展密码保存失败：{msg}",
+  "ext.capture.reportLost": "已处理（{status}）但无法回报浏览器扩展，浮层可能误报失败；请勿重复保存",
   "export.confirmCsvMsg": "⚠️ CSV 文件为明文格式，包含所有密码！\n\n请确保导出后妥善保管该文件，使用后立即删除。\n\n是否继续？",
   "export.emptyConfirmTitle": "导出空数据",
   "export.emptyConfirmMsg": "当前没有可导出的密码条目，导出文件将不包含任何数据。\n\n是否继续？",

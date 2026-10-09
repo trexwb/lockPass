@@ -1548,13 +1548,16 @@ export function useVault() {
    * 扩展自动捕获（v1.1.4）：网页登录成功后由扩展推送凭据，在此落库。
    * 去重口径：同主机名（精确匹配）+ 同用户名的网站条目视为同一账号——
    * 密码相同则跳过；不同则更新密码（编辑历史照常记录）。
-   * @param {object} payload { domain, username, password, href }
+   * 新建条目标题优先用网页 document.title（payload.title，扩展侧已清洗），
+   * 缺失时回退域名。
+   * @param {object} payload { domain, username, password, href, title }
    * @returns {Promise<string>} 'created' | 'updated' | 'exists' | 'error'
    */
   async function handleExtensionCapture(payload) {
     const domain = String((payload && payload.domain) || '').toLowerCase()
     const username = String((payload && payload.username) || '')
     const password = String((payload && payload.password) || '')
+    const pageTitle = String((payload && payload.title) || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200)
     if (!domain || !password) return 'error'
 
     // 条目 url 主机名与登录主机名精确相等才算同一账号（不做子域归并）
@@ -1597,7 +1600,7 @@ export function useVault() {
     const now = new Date().toISOString()
     const entry = {
       id: crypto.randomUUID(),
-      title: domain,
+      title: pageTitle || domain,
       entryType: 'website',
       tags: [],
       notes: '',
@@ -1626,7 +1629,7 @@ export function useVault() {
    * 桌面版自动捕获入库（本地 HTTP 通道）：扩展 POST /capture → Rust 登记待确认槽位
    * → Tauri 事件把凭据交给前端 → 用户确认后才落库，结果经 server_capture_report 回报，
    * 扩展轮询 /capture/status 后回显到网页浮层。未解锁 / 取消 / 失败都绝不写盘。
-   * @param {{id: string, domain: string, username: string, password: string}} detail
+   * @param {{id: string, domain: string, username: string, password: string, title?: string}} detail
    */
   async function confirmDesktopCapture(detail) {
     const domain = String(detail.domain || '')
@@ -1646,13 +1649,14 @@ export function useVault() {
       })
       if (okToSave) {
         try {
-          const action = await handleExtensionCapture({ domain, username, password: detail.password })
+          const action = await handleExtensionCapture({ domain, username, password: detail.password, title: detail.title })
           status = action === 'error' ? 'error' : action
         } catch (e) {
           // 入库过程任何未预期异常（加密密钥失效 / 写盘抛错 / recordEntryHistory 内部错误）
           // 必须明确回报 error，而非被外层 .catch 静默吞掉导致超时误导排查。
-          // 具体错误打印到桌面端控制台，便于区分「文件权限」还是「cryptoKey 失效」。
+          // 打包版无 DevTools：toast 直接展示真实异常，与 console 双通道便于区分根因。
           console.error('[LockPass] 桌面捕获入库异常（domain=' + domain + '）：', e)
+          window.Utils.showToast(t('ext.capture.saveError', { msg: (e && e.message) || String(e) }), 'error')
           status = 'error'
         }
       }
@@ -1662,10 +1666,13 @@ export function useVault() {
     }
     try {
       await window.TauriServer.reportCapture(detail.id, status)
+      // 成功回报：用于确认链路打通（desktop-error 时此日志应出现，说明 Rust 已收到 created）
+      console.log('[LockPass] 捕获结果已回报 Rust：id=' + detail.id + ' status=' + status)
     } catch (e) {
       // 回报失败：槽位可能已被 TTL 清理，或 invoke 被拒。此时若 status 非 error，凭据其实已落盘，
-      // 但扩展侧收不到结果会误报「保存失败」。明确记录，便于与真实写盘失败区分。
+      // 但扩展侧收不到结果会误报「保存失败」。toast + console 双通道提示，避免用户重复保存。
       console.error('[LockPass] 捕获结果回报失败（id=' + detail.id + ', status=' + status + '）：', e)
+      window.Utils.showToast(t('ext.capture.reportLost', { status }), 'warning')
     }
   }
   desktopCaptureHandler = confirmDesktopCapture
