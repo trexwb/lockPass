@@ -1632,8 +1632,16 @@ export function useVault() {
       cancelText: t('ext.capture.confirmCancel'),
     })
     if (okToSave) {
-      const action = await handleExtensionCapture({ domain, username, password: detail.password })
-      status = action === 'error' ? 'error' : action
+      try {
+        const action = await handleExtensionCapture({ domain, username, password: detail.password })
+        status = action === 'error' ? 'error' : action
+      } catch (e) {
+        // 入库过程任何未预期异常（加密密钥失效 / 写盘抛错 / recordEntryHistory 内部错误）
+        // 必须明确回报 error，而非被外层 .catch 静默吞掉导致 45s 超时误导排查。
+        // 具体错误打印到桌面端控制台，便于区分「文件权限」还是「cryptoKey 失效」。
+        console.error('[LockPass] 桌面捕获入库异常（domain=' + domain + '）：', e)
+        status = 'error'
+      }
     }
     try { await window.TauriServer.reportCapture(detail.id, status) } catch (e) {}
   }
