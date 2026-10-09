@@ -32,8 +32,10 @@ pub const LOCAL_SERVER_PORT: u16 = 33555;
 /// 待确认配对的超时时间（秒）
 const PAIR_PENDING_TTL_SECS: u64 = 120;
 
-/// 待确认捕获凭据的超时时间（秒）：超时后 Rust 内存中的明文直接丢弃
-const CAPTURE_PENDING_TTL_SECS: u64 = 60;
+/// 待确认捕获凭据的超时时间（秒）：超时后 Rust 内存中的明文直接丢弃。
+/// 需覆盖「浏览器提交 → 切到桌面确认」的跨应用耗时，故放宽到 180s；
+/// 扩展后台轮询上限（CAPTURE_DESKTOP_TIMEOUT_MS）须 ≥ 此值，否则后台会先于槽位过期误报失败。
+const CAPTURE_PENDING_TTL_SECS: u64 = 180;
 
 /// 同时待确认的捕获槽位上限：超出的新请求挤掉最旧的一个
 /// （用户在桌面端逐个确认，多标签页同时点保存才是真实并发）
@@ -113,10 +115,17 @@ pub(crate) struct ServerInner {
 }
 
 impl ServerInner {
-    /// 丢弃已超时槽位；返回本次因超时作废的 id（调用方据此区分 410 与 404）
+    /// 丢弃已超时的待确认（pending）槽位；返回本次因超时作废的 id（调用方据此区分 410 与 404）。
+    /// 已有终态结果（created/updated/exists/error/rejected）的槽位不按 TTL 丢弃：
+    /// 否则用户在 TTL 边缘点「保存」后，结果会在扩展下一次轮询前被清掉，
+    /// 扩展收到 410/404 误报「保存失败」，而凭据其实已落盘。终态槽位由轮询一次性领取
+    /// 或桌面端锁屏 lock() 清空，数量受 MAX_PENDING_CAPTURES 挤兑约束，不会无限增长。
     fn prune_expired_captures(&mut self, now: u64) -> Vec<String> {
         let mut expired = Vec::new();
         self.pending_captures.retain(|cap| {
+            if cap.status != "pending" {
+                return true;
+            }
             if now.saturating_sub(cap.created_at) > CAPTURE_PENDING_TTL_SECS {
                 expired.push(cap.id.clone());
                 false

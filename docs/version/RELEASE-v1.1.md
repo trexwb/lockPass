@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-10-09 · 桌面捕获「返回异常」误报三处根因修复 —— 不推进版本号（仍为 v1.1.3）
+
+用户反馈扩展点「保存」仍提示：`保存失败：桌面版 LockPass 返回异常，请确认桌面端已解锁后重试`（`desktop-error`）。代码审查确认 `desktop-error` 有四个出口（POST 400 / 响应缺 id / 轮询 404·410 / 桌面回报 `error`），其中三处存在误报。
+
+### 根因与改动
+
+1. **终态结果被 TTL 误丢（`src-tauri/src/server.rs` `prune_expired_captures`）**：槽位按 `created_at` 超时清理且不区分状态——用户在 180s TTL 边缘点「保存」成功后，结果可能在下一次轮询（700ms 后）前被清掉，扩展收到 410/404 判「保存失败」，而凭据其实已落盘。修复：仅 `pending` 槽位按 TTL 丢弃；终态槽位由轮询一次性领取或锁屏 `lock()` 清空，数量受 `MAX_PENDING_CAPTURES` 挤兑约束。
+2. **410 expired 并入 desktop-error（`extension/background.js`）**：Rust 明确用 410+`{"status":"expired"}` 表达「凭据槽位超时」，此前与 404 一起映射 `desktop-error`，content.js 的 `failExpired` 文案对桌面通道永不可达。修复：410 单独回 `expired`，浮层显示「凭据已过期，请重新登录后再保存」。
+3. **看门狗 50s 早于后台 185s 等待上限（`extension/content.js`）**：上轮把桌面确认等待从 45s 放宽到 185s，但浮层 `CAPTURE_RESULT_WATCHDOG_MS` 仍是 50s——用户在 50s~185s 间确认，浮层已先显示「未收到保存结果」，真实回执到达时被 `settle` 丢弃。修复：看门狗 195s，并同步两处过时注释（45s→185s）。
+4. **诊断补强（`extension/background.js`）**：POST 非 200 与响应缺 id 时 `console.warn` 记录状态码，便于在 `chrome://extensions` SW 控制台区分「请求 400 被拒」与「确认后桌面写盘失败」。
+
+### 验证状态
+
+- `cargo test --lib`：13/13 通过（含 expired→410、锁屏清槽、并发挤兑用例；改动后即跑通过首次全量）。
+- `node --check` background.js / content.js 通过。
+- **未实测（需人工回归）**：①桌面端确认弹窗正常弹出并入库、扩展回显成功；②静置 >180s 再确认，验证扩展提示为「凭据已过期」而非「返回异常」；③若仍报 `desktop-error`，看桌面端控制台 `[LockPass] 桌面捕获入库异常` 与 SW 控制台 `/capture 被拒 status=` 定位真实原因。
+- ⚠️ 验证期间发现 `src-tauri/capabilities/default.json` 被并行改动加入 22 条 `lockpass:allow-*` 权限项，导致 `cargo build/test` 构建脚本校验失败。已修复：这些命令均为应用自身 `generate_handler!` 自定义命令，Tauri v2 中不经 capability ACL（仅插件命令有权限项），无对应 schema 的引用串只会卡死构建；已删除无效权限项恢复提交版列表，前端 invoke 调用行为不变。修复后 `cargo test --lib` 13/13 通过。
+- 同类捕获链路问题持续修复，**不推进版本号**（仍为 v1.1.3）。
+- 未执行任何 Git 提交类操作。
+
+---
+
 ## 2026-10-09 · 捕获/填充链路未捕获 Promise：`No tab with id` 修复 —— 不推进版本号（仍为 v1.1.3）
 
 扩展控制台报错 `Uncaught (in promise) Error: No tab with id: <id>`。

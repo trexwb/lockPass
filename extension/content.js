@@ -633,9 +633,10 @@ const CAPTURE_TEXTS = {
   failOther: '保存失败，请稍后重试',
 }
 
-// 后台等待桌面端确认最长 45s；这里 50s 兜底：后台若在等待中被 MV3 回收，
-// 回调永远不来，浮层会卡在「保存中…」且按钮禁用
-const CAPTURE_RESULT_WATCHDOG_MS = 50000
+// 后台等待桌面端确认最长 185s（CAPTURE_DESKTOP_TIMEOUT_MS）；这里 195s 兜底：
+// 看门狗必须晚于后台上限，否则用户在 50s~185s 间于桌面端确认成功后，
+// 浮层已先行放弃并显示「未收到保存结果」，真实回执到达时被 settle 丢弃
+const CAPTURE_RESULT_WATCHDOG_MS = 195000
 
 /* 后台返回的错误码 → 浮层文案（未知码统一走 failOther） */
 function captureFailText(error) {
@@ -678,7 +679,7 @@ function showCapturePrompt(p) {
   userEl.textContent = p.username || '（未识别）'
   const msgEl = root.querySelector('.lp-cp-msg')
   const saveBtn = root.querySelector('.lp-cp-save')
-  let saving = false // 保存请求在途：桌面通道需等用户在桌面窗口确认，最长 45s
+  let saving = false // 保存请求在途：桌面通道需等用户在桌面窗口确认，最长 185s
   saveBtn.addEventListener('click', () => {
     saveBtn.disabled = true
     saving = true

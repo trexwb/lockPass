@@ -529,9 +529,10 @@ async function forwardCaptureToLockPassPage(payload, requestId) {
 
 /* 桌面版捕获入库（v1.1.2 未闭环项补齐）：LockPass 跑在 Tauri 窗口里没有页面桥，
    改走本地 HTTP 通道 —— POST /capture 交给桌面端确认（用户必须在桌面窗口点「保存」才入库），
-   再轮询 /capture/status 拿结果回浮层。等待上限 45s：桌面确认要等人操作，
-   比页面桥的 8s 宽松；Rust 侧槽位 60s 超时自动丢弃凭据。 */
-const CAPTURE_DESKTOP_TIMEOUT_MS = 45000
+   再轮询 /capture/status 拿结果回浮层。等待上限 185s：需覆盖「浏览器提交 → 切到桌面确认」的
+   跨应用耗时，且须 ≥ Rust 侧槽位 TTL(180s)，否则后台会先于槽位过期而误报超时，
+   用户其实已保存却收不到成功回执。 */
+const CAPTURE_DESKTOP_TIMEOUT_MS = 185000
 const CAPTURE_DESKTOP_POLL_MS = 700
 // MV3 后台 30s 空闲即回收，而轮询里的 fetch 不算扩展事件（在途的 sendResponse 也不保证续命）：
 // 等待期间每 20s 真走一次扩展 API 把空闲计时器顶回去，否则后台被杀后浮层永远收不到结果
@@ -566,9 +567,17 @@ async function captureViaLocalServer(payload) {
     }
     return { ok: false, error: 'desktop-locked' }
   }
-  if (!posted.ok) return { ok: false, error: 'desktop-error' }
+  if (!posted.ok) {
+    // 400 = 载荷校验被拒（空口令/超长/控制字符），与桌面端入库失败同为 desktop-error，
+    // 记录状态码便于在扩展 Service Worker 控制台区分「请求就没进门」与「确认后写盘失败」
+    console.warn('[LP_CAPTURE_SAVE] /capture 被拒 status=' + posted.status)
+    return { ok: false, error: 'desktop-error' }
+  }
   const data = await posted.json().catch(() => ({}))
-  if (!data.id) return { ok: false, error: 'desktop-error' }
+  if (!data.id) {
+    console.warn('[LP_CAPTURE_SAVE] /capture 响应缺少 id')
+    return { ok: false, error: 'desktop-error' }
+  }
 
   const deadline = Date.now() + CAPTURE_DESKTOP_TIMEOUT_MS
   let lastKeepAlive = Date.now()
@@ -590,7 +599,10 @@ async function captureViaLocalServer(payload) {
       continue // 桌面端瞬不可达，继续等
     }
     if (resp.status === 401) return { ok: false, error: 'desktop-locked' }
-    if (resp.status === 404 || resp.status === 410) return { ok: false, error: 'desktop-error' }
+    // 410 = 待确认槽位超时（用户未在 Rust TTL 内确认），与 404 槽位丢失语义不同：
+    // 必须回 'expired' 让浮层走 failExpired 文案，此前并入 desktop-error 会误报「返回异常」
+    if (resp.status === 410) return { ok: false, error: 'expired' }
+    if (resp.status === 404) return { ok: false, error: 'desktop-error' }
     const d = await resp.json().catch(() => ({}))
     if (d.status === 'created' || d.status === 'updated' || d.status === 'exists') {
       return { ok: true, action: d.status }
