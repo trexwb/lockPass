@@ -77,6 +77,8 @@ npm run version:check    # 校验版本号一致性
 - `macos-latest`（arm64 原生）→ `.app` zip + `.dmg`（`npm run make-dmg`，hdiutil）
 - 产物先传 Actions Artifact，再上传到 **Draft Release**，人工确认后 Publish
 - macOS 产物为 ad-hoc 签名（未配证书），用户首次打开会被 Gatekeeper 拦截（提示「已损坏，无法打开」）；解除方式：终端执行 `xattr -dr com.apple.quarantine "/Applications/LockPass.app"`；Windows 有 SmartScreen 提示
+- **未签名产物不可用生物识别解锁**：Secure Enclave 私钥要写进数据保护钥匙串，需 `keychain-access-groups` entitlement，而该 entitlement 只在用 Apple 开发者证书签名时才会生效（ad-hoc 注入会被内核 kill）。因此当前发布产物里 `passkey_enroll` 必然返回 `ENTITLEMENT_ERR`（-34018），详见 `docs/passkey.md`
+- CI 目前**没有** Apple 签名 / 公证步骤：`release.yml` 的 macOS job 只设 `TAURI_SIGNING_PRIVATE_KEY`（那是 updater 的 minisign 密钥，不是代码签名），全文件无 `APPLE_*` 引用。要出可分发 / 可用生物识别的 macOS 版本，需补 Developer ID 签名（`APPLE_CERTIFICATE_*`）+ `xcrun notarytool` 公证 + staple
 
 ### `.github/workflows/pages.yml` — 在线版部署 GitHub Pages
 
@@ -91,7 +93,7 @@ npm run version:check    # 校验版本号一致性
 - `src-tauri/target/release/bundle/macos/LockPass.app` **生成成功**（Mach-O arm64，ad-hoc 签名），
   可在构建机直接运行。
 - **`.dmg` 已与 `tauri build` 解耦**：Tauri 自带 create-dmg 的末尾 `osascript`（Finder AppleScript）美化步骤，在无 GUI / 无 Finder 自动化授权的环境（CI、远程、部分本地终端）必失败（报错 “failed to run bundle_dmg.sh”）。为此 `bundle.targets` 已设为 `["app","msi","nsis"]`（macOS 只出 `.app`），dmg 改由 `npm run make-dmg`（`scripts/make-dmg.sh`，纯 `hdiutil`、无 AppleScript）生成：`src-tauri/target/release/bundle/dmg/LockPass_<版本>_aarch64.dmg`（已挂载验证）。这样 `tauri build` 在任意环境都能干净跑完。
-- 分发到其他 Mac 需 **Apple Developer ID 签名 + 公证**（CI 已预留 `APPLE_*` Secrets，配置后启用）。
+- 分发到其他 Mac 需 **Apple Developer ID 签名 + 公证**（CI 现未配置该步骤，见上一节）。
 
 ## 安全 / 发布说明
 
@@ -107,5 +109,7 @@ npm run version:check    # 校验版本号一致性
   `src/core/tauri-bridge.js` 中已有对应注册代码（带 try/catch 容错）。
 - `fs` 能力范围设为 `**`（任意路径读写），仅用于响应用户主动的「保存/打开」对话框，符合预期。
 - **macOS 未签名构建**：本地 `tauri build` 为 ad-hoc 签名，仅能在构建机运行；分发到其他 Mac 需
-  Apple Developer ID 签名 + 公证。CI 已预留 `APPLE_*` Secrets，配置后自动启用公证。
+  Apple Developer ID 签名 + 公证。CI 现未配置 Apple 签名/公证步骤（`release.yml` 无 `APPLE_*`
+  引用，`TAURI_SIGNING_PRIVATE_KEY` 是 updater 密钥而非代码签名），配置后才自动启用。
+  附带影响：未签名构建缺少 `keychain-access-groups` entitlement，生物识别解锁不可用。
 - **Windows 未签名**：默认无签名，部分系统会弹出 SmartScreen 警告，属正常；如需去警告需代码签名证书。
