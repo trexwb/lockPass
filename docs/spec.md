@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.1.3 | 更新日期：2026-08-29
+> 版本：v1.1.4 | 更新日期：2026-08-29
 
 ---
 
@@ -206,11 +206,11 @@
 - 交付形态：`extension/` 目录 Manifest V3 扩展（background / popup / 双 content script），Chrome / Edge 开发者模式加载
 - 解锁态通信：LockPass 页面 `ExtBridge`（src/core/ext-bridge.js）解锁广播 ready（含一次性会话令牌，sessionStorage），锁定/登出广播 locked；扩展请求须携带令牌且来源为同窗口；解密在页面内存完成，扩展仅转发
 - 表单填充：`content.js` 通用识别（密码框定位 + 用户名常见选择器 + 可见性过滤），原生 value setter + input/change 事件（React/Vue 兼容），不自动提交、高亮提交按钮
-- 安全：主密码不出主应用；扩展无 storage 权限、明文仅瞬时内存转发；条目列表脱敏（无密码字段）
-- 自动捕获（v1.1.2 交付，v1.1.3 修复加固）：`content.js` 监听 submit 后按登录成功启发式向后台登记待确认凭据（每 tab 一份，15s TTL），页面内浮层询问「保存到 LockPass？」；用户点「保存」后凭据以**后台下发的待确认记录**为准（不采信页面提交的 payload），入库按 `hostname + username` 去重并回传 `created / updated / exists`，写入必须经用户确认、绝不自动落库
+- 安全：主密码不出主应用；扩展仅启用 activeTab/tabs/storage（storage 只存配对令牌，明文凭据仅瞬时内存转发）；条目列表脱敏（无密码字段）
+- 自动捕获（v1.1.2 交付，v1.1.3 修复加固，v1.1.4 链路补全）：`content.js` 监听 submit 后向后台登记待确认凭据（每 tab 一份，25s TTL；站点身份按「帧 hostname → referrer → 顶层 tab URL」三级解析，解析失败如 file:// 页拒绝暂存不弹窗）；浮层触发双路径——新页面加载的 CHECK + submit 后来源 frame 内 24s 观察窗（地址变化/密码框消失启发式，SPA 免刷新即弹；iframe 命中经 `forwardToTop` 由顶层 frame 弹层）。新显式 submit 会解除此前「忽略/关闭」对同域+同账号的弹层抑制；用户点「保存」后凭据以**后台下发的待确认记录**为准（不采信页面提交的 payload），入库按 `hostname + username` 去重并回传 `created / updated / exists`，新建条目标题优先取清洗后的网页 `document.title`（截 200 字符，缺省回退域名），写入必须经用户确认、绝不自动落库
 - 投递白名单（v1.1.3）：捕获凭据、条目列表与密码取回只交给浏览器注入、页面无法伪造的 `sender.url` 命中 `isTrustedAppPageUrl()` 的应用页面（GitHub Pages `/lockPass/`、`localhost:1420`、`127.0.0.1:1420`）；自建部署需同步该白名单。`file://` 本地页面之间无法区分，默认拒绝投递，需扩展弹窗显式勾选「允许本地文件页面接收捕获凭据」
 - 桌面版本地通道（v1.1.3）：桌面窗口没有页面桥，改走 Rust 侧 `tiny_http` 服务（仅监听 `127.0.0.1:33555`）。扩展弹窗「连接桌面版 LockPass」→ `POST /pair` 取 6 位 nonce → 桌面窗口配对弹窗核对数字点「允许配对」→ 扩展 `GET /pair/poll` 一次性领取 Bearer 令牌；捕获时 `POST /capture`（Bearer 校验、未解锁 409、载荷校验 400）只登记 `{id, created_at, status}` 待确认槽位，**明文不经 Rust 内存与磁盘保留**，凭据随 `lockpass:capture-request` 事件交给窗口，用户在桌面窗口点「保存」才入库；扩展轮询 `GET /capture/status?id=` 一次性领取结果（未决 200 `pending` / 过期 410 / 非法 id 404）
-- 通道并发与超时（v1.1.3）：待确认槽位最多 4 个、按 id 独立回报与领取、60s TTL、锁定即清空；扩展侧等待上限 45s，期间每 20s 真走一次扩展 API 顶住 MV3 后台回收，浮层另有 50s 兜底恢复按钮并提示「未收到保存结果」
+- 通道并发与超时（v1.1.3，v1.1.4 对齐修正）：待确认槽位最多 4 个（满则挤最旧）、按 id 独立回报与领取、仅 `pending` 槽按 180s TTL 过期（终态槽保留至轮询一次性领取或锁屏清空，杜绝保存成功后被清理误报）、锁定即清空；扩展侧等待上限 185s（≥ Rust 槽位 TTL），期间每 20s 真走一次扩展 API 顶住 MV3 后台回收，浮层看门狗 195s（必须晚于后台上限）兜底恢复按钮并提示「未收到保存结果」；410 过期单独回 `expired` 文案，不再并入「返回异常」
 - 旅行模式联动：页面桥与桌面通道推给扩展的条目集合均为 `visibleEntries()`，敏感条目不外泄（v1.1.3）
 - 限制：浏览器版需 LockPass 页面保持解锁打开；桌面版需应用运行且已完成配对；复杂动态表单可能识别失败；无自动弹出建议
 
@@ -422,4 +422,4 @@ LockPass/
 
 ---
 
-**文档版本：v1.1.3**
+**文档版本：v1.1.4**

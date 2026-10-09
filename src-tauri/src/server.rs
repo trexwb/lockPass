@@ -32,8 +32,10 @@ pub const LOCAL_SERVER_PORT: u16 = 33555;
 /// 待确认配对的超时时间（秒）
 const PAIR_PENDING_TTL_SECS: u64 = 120;
 
-/// 待确认捕获凭据的超时时间（秒）：超时后 Rust 内存中的明文直接丢弃
-const CAPTURE_PENDING_TTL_SECS: u64 = 60;
+/// 待确认捕获凭据的超时时间（秒）：超时后 Rust 内存中的明文直接丢弃。
+/// 需覆盖「浏览器提交 → 切到桌面确认」的跨应用耗时，故放宽到 180s；
+/// 扩展后台轮询上限（CAPTURE_DESKTOP_TIMEOUT_MS）须 ≥ 此值，否则后台会先于槽位过期误报失败。
+const CAPTURE_PENDING_TTL_SECS: u64 = 180;
 
 /// 同时待确认的捕获槽位上限：超出的新请求挤掉最旧的一个
 /// （用户在桌面端逐个确认，多标签页同时点保存才是真实并发）
@@ -86,6 +88,9 @@ pub struct CapturePayload {
     pub username: String,
     #[serde(default)]
     pub password: String,
+    /// 网页 document.title，仅作条目标题展示；宽松清洗而非拒绝（缺省兼容旧扩展）
+    #[serde(default)]
+    pub title: String,
 }
 
 /// 桌面端捕获槽位：只记 id 与确认状态，明文凭据仅经本地 IPC 送给前端，不在 Rust 内存驻留
@@ -113,10 +118,17 @@ pub(crate) struct ServerInner {
 }
 
 impl ServerInner {
-    /// 丢弃已超时槽位；返回本次因超时作废的 id（调用方据此区分 410 与 404）
+    /// 丢弃已超时的待确认（pending）槽位；返回本次因超时作废的 id（调用方据此区分 410 与 404）。
+    /// 已有终态结果（created/updated/exists/error/rejected）的槽位不按 TTL 丢弃：
+    /// 否则用户在 TTL 边缘点「保存」后，结果会在扩展下一次轮询前被清掉，
+    /// 扩展收到 410/404 误报「保存失败」，而凭据其实已落盘。终态槽位由轮询一次性领取
+    /// 或桌面端锁屏 lock() 清空，数量受 MAX_PENDING_CAPTURES 挤兑约束，不会无限增长。
     fn prune_expired_captures(&mut self, now: u64) -> Vec<String> {
         let mut expired = Vec::new();
         self.pending_captures.retain(|cap| {
+            if cap.status != "pending" {
+                return true;
+            }
             if now.saturating_sub(cap.created_at) > CAPTURE_PENDING_TTL_SECS {
                 expired.push(cap.id.clone());
                 false
@@ -173,12 +185,15 @@ impl ServerState {
     /// 前端回报捕获结果（用户确认保存 / 取消），供扩展轮询领取
     pub fn report_capture(&self, id: &str, status: &str) -> Result<(), String> {
         if !is_report_status(status) {
+            eprintln!("[capture] report_capture 拒绝非法状态 status={status} id={id}");
             return Err("非法的捕获结果状态".into());
         }
         let mut g = self.0.lock().map_err(|_| "内部状态锁定失败".to_string())?;
         let Some(idx) = g.find_capture(id) else {
+            eprintln!("[capture] report_capture 槽位不存在（锁屏清空/已过期/服务重启）id={id}");
             return Err("没有待确认的捕获请求".into());
         };
+        eprintln!("[capture] report_capture 已登记 {status} id={id}，等待扩展轮询领取");
         g.pending_captures[idx].status = status.to_string();
         Ok(())
     }
@@ -501,18 +516,33 @@ fn route(
         (tiny_http::Method::Post, "/capture") => {
             let mut guard = inner.lock().unwrap_or_else(|e| e.into_inner());
             if !bearer_ok(&guard, auth_header, query) {
+                eprintln!("[capture] POST /capture -> 401 unauthorized");
                 return json_response(401, &serde_json::json!({ "error": "unauthorized" }));
             }
             if !guard.unlocked {
+                eprintln!("[capture] POST /capture -> 409 locked");
                 return json_response(409, &serde_json::json!({ "error": "locked" }));
             }
             let payload: CapturePayload = match serde_json::from_slice(body) {
                 Ok(p) => p,
-                Err(_) => return json_response(400, &serde_json::json!({ "error": "invalid body" })),
+                Err(e) => {
+                    eprintln!("[capture] POST /capture -> 400 invalid body: {e}");
+                    return json_response(400, &serde_json::json!({ "error": "invalid body" }));
+                }
             };
             let domain = payload.domain.trim().to_lowercase();
             let username = payload.username.trim().to_string();
             let password = payload.password;
+            // 标题为展示性字段：宽松清洗（去控制符、截 200 字符）而非参与 400 拒绝
+            let title: String = payload
+                .title
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .chars()
+                .take(200)
+                .collect();
             // 长度与字符形状校验：仅接受单行主机名与非空口令，其余一律拒绝
             if domain.is_empty()
                 || domain.len() > 253
@@ -524,13 +554,22 @@ fn route(
                 || username.chars().any(|c| c.is_control())
                 || password.chars().any(|c| c.is_control())
             {
+                // 诊断日志只记形状与长度，绝不落凭据内容
+                eprintln!(
+                    "[capture] POST /capture -> 400 invalid payload: domain_len={} username_len={} password_len={} domain_has_slash={}",
+                    domain.chars().count(),
+                    username.chars().count(),
+                    password.chars().count(),
+                    domain.contains('/'),
+                );
                 return json_response(400, &serde_json::json!({ "error": "invalid payload" }));
             }
             let id = generate_capture_id();
             // 先清超时槽位；仍满则挤掉最旧的一个（其扩展侧轮询会得到 404 按失败提示）
             guard.prune_expired_captures(now_secs());
             while guard.pending_captures.len() >= MAX_PENDING_CAPTURES {
-                guard.pending_captures.remove(0);
+                let evicted = guard.pending_captures.remove(0);
+                eprintln!("[capture] 槽位满，挤掉最旧未领取捕获 id={}", evicted.id);
             }
             guard.pending_captures.push(PendingCapture {
                 id: id.clone(),
@@ -539,6 +578,7 @@ fn route(
             });
             drop(guard);
             // 凭据只经本地 IPC 交给前端确认弹窗，Rust 侧不保留副本
+            eprintln!("[capture] POST /capture -> 200 id={id}，已发 lockpass:capture-request 事件");
             emit(
                 "lockpass:capture-request",
                 serde_json::json!({
@@ -546,6 +586,7 @@ fn route(
                     "domain": domain,
                     "username": username,
                     "password": password,
+                    "title": title,
                 }),
             );
             json_response(200, &serde_json::json!({ "ok": true, "id": id }))
@@ -561,13 +602,16 @@ fn route(
             let Some(idx) = guard.find_capture(&id) else {
                 // 刚被清理的超时槽位仍区分报 expired，扩展侧据此提示
                 if expired.iter().any(|e| constant_time_eq(e, &id)) {
+                    eprintln!("[capture] GET /capture/status -> 410 expired id={id}");
                     return json_response(410, &serde_json::json!({ "status": "expired" }));
                 }
+                eprintln!("[capture] GET /capture/status -> 404 槽位不存在 id={id}（可能被锁屏清空/已领取/服务重启）");
                 return json_response(404, &serde_json::json!({ "status": "invalid" }));
             };
             let status = guard.pending_captures[idx].status.clone();
             if status != "pending" {
                 guard.pending_captures.remove(idx); // 一次性领取
+                eprintln!("[capture] GET /capture/status -> 领取终态 {status} id={id}");
             }
             json_response(200, &serde_json::json!({ "status": status }))
         }
@@ -767,6 +811,32 @@ mod tests {
         // Rust 侧只留 id/状态，不保留明文凭据
         let retained = format!("{:?}", guard.pending_captures[0]);
         assert!(!retained.contains("pw"), "槽位不应保留明文：{retained}");
+    }
+
+    #[test]
+    fn capture_sanitizes_page_title_and_defaults_when_absent() {
+        let ts = start_server();
+        unlock(&ts, "t0k3n");
+        let long_title = format!("GitHub 登录{}\x01", "x".repeat(300));
+        let body = serde_json::json!({
+            "domain": "github.com",
+            "username": "alice",
+            "password": "pw",
+            "title": long_title,
+        })
+        .to_string();
+        let (status, _) = post_capture(&ts, Some("Bearer t0k3n"), &body);
+        assert_eq!(status, 200, "标题过长/含控制符应宽松清洗而非拒绝");
+        let events = emitted_captures(&ts);
+        let title = events[0].1["title"].as_str().unwrap_or_default().to_string();
+        assert!(!title.contains('\x01'), "控制字符应被剔除：{title}");
+        assert_eq!(title.chars().count(), 200, "标题应截断到 200 字符");
+        assert!(title.starts_with("GitHub 登录"), "正常前缀应保留");
+        // 旧版扩展载荷缺 title：默认空串交给前端回退域名，不影响 200
+        let (status2, _) = post_capture(&ts, Some("Bearer t0k3n"), &capture_body("github.com", "bob", "pw"));
+        assert_eq!(status2, 200);
+        let events2 = emitted_captures(&ts);
+        assert_eq!(events2.last().unwrap().1["title"], serde_json::json!(""));
     }
 
     #[test]

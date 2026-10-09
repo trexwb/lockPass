@@ -80,6 +80,8 @@ export const vaultState = reactive({
   showPasswordMap: {},
   clipboardTimer: null,
   lockTimer: null,
+  // 捕获确认弹窗是否打开：打开期间自动锁定顺延到槽位 TTL，避免跨应用确认时被锁屏打断落盘
+  capturePending: false,
   lockTimeoutMs: loadSettingInt('lockpass_lock_timeout', 5 * 60 * 1000),
   clipboardClearMs: loadSettingInt('lockpass_clipboard_clear', 30 * 1000),
   // C4 回收站自动清空：0 = 从不；30/60/90 = 天数（localStorage lockpass_recycle_ttl）
@@ -842,11 +844,16 @@ export function useVault() {
 
   /* ── 自动锁定 ───────────────────────────────── */
 
+  // 捕获确认弹窗未关闭时，自动锁定顺延到此值（与 Rust 侧捕获槽位 TTL 对齐：180s），
+  // 覆盖「浏览器提交 → 切到桌面确认」的跨应用耗时，避免锁屏导致 cryptoKey 失效、saveVault 跳过写盘。
+  const CAPTURE_DEFER_LOCK_MS = 180000
+
   function resetLockTimer() {
     clearTimeout(vaultState.lockTimer)
-    if (vaultState.lockTimeoutMs > 0) {
-      vaultState.lockTimer = setTimeout(lockVault, vaultState.lockTimeoutMs)
-    }
+    if (vaultState.lockTimeoutMs <= 0) return
+    // 捕获确认期间顺延自动锁定，防止用户在桌面/浏览器间切换确认时被锁屏打断
+    const due = vaultState.capturePending ? CAPTURE_DEFER_LOCK_MS : vaultState.lockTimeoutMs
+    vaultState.lockTimer = setTimeout(lockVault, due)
   }
 
   /* ── 筛选 / 统计 ────────────────────────────── */
@@ -1541,13 +1548,16 @@ export function useVault() {
    * 扩展自动捕获（v1.1.4）：网页登录成功后由扩展推送凭据，在此落库。
    * 去重口径：同主机名（精确匹配）+ 同用户名的网站条目视为同一账号——
    * 密码相同则跳过；不同则更新密码（编辑历史照常记录）。
-   * @param {object} payload { domain, username, password, href }
+   * 新建条目标题优先用网页 document.title（payload.title，扩展侧已清洗），
+   * 缺失时回退域名。
+   * @param {object} payload { domain, username, password, href, title }
    * @returns {Promise<string>} 'created' | 'updated' | 'exists' | 'error'
    */
   async function handleExtensionCapture(payload) {
     const domain = String((payload && payload.domain) || '').toLowerCase()
     const username = String((payload && payload.username) || '')
     const password = String((payload && payload.password) || '')
+    const pageTitle = String((payload && payload.title) || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200)
     if (!domain || !password) return 'error'
 
     // 条目 url 主机名与登录主机名精确相等才算同一账号（不做子域归并）
@@ -1590,7 +1600,7 @@ export function useVault() {
     const now = new Date().toISOString()
     const entry = {
       id: crypto.randomUUID(),
-      title: domain,
+      title: pageTitle || domain,
       entryType: 'website',
       tags: [],
       notes: '',
@@ -1619,23 +1629,51 @@ export function useVault() {
    * 桌面版自动捕获入库（本地 HTTP 通道）：扩展 POST /capture → Rust 登记待确认槽位
    * → Tauri 事件把凭据交给前端 → 用户确认后才落库，结果经 server_capture_report 回报，
    * 扩展轮询 /capture/status 后回显到网页浮层。未解锁 / 取消 / 失败都绝不写盘。
-   * @param {{id: string, domain: string, username: string, password: string}} detail
+   * @param {{id: string, domain: string, username: string, password: string, title?: string}} detail
    */
   async function confirmDesktopCapture(detail) {
     const domain = String(detail.domain || '')
     const username = String(detail.username || '')
     let status = 'rejected'
-    const okToSave = await window.Utils.confirm({
-      title: t('ext.capture.confirmTitle'),
-      message: t('ext.capture.confirmMsg', { domain, username: username || t('common.unnamed') }),
-      confirmText: t('ext.capture.confirmSave'),
-      cancelText: t('ext.capture.confirmCancel'),
-    })
-    if (okToSave) {
-      const action = await handleExtensionCapture({ domain, username, password: detail.password })
-      status = action === 'error' ? 'error' : action
+    // 弹窗打开期间顺延自动锁屏，避免用户在桌面/浏览器间切换确认时被锁屏打断落盘。
+    // 必须立即重新武装计时器：boot 时已按正常超时武装的锁屏计时器不会因仅置位标志而失效，
+    // 不重武装则确认期间仍会到点锁屏 → lock() 清空待确认槽 → reportCapture 找不到槽位 → 误报失败。
+    vaultState.capturePending = true
+    resetLockTimer()
+    try {
+      const okToSave = await window.Utils.confirm({
+        title: t('ext.capture.confirmTitle'),
+        message: t('ext.capture.confirmMsg', { domain, username: username || t('common.unnamed') }),
+        confirmText: t('ext.capture.confirmSave'),
+        cancelText: t('ext.capture.confirmCancel'),
+      })
+      if (okToSave) {
+        try {
+          const action = await handleExtensionCapture({ domain, username, password: detail.password, title: detail.title })
+          status = action === 'error' ? 'error' : action
+        } catch (e) {
+          // 入库过程任何未预期异常（加密密钥失效 / 写盘抛错 / recordEntryHistory 内部错误）
+          // 必须明确回报 error，而非被外层 .catch 静默吞掉导致超时误导排查。
+          // 打包版无 DevTools：toast 直接展示真实异常，与 console 双通道便于区分根因。
+          console.error('[LockPass] 桌面捕获入库异常（domain=' + domain + '）：', e)
+          window.Utils.showToast(t('ext.capture.saveError', { msg: (e && e.message) || String(e) }), 'error')
+          status = 'error'
+        }
+      }
+    } finally {
+      vaultState.capturePending = false
+      resetLockTimer() // 弹窗关闭后恢复正常的自动锁定计时
     }
-    try { await window.TauriServer.reportCapture(detail.id, status) } catch (e) {}
+    try {
+      await window.TauriServer.reportCapture(detail.id, status)
+      // 成功回报：用于确认链路打通（desktop-error 时此日志应出现，说明 Rust 已收到 created）
+      console.log('[LockPass] 捕获结果已回报 Rust：id=' + detail.id + ' status=' + status)
+    } catch (e) {
+      // 回报失败：槽位可能已被 TTL 清理，或 invoke 被拒。此时若 status 非 error，凭据其实已落盘，
+      // 但扩展侧收不到结果会误报「保存失败」。toast + console 双通道提示，避免用户重复保存。
+      console.error('[LockPass] 捕获结果回报失败（id=' + detail.id + ', status=' + status + '）：', e)
+      window.Utils.showToast(t('ext.capture.reportLost', { status }), 'warning')
+    }
   }
   desktopCaptureHandler = confirmDesktopCapture
 
