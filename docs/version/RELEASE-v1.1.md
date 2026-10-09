@@ -18,6 +18,64 @@
 
 ---
 
+## 2026-10-09 · 交互反馈与节流防抖专项 —— 不推进版本号（仍为 v1.1.4）
+
+系统级体验巡检（`src/` 全量静态审计）后，把「操作必须有反馈」「异步操作可被重复触发」「高频事件未做节流」三类缺口一次性补齐。同日同一模块的体验打磨，**不推进版本号**（仍为 v1.1.4）。
+
+### 1. 新增节流防抖公共设施
+
+- `src/core/utils.js`：新增 `Utils.debounce(fn, wait=200)`（带 `cancel()` / `flush()`）。此前全仓无任何通用实现，只有 `PasswordGeneratorModal` / `editorDraftStore` / `saveVault` 三处各自的 ad-hoc 定时器。
+- 未同时落地 `Utils.throttle`：巡检出的高频点（搜索、滚动、resize）经比对后全部属于「等停顿再算一次」的尾部合并语义，rAF 门控与 debounce 已覆盖，留一个无调用点的节流函数即死代码，故不引入。
+
+### 2. 保存 / 危险类异步操作的防重入与进行中反馈
+
+统一沿用 `ChangePwModal` 既有约定（`busy` ref + 入口 `return` 守卫 + `:disabled` + 文案切换）：
+
+- `EntryEditorModal`：新增 `saving`，保存按钮在「加密 + 写库 + 文件同步」期间禁用并显示「保存中…」；连点不再产生重复历史版本；保存期间取消按钮一并禁用。
+- `TagsModal`：新增共享 `busy`，覆盖新建/改名、删除、合并三条落盘路径与列表行的删除/合并入口。
+- `SettingsModal`：新增 `dirBusy`（绑定数据目录）、`destroyBusy`（销毁保险箱，二次确认后到删库完成期间锁死，含右键菜单入口）。
+- `useVault.bindRestoreFromDirectory` + `AuthView`：新增 `vaultState.restoreDirBusy`，锁屏「绑定已有数据目录」不再叠加多个目录选择器。
+- `QrShareModal`：`generate()` 增加 `generating` 互斥锁（`loading` 中途会被置 false 以渲染容器，不能作互斥）；生成中快速切换条目改为合并成「结束后按最新条目补算一次」，结果不再与选中项错位。
+
+### 3. 落盘失败不再假报成功（反馈正确性）
+
+`saveVault()` 返回 `Promise<boolean>` 且失败时已自行弹出错误 toast，但多处调用方忽略返回值、紧跟着再弹「已保存 / 已删除」成功 toast，形成自相矛盾的假成功。现统一以落盘结果为准：
+
+- `useVault`：`softDelete` / `restoreEntry` / `permanentDelete` / `emptyRecycleBin` / `rollbackEntry`。
+- 组件侧 12 处：`DetailPanel`(2)、`SidebarNav`(7)、`QrImportModal`(2)、`ImportModal`(1)。
+- `ImportModal.confirmImport` 额外复位 `importing` / `progress`，否则导入写入失败会把弹窗永久卡在「导入中」无法重试。
+
+### 4. 高频事件节流 / 防抖
+
+- `HeaderBar` 搜索：输入框文本与全局 `searchQuery` 解耦，180ms 停顿后才提交，消掉「每敲一个字符 → 整表重过滤 + 列表 epoch 重挂载 + 滚动复位/行高重测」；外部改写 `searchQuery`（清空 / Escape / 切筛选）仍会同步回输入框。
+- `AppShell.onContentScroll`：改为 rAF 门控（每帧最多写一次响应式状态），与 `BaseSelect.requestLayout` 既有写法对齐。
+- `AppShell` 视口 resize：200ms 防抖后再重算视口与行高（拖拽窗口不再逐帧触发 `measureRowHeight`），注册/解绑两侧同步替换。
+- `particles.js`：`resize` 监听 150ms 防抖，`destroy()` 一并 `cancel()` 并解绑同一函数引用（原 `resize` 裸绑会泄漏）。
+
+### 5. 交互态样式补全
+
+- `base.css`：新增 `--btn-disabled-opacity` 令牌与全局 `.btn:disabled` / `.btn-icon:disabled` / `.btn-link-plain:disabled`（降透明度 + `not-allowed` + 按变体抵消 hover 抬升）。此前**不存在任何 `.btn:disabled` 规则**，散落在 `editor.css` / `entries.css` / `components.css` 的局部 `:disabled` 是唯一例外——这意味着代码里原本就写对的 `:disabled` 绑定在视觉上是不可见的。
+- `base.css`：新增 `.btn.is-loading::before` 内联 spinner（`currentColor` + `prefers-reduced-motion` 降级），沿用 `ChangePwModal` 的文案切换，不引入新组件。
+- `base.css`：`.btn-link-plain` 补 `:active` / `:focus-visible`；`modal.css` 补 `.modal-close:active` 按压反馈。
+- `i18n`：新增 `editor.saving`、`tags.busying`、`sync.binding`、`settings.data.destroying`、`lock.bindingDirectory`（zh-CN / en-US 双语，按字典既有排序插入，未硬编码任何中文）。
+
+### 有意未改动的项（安全 / 时序敏感）
+
+- 自动锁屏定时器、剪贴板 30s 自清链路：属安全时序，不做节流。
+- `saveVault` 的 150ms 写入合并与 `Promise<boolean>` 语义：保持不动，避免「硬保存」路径提前返回。
+- `lockVault()` 未加成功 toast：界面切到锁屏本身已是明确反馈，自动锁屏场景弹 toast 反而会误报是用户手动触发。
+- `toggleFavorite` 的乐观 UI：`saveVault` 失败已有错误 toast 兜底，不追加回滚。
+
+### 验证状态
+
+- `npm run vite:build` 通过（77 modules，`dist/assets/js/index.js` 647.93 kB / gzip 201.31 kB）。
+- `npm run version:check` 11 处版本号一致，仍为 v1.1.4（三处真源未改动）。
+- `src/i18n/zh.json` / `en.json` `JSON.parse` 通过。
+- **未做人工 UI 回归**（需真实浏览器 / 桌面版操作）：重点待验证项为①保存按钮连点不再产生重复历史、②搜索输入停顿后列表才刷新、③拖拽窗口时列表不抖动、④落盘失败时只出现错误 toast 不再出现成功 toast、⑤销毁保险箱与目录绑定期间按钮为禁用态。
+- 同类问题的持续打磨，**不推进版本号**；未执行任何 Git 提交类操作，全部改动留在工作树。
+
+---
+
 ## 2026-10-09 · 捕获浮层排查：保存一次后同页不再弹窗的两处根因 —— 不推进版本号（仍为 v1.1.3）
 
 用户反馈：成功保存过一个密码后，同一页面里新的登录不再触发浮层。静态排查整条状态机（PENDING 暂存 / CHECK 消费 / SAVE 清理 / session 恢复 / TTL 定时器）后，浮层链路本身无残留态阻塞下一次暂存，可确认的抑制点有两处：

@@ -208,7 +208,7 @@ async function handlePersonal(action, filter) {
     })
     if (!ok) return
     vaultState.entries.forEach(e => { if (e.favorite) e.favorite = false })
-    await saveVault()
+    if (!(await saveVault())) return
     window.Utils.showToast(t('side.toastClearedFav', { n }), 'success')
   }
 }
@@ -255,7 +255,7 @@ async function handleTag(action, name) {
     })
     // 同步当前筛选名
     if (vaultState.currentFilter === name) vaultState.currentFilter = newName
-    await saveVault()
+    if (!(await saveVault())) return
     window.Utils.showToast(t('side.toastRenamed', { name, newName }), 'success')
     return
   }
@@ -269,7 +269,7 @@ async function handleTag(action, name) {
       icon: def.icon || 'other',
       isDefault: false,
     }
-    await saveVault()
+    if (!(await saveVault())) return
     window.Utils.showToast(t('side.toastTagCreated', { name: cand }), 'success')
     return
   }
@@ -295,7 +295,7 @@ async function handleTag(action, name) {
     strip(vaultState.deleted)
     if (action === 'delete') delete vaultState.tagDefs[name]
     if (vaultState.currentFilter === name) vaultState.currentFilter = 'all'
-    await saveVault()
+    if (!(await saveVault())) return
     window.Utils.showToast(action === 'strip' ? t('side.toastStripped') : t('side.toastDeleted'), 'success')
     return
   }
@@ -322,7 +322,7 @@ async function handleTag(action, name) {
     mergeOne(vaultState.deleted)
     delete vaultState.tagDefs[name]
     if (vaultState.currentFilter === name) vaultState.currentFilter = target
-    await saveVault()
+    if (!(await saveVault())) return
     window.Utils.showToast(t('side.toastMerged', { name, target }), 'success')
   }
 }
@@ -351,7 +351,7 @@ async function handleRecycle(action) {
       })
       vaultState.history = keep
     }
-    await saveVault()
+    if (!(await saveVault())) return
     if (vaultState.currentFilter === 'recycle') setFilter('all')
     window.Utils.showToast(t('side.toastTrashEmptied'), 'success')
   }
@@ -392,7 +392,7 @@ async function handleTagManage(action) {
     strip(vaultState.deleted)
     custom.forEach(n => delete vaultState.tagDefs[n])
     if (vaultState.currentFilter && customSet.has(vaultState.currentFilter)) vaultState.currentFilter = 'all'
-    await saveVault()
+    if (!(await saveVault())) return
     window.Utils.showToast(t('side.toastCustomTagsDeleted', { n: custom.length }), 'success')
   }
 }

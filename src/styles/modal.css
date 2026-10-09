@@ -79,6 +79,9 @@
   background: var(--danger-dim);
   color: var(--danger);
 }
+.modal-header .modal-close:active {
+  transform: rotate(90deg) scale(0.9);
+}
 
 /* Toast */
 #toast-container {

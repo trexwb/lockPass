@@ -477,6 +477,9 @@ function onDocResize() {
   measureRowHeight()
 }
 
+/** 拖拽窗口会连发 resize，200ms 停顿后统一重算一次视口与行高 */
+const onWindowResize = window.Utils.debounce(onDocResize, 200)
+
 /* P3-1 修复：contentTitle 改 computed，避免每次重渲染重复执行 */
 const contentTitle = computed(() => {
   if (vaultState.currentFilter === 'all') return t('side.allPasswords')
@@ -522,10 +525,17 @@ const padBottom = computed(() =>
   virtualActive.value ? (filteredEntries.value.length - visibleRange.value.end) * measuredRowH.value : 0,
 )
 
-/** 滚动同步：记录滚动位置与视口高度（驱动窗口计算） */
+/** 滚动同步：记录滚动位置与视口高度（驱动窗口计算）
+    原生 scroll 事件一帧可触发多次，用 rAF 门控到每帧最多写一次响应式状态 */
+let scrollRafId = null
 function onContentScroll(e) {
-  scrollTop.value = e.target.scrollTop
-  viewportH.value = e.target.clientHeight
+  const target = e.target
+  if (scrollRafId !== null) return
+  scrollRafId = requestAnimationFrame(() => {
+    scrollRafId = null
+    scrollTop.value = target.scrollTop
+    viewportH.value = target.clientHeight
+  })
 }
 
 /** 实测行高：取窗口内首卡 offsetHeight + 8px 卡片下边距 */
@@ -553,7 +563,7 @@ onMounted(() => {
   document.addEventListener('mousedown', onDocMouseDown)
   // N10：capture 监听显式标记 passive，避免主线程滚动阻塞
   window.addEventListener('scroll', onDocScrollOrResize, { capture: true, passive: true })
-  window.addEventListener('resize', onDocResize)
+  window.addEventListener('resize', onWindowResize)
   // P3-5：初始化视口高度与行高（虚拟滚动窗口计算依据）
   if (contentEl.value) viewportH.value = contentEl.value.clientHeight || 600
   measureRowHeight()
@@ -566,7 +576,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocMouseDown)
   // N10：移除时需匹配 capture 标志
   window.removeEventListener('scroll', onDocScrollOrResize, { capture: true })
-  window.removeEventListener('resize', onDocResize)
+  window.removeEventListener('resize', onWindowResize)
 })
 </script>
 

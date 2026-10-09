@@ -329,6 +329,10 @@ const snapshotEnabled = ref(BM ? BM.snapshotEnabled() : false)
 const snapshotInterval = ref(BM ? BM.snapshotIntervalDays() : 7)
 const snapshotKeep = ref(BM ? BM.snapshotKeep() : 5)
 const backupBusy = ref(false)
+/** 数据目录绑定进行中（文件选择器 + 数据重建） */
+const dirBusy = ref(false)
+/** 销毁保险箱进行中（不可逆，确认与删库期间锁死入口） */
+const destroyBusy = ref(false)
 
 const canSnapshot = computed(() => !!(BM && BM.canSnapshot()))
 
@@ -447,6 +451,9 @@ async function refreshFileSyncStatus() {
 }
 
 async function bindDataDirectory() {
+  // 目录选择 + 数据重建是异步过程，重入会叠加多个文件选择器
+  if (dirBusy.value) return
+  dirBusy.value = true
   try {
     const out = await window.FileSync.bindDirectory()
     if (out.restored) {
@@ -462,6 +469,8 @@ async function bindDataDirectory() {
   } catch (e) {
     if (e && e.name === 'AbortError') return // 用户取消
     window.Utils.showToast(e.message || t('sync.bindFailed'), 'error')
+  } finally {
+    dirBusy.value = false
   }
 }
 
@@ -577,6 +586,8 @@ function navigateToEntry(entryId) {
 }
 
 async function destroyVault() {
+  // 不可逆操作：二次确认期间与删库过程中都必须锁死入口，防止重复触发
+  if (destroyBusy.value) return
   const confirmed = await window.Utils.confirm({
     title: t('settings.destroy.title'),
     message: t('settings.destroy.message'),
@@ -592,6 +603,7 @@ async function destroyVault() {
   })
   if (!doubleConfirm) return
 
+  destroyBusy.value = true
   try {
     // 先清理本地同步文件与目录绑定（目录句柄在 IndexedDB 中，须在删库前执行）
     await window.FileSync.deleteLocalFile()
@@ -601,6 +613,7 @@ async function destroyVault() {
     setTimeout(() => { location.reload() }, 800)
   } catch (e) {
     window.Utils.showToast(t('settings.destroy.errFailed', { msg: e.message || e }), 'error')
+    destroyBusy.value = false
   }
 }
 
@@ -1108,9 +1121,11 @@ const settingsCtxItems = computed(() => {
           <button
             v-if="syncStatus.btnVisible"
             class="btn btn-secondary btn-sm"
+            :class="{ 'is-loading': dirBusy }"
+            :disabled="dirBusy"
             @click="bindDataDirectory()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', target: 'bind-dir', runLabel: syncStatus.btnText, desc: syncStatus.text }, { w: 220, h: 140 })"
-          >{{ syncStatus.btnText }}</button>
+          >{{ dirBusy ? t('sync.binding') : syncStatus.btnText }}</button>
         </div>
         <div class="settings-desc settings-desc-note">
           <div class="settings-desc">{{ t('settings.sync.dataDirDesc') }}</div>
@@ -1401,9 +1416,11 @@ const settingsCtxItems = computed(() => {
           </div>
           <button
             class="btn btn-danger btn-sm"
+            :class="{ 'is-loading': destroyBusy }"
+            :disabled="destroyBusy"
             @click="destroyVault()"
             @contextmenu.prevent.stop="handleCtxMenu($event, { kind: 'row-action', target: 'destroy', runLabel: t('settings.data.destroyVault') }, { w: 220, h: 120 })"
-          >{{ t('settings.data.destroyBtn') }}</button>
+          >{{ destroyBusy ? t('settings.data.destroying') : t('settings.data.destroyBtn') }}</button>
         </div>
       </div>
 

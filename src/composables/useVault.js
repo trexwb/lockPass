@@ -116,6 +116,8 @@ export const vaultState = reactive({
   // 锁屏交互状态
   lockError: '',
   lockBusy: false,
+  // 「从数据目录恢复」进行中（目录选择 + 重建为异步过程，须防重入）
+  restoreDirBusy: false,
   // 屏幕阅读器实时通知文本
   srAnnounce: '',
   // 复制成功倒计时胶囊状态（CopyCountdownPill 组件消费）
@@ -736,6 +738,9 @@ export function useVault() {
   }
 
   async function bindRestoreFromDirectory() {
+    // 目录选择器与恢复写入是异步的，重入会叠加多个选择器
+    if (vaultState.restoreDirBusy) return
+    vaultState.restoreDirBusy = true
     try {
       vaultState.lockError = ''
       // Tauri 桌面版数据由本地文件管理，目录同步是浏览器版专属能力
@@ -761,6 +766,8 @@ export function useVault() {
       console.error('绑定目录恢复失败:', e)
       if (e && e.name === 'AbortError') return // 用户取消选择
       vaultState.lockError = t('vault.restore.bindFailed') + (e.message || t('vault.restore.unknown'))
+    } finally {
+      vaultState.restoreDirBusy = false
     }
   }
 
@@ -1048,8 +1055,9 @@ export function useVault() {
     vaultState.entries.splice(idx, 1)
     vaultState.deleted.push(entry)
 
-    await saveVault()
+    const persistOk = await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
+    if (!persistOk) return // 落盘失败（saveVault 已弹错误 toast），不再假报成功
     // 撤销 Toast：5 秒内可一键恢复，无需导航到回收站
     window.Utils.showToast(t('toast.movedToTrash'), 'success', {
       duration: 5000,
@@ -1068,8 +1076,9 @@ export function useVault() {
     vaultState.deleted.splice(idx, 1)
     vaultState.entries.push(entry)
 
-    await saveVault()
+    const persistOk = await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
+    if (!persistOk) return
     window.Utils.showToast(t('toast.restored'), 'success')
   }
 
@@ -1095,8 +1104,9 @@ export function useVault() {
       delete vaultState.history[id]
       vaultState.history = { ...vaultState.history }
     }
-    await saveVault()
+    const persistOk = await saveVault()
     if (vaultState.selectedEntry === id) closeDetail()
+    if (!persistOk) return
     window.Utils.showToast(t('toast.permanentlyDeleted'), 'success')
   }
 
@@ -1123,8 +1133,9 @@ export function useVault() {
       })
       vaultState.history = keep
     }
-    await saveVault()
+    const persistOk = await saveVault()
     if (vaultState.currentFilter === 'recycle') closeDetail()
+    if (!persistOk) return
     window.Utils.showToast(t('toast.trashEmptied'), 'success')
   }
 
@@ -1535,7 +1546,8 @@ export function useVault() {
     if (remain.length) vaultState.history[id] = remain
     else delete vaultState.history[id]
     vaultState.history = { ...vaultState.history }
-    await saveVault()
+    const persistOk = await saveVault()
+    if (!persistOk) return false // 回滚未落盘，不能提示「已回滚」
     window.Utils.showToast(t('toast.rolledBack'), 'success')
     return true
   }

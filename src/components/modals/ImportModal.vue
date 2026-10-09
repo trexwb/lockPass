@@ -197,7 +197,13 @@ async function confirmImport() {
     if (importMode.value === 'csv') await importCSV(importData.value, csvMapping.value)
     else if (importMode.value === 'encrypted-vault') await importEncryptedVault(importData.value)
     else await importPlaintextVault(importData.value)
-    await saveVault()
+    if (!(await saveVault())) {
+      // 落盘失败：必须复位进行中状态，否则弹窗卡在「导入中」无法重试
+      // （saveVault 内部已弹出失败 toast）
+      importing.value = false
+      progress.value = { pct: 0, text: '' }
+      return
+    }
     setTimeout(() => {
       resetState()
       closeModal()

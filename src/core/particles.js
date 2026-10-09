@@ -195,7 +195,10 @@
       mouse.active = false;
     }
 
-    window.addEventListener('resize', resize);
+    // 视口连续变化（拖拽窗口）时按 150ms 停顿重算一次画布，避免每帧重建粒子尺寸
+    const onWindowResize = window.Utils.debounce(resize, 150);
+
+    window.addEventListener('resize', onWindowResize);
     window.addEventListener('load', resize);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseleave', onMouseLeave);
@@ -207,7 +210,8 @@
      */
     function destroy() {
       stop();
-      window.removeEventListener('resize', resize);
+      onWindowResize.cancel();
+      window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('load', resize);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseleave', onMouseLeave);

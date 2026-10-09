@@ -32,6 +32,9 @@ const Icons = window.Utils.SvgIcons
 
 const isEdit = computed(() => !!vaultState.editingEntryId)
 
+/** 保存进行中标志：驱动按钮 disabled + loading 动效，并阻止重入 */
+const saving = ref(false)
+
 const title = ref('')
 const entryType = ref('website')
 const fields = reactive({})
@@ -424,6 +427,8 @@ function validateForm() {
 }
 
 async function onSave() {
+  // 防重入：保存是异步落盘（加密 + IDB + 文件同步），连点会产生重复历史记录
+  if (saving.value) return
   const err = validateForm()
   if (err) {
     window.Utils.showToast(err, 'error')
@@ -447,7 +452,12 @@ async function onSave() {
       algorithm: 'SHA1'
     } : null,
   }
-  await saveEntry(payload)
+  saving.value = true
+  try {
+    await saveEntry(payload)
+  } finally {
+    saving.value = false
+  }
 }
 
 /* ── 初始快照记录（装载收尾时生成，供草稿一致性判断使用） ──── */
@@ -1328,17 +1338,20 @@ const editorCtxItems = computed(() => {
     <div class="modal-footer">
       <button
         class="btn btn-secondary"
+        :disabled="saving"
         @click="handleClose()"
         @contextmenu="handleCtxMenu($event, { kind: 'footer-btn', target: 'cancel' }, { w: 200, h: 100 })"
       >{{ t('editor.btnCancel') }}</button>
       <button
         id="entry-editor-save"
         class="btn btn-primary"
+        :class="{ 'is-loading': saving }"
+        :disabled="saving"
         @click="onSave()"
         @contextmenu="handleCtxMenu($event, { kind: 'footer-btn', target: 'save' }, { w: 200, h: 100 })"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-        {{ t('editor.btnSave') }}
+        {{ saving ? t('editor.saving') : t('editor.btnSave') }}
       </button>
     </div>
   </ModalBase>

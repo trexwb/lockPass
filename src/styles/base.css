@@ -47,6 +47,7 @@
   /* 按钮交互色 */
   --accent-hover: hsl(var(--accent-h) var(--accent-s) calc(var(--accent-l) - 8%));
   --text-on-accent: #ffffff;
+  --btn-disabled-opacity: 0.45;  /* 按钮禁用态统一降透明度 */
   --radius-xs:  4px;
   --radius-sm:  6px;
   --radius-md:  10px;
@@ -691,6 +692,11 @@ body:has(#lp-bind-banner) #app {
 .btn-link-plain:hover {
   color: var(--text-primary);
 }
+.btn-link-plain:active { transform: scale(0.96); }
+.btn-link-plain:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -756,6 +762,46 @@ body:has(#lp-bind-banner) #app {
 .btn-icon.danger:hover { background: var(--danger-dim); color: var(--danger); }
 .btn-sm { padding: 6px 12px; font-size: 0.86rem; }
 .btn-full { width: 100%; }
+
+/* ── 按钮禁用态（全局兜底：所有 :disabled 绑定由此可见） ─────── */
+.btn:disabled,
+.btn-icon:disabled,
+.btn-link-plain:disabled {
+  opacity: var(--btn-disabled-opacity);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.btn:disabled:hover,
+.btn-icon:disabled:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  transform: none;
+  box-shadow: none;
+}
+.btn-primary:disabled:hover { background: var(--accent); color: var(--text-on-accent); }
+.btn-secondary:disabled:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.btn-danger:disabled:hover { background: var(--danger-dim); color: var(--danger); }
+.btn-ghost:disabled:hover { background: none; color: var(--text-muted); }
+
+/* ── 进行中按钮：.is-loading 左侧内联 spinner（配合 disabled 使用） ── */
+.btn.is-loading,
+.btn-icon.is-loading { pointer-events: none; }
+.btn.is-loading::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: .75;
+  animation: btn-spin .7s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .btn.is-loading::before { animation-duration: 1.4s; }
+}
 
 /* Misc */
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
