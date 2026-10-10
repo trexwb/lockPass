@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.1.5`
+**当前版本**：`v1.1.6`
 
 ---
 
@@ -370,6 +370,17 @@ LockPass/
 ---
 
 ## 更新日志
+
+### 2026-10-10 v1.1.6：局域网同步联调修复 + macOS 隔离属性说明（v1.1.5 → v1.1.6，PATCH +1）
+
+- **v1.1.5 未单独发布**，其「局域网同步服务」内容随 v1.1.6 一并发布；v1.1.5 分节保留不删改（历史日志只增不改）
+- 修复报错原因被吞：Tauri v2 的 `invoke` 以**裸字符串** reject（不是 `Error`），只读 `err.message` 得 `undefined` → 界面空串「同步失败：」；新增 `messageOf()` 归一字符串 / Error / 对象 / DOMException，并补兜底文案
+- 新增 `syncService.err.localNetworkBlocked`：macOS「本地网络」隐私未授权时 Rust `connect` 直接 EPERM（`nc` 在终端有授权所以能通、应用没有），给出明确的授权引导并提示**重新构建后原授权失效需重新勾选**
+- 新增 `E_MIXED_CONTENT`：https 页面（在线版）访问 http 同步服务属混合内容被浏览器硬拦，不再落到笼统的「连不上」
+- 同步服务端可测试化：`route()` / `spawn_sync_server()` 去掉 `tauri::AppHandle` 依赖（事件走注入的 `EventSender`），裁决逻辑抽出 `answer_auth_inner` / `answer_apply_inner`；新增 6 项真实 socket 端到端测试（`cargo test --lib sync::` 共 11 项全绿）
+- 修 `answer_apply_inner` 用 `take()` 取走 `apply_pending` 导致回写返回 200 但服务端快照 / `rev` 未采纳（表现为「同步成功、对端没更新」，且下次 `baseRev` 必然对不上反复 409）；改为只借用不取走
+- 文档：`RELEASE-v1.1.md` 新增 v1.1.6 分节、新建 `RELEASE-v1.1.6-github.md`（重点写明 `xattr -dr com.apple.quarantine "/Applications/LockPass.app"`）、`docs/version/README.md` 索引、`README.md` 的 xattr 命令统一为 `-dr` 并补充重装后本地网络授权需重勾
+- 版本号由 v1.1.5 推进至 **v1.1.6**（PATCH +1）
 
 ### 2026-10-10 局域网同步服务（v1.1.4 → v1.1.5，PATCH +1）
 

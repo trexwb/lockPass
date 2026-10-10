@@ -10,10 +10,11 @@
 | 文件 | 覆盖版本 | 状态 |
 |------|---------|------|
 | [v1.0 日志](RELEASE-v1.0.md) | v1.0.0 – v1.0.5（v1.0.0 全新起点，版本号整体重置） | 📝 待发布 |
-| [v1.1 日志](RELEASE-v1.1.md) | v1.1.0 – v1.1.5 | 已发布至 v1.1.4；v1.1.5 📝 待发布 |
+| [v1.1 日志](RELEASE-v1.1.md) | v1.1.0 – v1.1.6 | 已发布至 v1.1.4；v1.1.6 📝 待发布 |
 | [v1.1.3 GitHub 发布说明](RELEASE-v1.1.3-github.md) | v1.1.3（面向 GitHub Release 正文的用户版） | 待发布 |
 | [v1.1.4 GitHub 发布说明](RELEASE-v1.1.4-github.md) | v1.1.4（面向 GitHub Release 正文的用户版） | 📝 待发布 |
-| [v1.1.5 GitHub 发布说明](RELEASE-v1.1.5-github.md) | v1.1.5（面向 GitHub Release 正文的用户版） | 📝 待发布 |
+| [v1.1.5 GitHub 发布说明](RELEASE-v1.1.5-github.md) | v1.1.5（**未单独发布**，内容并入 v1.1.6） | — |
+| [v1.1.6 GitHub 发布说明](RELEASE-v1.1.6-github.md) | v1.1.6（面向 GitHub Release 正文的用户版，重点：macOS `xattr -dr com.apple.quarantine` 解除隔离） | 📝 待发布 |
 
 ---
 

@@ -350,7 +350,7 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
    **方式二（终端命令）：**
    ```bash
    # 解除隔离属性（只需执行一次）
-   xattr -rd com.apple.quarantine /Applications/LockPass.app
+   xattr -dr com.apple.quarantine /Applications/LockPass.app
 
    # 然后正常双击打开
    open /Applications/LockPass.app
@@ -359,13 +359,14 @@ macOS 产物为 ad-hoc 签名（未配置 Apple Developer 证书），分发到�
    **方式三（适用于 .zip 方式）：**
    ```bash
    # 解压后，同样解除隔离
-   xattr -rd com.apple.quarantine ~/Downloads/LockPass-macos-aarch64/LockPass.app
+   xattr -dr com.apple.quarantine ~/Downloads/LockPass-macos-aarch64/LockPass.app
 
    # 打开
    open ~/Downloads/LockPass-macos-aarch64/LockPass.app
    ```
 
-> **注意**：每次下载新版本安装时，都需要重新执行上述解除隔离步骤。
+> **注意**：每次下载新版本安装时，都需要重新执行上述解除隔离步骤（隔离属性是随下载施加的，不是随应用版本）。
+> 另外，macOS 还会对局域网访问单独授权：使用「局域网同步」前需在「系统设置 → 隐私与安全性 → 本地网络」中允许 LockPass；**重新构建 / 重装应用后原授权会失效，需要重新勾选一次**。
 > 如果不需要桌面版，也可以直接使用[在线版](https://trexwb.github.io/lockPass/)，无需安装。
 
 ### 自动更新（桌面版，v1.0.11 起）
