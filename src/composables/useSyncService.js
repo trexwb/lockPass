@@ -38,9 +38,31 @@ function getDeviceId() {
   }
 }
 
-/** 把同步错误码翻译成用户文案（§7.3 / §4.3） */
+/**
+ * 取出任意抛错形态的可读文本。
+ *
+ * 🔴 不能只读 `err.message`：Tauri v2 的 `invoke` 在命令返回 `Err(String)` 时
+ * reject 的是**裸字符串**（Rust 侧的中文原因就在里面），不是 Error。
+ * 只读 message 会得到 undefined → 界面显示「同步失败：」空串，真实原因被吞掉。
+ * @param {unknown} err
+ * @returns {string}
+ */
+function messageOf(err) {
+  if (err == null) return ''
+  if (typeof err === 'string') return err.trim()
+  if (err instanceof Error) return String(err.message || err.name || '').trim()
+  if (typeof err === 'object') {
+    const inner = err.message || err.error || ''
+    if (inner) return String(inner).trim()
+    try { return JSON.stringify(err) } catch (e) { return String(err).trim() }
+  }
+  return String(err).trim()
+}
+
+/** 把同步错误码 / 原始文本翻译成用户文案（§7.3 / §4.3） */
 function describeError(err) {
-  const code = err && (err.syncCode || (err.message === 'E_KEY_MISMATCH' ? 'E_KEY_MISMATCH' : ''))
+  const msg = messageOf(err)
+  const code = (err && err.syncCode) || (msg === 'E_KEY_MISMATCH' ? 'E_KEY_MISMATCH' : '')
   switch (code) {
     case 'E_SCHEMA_MISMATCH': return t('syncService.err.schema')
     case 'E_BAD_MAC': return t('syncService.err.badMac')
@@ -54,13 +76,19 @@ function describeError(err) {
     case 'E_KEY_MISMATCH': return t('syncService.err.keyMismatch')
     case 'E_NO_VAULT': return t('syncService.err.noRemoteVault')
     case 'E_CANCELLED': return t('syncService.err.cancelled')
+    case 'E_MIXED_CONTENT': return t('syncService.err.mixedContent')
     default:
+      // 系统拦截本机访问局域网（macOS「本地网络」隐私未授权时 Rust connect 即 EPERM）：
+      // 必须先于「连不上」判定，否则会被误判成网段选错而给出错误引导
+      if (/Operation not permitted|Permission denied|EACCES|os error 1\b/i.test(msg)) {
+        return t('syncService.err.localNetworkBlocked')
+      }
       // 连不上（fetch/invoke 抛错，无 syncCode）按网络不通给专门的引导文案：
       // 选错网段是「连不上」的头号原因（§9）
-      if (err && /Failed to fetch|连接|NetworkError|timed out/i.test(String(err.message))) {
+      if (/Failed to fetch|Load failed|NetworkError|timed out|Connection refused|No route to host|Host is down|连接/i.test(msg)) {
         return t('syncService.err.unreachable')
       }
-      return t('syncService.err.unknown', { msg: (err && err.message) || '' })
+      return t('syncService.err.unknown', { msg: msg || t('syncService.err.noDetail') })
   }
 }
 
@@ -205,7 +233,7 @@ export function useSyncService() {
       s.server = res
       startCountdown()
     } catch (e) {
-      if (String(e && e.message) === 'E_TRAVEL_MODE') {
+      if (messageOf(e) === 'E_TRAVEL_MODE') {
         s.error = t('syncService.err.travelMode')
       } else {
         setError(e)
@@ -366,7 +394,11 @@ export function useSyncService() {
       const mac = await window.SyncService.challengeMac(clientAuthKey, ch.challenge)
       const authed = await window.SyncService.auth(clientBaseUrl, mac)
       clientToken = authed.sessionToken
-      if (!clientToken) throw new Error('E_BAD_MAC')
+      if (!clientToken) {
+        const err = new Error('E_BAD_MAC')
+        err.syncCode = 'E_BAD_MAC'
+        throw err
+      }
 
       /* 2) 拉取快照（只搬密文） */
       s.step = 'pull'

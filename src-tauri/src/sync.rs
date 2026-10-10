@@ -341,8 +341,12 @@ fn bearer_ok(g: &SyncInner, auth_header: &str, query: &HashMap<String, String>) 
     !auth.is_empty() && constant_time_eq(&auth, token)
 }
 
+/// 事件发射器：route 只经它把「待前端裁决的请求」交出去。
+/// 生产实现由 AppHandle 提供；测试注入录制实现，从而能在真实端口上跑通整条 HTTP 腿。
+type EventSender = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
+
 fn route(
-    app: &tauri::AppHandle,
+    emit: &EventSender,
     state: &Arc<Mutex<SyncInner>>,
     method: &tiny_http::Method,
     path: &str,
@@ -419,7 +423,7 @@ fn route(
         };
 
         // 交前端裁决：mac 是否等于 HMAC(K_auth, challenge) 只有持有 K_auth 的前端能判
-        let _ = app.emit(
+        emit(
             "lockpass:sync-auth",
             serde_json::json!({ "challenge": pending.0, "mac": pending.1 }),
         );
@@ -439,7 +443,7 @@ fn route(
                 // 爆破防护：销毁服务实例，必须重新开启
                 g.running = false;
                 g.session_token = None;
-                let _ = app.emit("lockpass:sync-destroyed", serde_json::json!({}));
+                emit("lockpass:sync-destroyed", serde_json::json!({}));
                 return json_response(429, &serde_json::json!({ "error": "E_TOO_MANY_AUTH_FAILS" }));
             }
             return json_response(401, &serde_json::json!({ "error": "E_BAD_MAC" }));
@@ -516,7 +520,7 @@ fn route(
                 rev: new_rev,
                 tx,
             });
-            let _ = app.emit(
+            emit(
                 "lockpass:sync-apply",
                 serde_json::json!({
                     "id": apply_id,
@@ -547,7 +551,7 @@ fn route(
             g.snapshot_mac = p.mac;
             g.rev = p.rev;
         }
-        let _ = app.emit(
+        emit(
             "lockpass:sync-applied",
             serde_json::json!({ "id": apply_id, "rev": g.rev }),
         );
@@ -561,7 +565,7 @@ fn route(
         };
         g.running = false;
         g.session_token = None;
-        let _ = app.emit("lockpass:sync-deactivated", serde_json::json!({}));
+        emit("lockpass:sync-deactivated", serde_json::json!({}));
         return json_response(200, &serde_json::json!({ "ok": true }));
     }
 
@@ -569,8 +573,9 @@ fn route(
 }
 
 /// 启动同步服务（独立 tiny_http 实例，绑定选定网卡的局域网 IPv4）
+/// 不依赖 AppHandle：事件经注入的 EventSender 发出，测试可注入录制实现。
 fn spawn_sync_server(
-    app: tauri::AppHandle,
+    emit: EventSender,
     state: Arc<Mutex<SyncInner>>,
     bind_ip: &str,
 ) -> Result<u16, String> {
@@ -584,7 +589,7 @@ fn spawn_sync_server(
                 for worker in 0..4 {
                     let server = Arc::clone(&server);
                     let state = Arc::clone(&state);
-                    let app = app.clone();
+                    let emit = Arc::clone(&emit);
                     std::thread::spawn(move || loop {
                         // 用 recv_timeout 而不是 recv：tiny_http 没有 shutdown 接口，
                         // 若阻塞在 recv 上，「停止服务」后 worker 永不退出、端口也不会释放。
@@ -644,7 +649,7 @@ fn spawn_sync_server(
                             .map(|h| h.value.as_str().to_string())
                             .unwrap_or_default();
                         let resp = route(
-                            &app,
+                            &emit,
                             &state,
                             request.method(),
                             &path,
@@ -887,7 +892,11 @@ pub fn sync_start(
         // 先 spawn 后置位会让它立刻判定「已停止」而退出。
         g.running = true;
     }
-    let port = match spawn_sync_server(app, inner, &bind_ip) {
+    // 事件发射器：把「待前端裁决的请求」转发给 webview；测试注入录制实现。
+    let emit: EventSender = Arc::new(move |event: &str, payload: serde_json::Value| {
+        let _ = app.emit(event, payload);
+    });
+    let port = match spawn_sync_server(emit, inner, &bind_ip) {
         Ok(p) => p,
         Err(e) => {
             let mut g = state.lock()?;
@@ -973,6 +982,23 @@ pub fn sync_set_snapshot(
     Ok(())
 }
 
+/// 裁决挑战-响应的核心逻辑（与 Tauri 状态解耦，便于测试直接驱动）
+fn answer_auth_inner(
+    state: &Arc<Mutex<SyncInner>>,
+    challenge: &str,
+    ok: bool,
+) -> Result<(), String> {
+    let g = state.lock().map_err(|_| "同步服务状态锁定失败".to_string())?;
+    let Some(pending) = g.auth_pending.as_ref() else {
+        return Err("没有待裁决的鉴权请求".into());
+    };
+    if pending.challenge != challenge {
+        return Err("挑战值不匹配，裁决已忽略".into());
+    }
+    let _ = pending.tx.send(ok);
+    Ok(())
+}
+
 /// 前端裁决挑战-响应：mac 是否等于 HMAC(K_auth, challenge)
 #[tauri::command]
 pub fn sync_auth_verdict(
@@ -980,13 +1006,21 @@ pub fn sync_auth_verdict(
     challenge: String,
     ok: bool,
 ) -> Result<(), String> {
-    let mut g = state.lock()?;
-    let Some(pending) = g.auth_pending.take() else {
-        return Err("没有待裁决的鉴权请求".into());
+    answer_auth_inner(&state.0, &challenge, ok)
+}
+
+/// 裁决回写的核心逻辑（与 Tauri 状态解耦，便于测试直接驱动）
+fn answer_apply_inner(state: &Arc<Mutex<SyncInner>>, id: &str, ok: bool) -> Result<(), String> {
+    // 🔴 关键：只借用（as_ref）而不 take。裁决通过后 HTTP 处理线程还要用
+    // pending 里的信封 / mac / rev 去更新服务端快照；这里提前取走会让
+    // apply 返回 200 但服务端数据原地不动 —— 表现为「同步显示成功、对端没更新」，
+    // 且下次同步的 baseRev 永远对不上，反复 409。
+    let g = state.lock().map_err(|_| "同步服务状态锁定失败".to_string())?;
+    let Some(pending) = g.apply_pending.as_ref() else {
+        return Err("没有待裁决的回写请求".into());
     };
-    if pending.challenge != challenge {
-        g.auth_pending = Some(pending);
-        return Err("挑战值不匹配，裁决已忽略".into());
+    if pending.id != id {
+        return Err("回写 id 不匹配，裁决已忽略".into());
     }
     let _ = pending.tx.send(ok);
     Ok(())
@@ -999,16 +1033,7 @@ pub fn sync_apply_verdict(
     id: String,
     ok: bool,
 ) -> Result<(), String> {
-    let mut g = state.lock()?;
-    let Some(pending) = g.apply_pending.take() else {
-        return Err("没有待裁决的回写请求".into());
-    };
-    if pending.id != id {
-        g.apply_pending = Some(pending);
-        return Err("回写 id 不匹配，裁决已忽略".into());
-    }
-    let _ = pending.tx.send(ok);
-    Ok(())
+    answer_apply_inner(&state.0, &id, ok)
 }
 
 /// 出站 HTTP（B 侧用）：Tauri 的 CSP connect-src 不放行 LAN 地址，
@@ -1030,6 +1055,7 @@ pub async fn sync_client_request(
     .await
     .map_err(|e| format!("同步请求任务异常: {e}"))?
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -1087,5 +1113,201 @@ mod tests {
         let b = random_hex(32);
         assert_eq!(a.len(), 64);
         assert_ne!(a, b);
+    }
+
+    /* ── 端到端：真实 socket 上跑通「手写客户端 ↔ 同步服务端」─────────
+       为什么必须有这组测试：出站客户端是手写的（离线优先，不引入 reqwest），
+       没有第三方实现兜底。「端口能连上（nc 通）但同步失败」这类现象只有在这里
+       才能定性 —— 否则只能靠猜。 */
+
+    /// 起一个绑定 127.0.0.1 的同步服务，返回（端口, 状态, 事件录制器）
+    fn spawn_test_server() -> (u16, Arc<Mutex<SyncInner>>, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
+        let state = Arc::new(Mutex::new(SyncInner {
+            running: true,
+            unlocked: true,
+            device_id: "test-device".into(),
+            app_version: "1.1.5".into(),
+            session_salt: "c2FsdA==".into(),
+            started_at: now_secs(),
+            last_activity: now_secs(),
+            snapshot: Some(Envelope {
+                salt: "c2FsdA==".into(),
+                iterations: 600000,
+                iv: "aXY=".into(),
+                data: "ZGF0YQ==".into(),
+            }),
+            snapshot_mac: "deadbeef".into(),
+            rev: 7,
+            ..Default::default()
+        }));
+        let events: Arc<Mutex<Vec<(String, serde_json::Value)>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink_events = Arc::clone(&events);
+        let emit: EventSender = Arc::new(move |name: &str, payload: serde_json::Value| {
+            sink_events
+                .lock()
+                .unwrap()
+                .push((name.to_string(), payload.clone()));
+        });
+        let port = spawn_sync_server(emit, Arc::clone(&state), "127.0.0.1")
+            .expect("测试服务启动失败");
+        (port, state, events)
+    }
+
+    #[test]
+    fn e2e_hello_returns_session_material() {
+        let (port, _state, _events) = spawn_test_server();
+        let reply = http_request("GET", &format!("http://127.0.0.1:{port}/sync/hello"), None, None)
+            .expect("hello 请求失败");
+        assert_eq!(reply.status, 200);
+        let v: serde_json::Value = serde_json::from_str(&reply.body).expect("hello 响应不是 JSON");
+        assert_eq!(v["schemaRev"], SYNC_SCHEMA_REV);
+        assert_eq!(v["sessionSalt"], "c2FsdA==");
+        assert_eq!(v["rev"], 7);
+        assert_eq!(v["hasVault"], true);
+        assert!(v["serverTime"].as_u64().unwrap() > 0);
+    }
+
+    #[test]
+    fn e2e_hello_rejects_when_locked() {
+        let (port, state, _events) = spawn_test_server();
+        state.lock().unwrap().unlocked = false;
+        let reply = http_request("GET", &format!("http://127.0.0.1:{port}/sync/hello"), None, None)
+            .expect("hello 请求失败");
+        assert_eq!(reply.status, 403);
+        let v: serde_json::Value = serde_json::from_str(&reply.body).unwrap();
+        assert_eq!(v["error"], "E_LOCKED");
+    }
+
+    #[test]
+    fn e2e_challenge_then_snapshot_requires_token() {
+        let (port, _state, _events) = spawn_test_server();
+        let ch = http_request("GET", &format!("http://127.0.0.1:{port}/sync/challenge"), None, None)
+            .expect("challenge 请求失败");
+        assert_eq!(ch.status, 200);
+        let chv: serde_json::Value = serde_json::from_str(&ch.body).unwrap();
+        assert_eq!(chv["challenge"].as_str().unwrap().len(), 64);
+
+        // 未鉴权取快照 → 401
+        let snap = http_request("GET", &format!("http://127.0.0.1:{port}/sync/snapshot"), None, None)
+            .expect("snapshot 请求失败");
+        assert_eq!(snap.status, 401);
+        let snapv: serde_json::Value = serde_json::from_str(&snap.body).unwrap();
+        assert_eq!(snapv["error"], "E_BAD_MAC");
+    }
+
+    /// 鉴权 → 取快照 → 回写 → 关闭：验证手写客户端的 POST 与 Bearer 头也走得通。
+    /// 前端裁决由测试直接驱动（测试里算不了 HMAC，直接给 ok=true）。
+    #[test]
+    fn e2e_auth_snapshot_apply_deactivate_round_trip() {
+        let (port, state, events) = spawn_test_server();
+        let base = format!("http://127.0.0.1:{port}");
+
+        // 1) 取挑战
+        let ch = http_request("GET", &format!("{base}/sync/challenge"), None, None).unwrap();
+        let challenge = serde_json::from_str::<serde_json::Value>(&ch.body).unwrap()["challenge"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // 2) 前端裁决线程：收到事件后立刻回报 true
+        let st = Arc::clone(&state);
+        let ch2 = challenge.clone();
+        std::thread::spawn(move || {
+            for _ in 0..100 {
+                if answer_auth_inner(&st, &ch2, true).is_ok() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+
+        // 3) 鉴权
+        let auth = http_request(
+            "POST",
+            &format!("{base}/sync/auth"),
+            Some(r#"{"mac":"00"}"#),
+            None,
+        )
+        .expect("auth 请求失败");
+        assert_eq!(auth.status, 200, "body={}", auth.body);
+        let token = serde_json::from_str::<serde_json::Value>(&auth.body).unwrap()["sessionToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(token.len(), 64);
+
+        // 4) 取快照（带 Bearer）
+        let snap = http_request("GET", &format!("{base}/sync/snapshot"), None, Some(&token))
+            .expect("snapshot 请求失败");
+        assert_eq!(snap.status, 200);
+        let snapv: serde_json::Value = serde_json::from_str(&snap.body).unwrap();
+        assert_eq!(snapv["salt"], "c2FsdA==");
+        assert_eq!(snapv["mac"], "deadbeef");
+        assert_eq!(snapv["rev"], 7);
+
+        // 5) 回写：baseRev 必须等于服务端当前 rev，否则 409
+        let bad = http_request(
+            "POST",
+            &format!("{base}/sync/apply"),
+            Some(r#"{"salt":"c2FsdA==","iterations":600000,"iv":"aXY=","data":"ZGF0YQ==","mac":"x","baseRev":1,"rev":8}"#),
+            Some(&token),
+        )
+        .expect("apply 请求失败");
+        assert_eq!(bad.status, 409);
+
+        let st2 = Arc::clone(&state);
+        std::thread::spawn(move || {
+            for _ in 0..100 {
+                let id = {
+                    let ev = events.lock().unwrap();
+                    ev.iter()
+                        .find(|(n, _)| n == "lockpass:sync-apply")
+                        .and_then(|(_, p)| p.get("id").and_then(|v| v.as_str()).map(str::to_string))
+                };
+                if let Some(id) = id {
+                    let _ = answer_apply_inner(&st2, &id, true);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+
+        let good = http_request(
+            "POST",
+            &format!("{base}/sync/apply"),
+            Some(r#"{"salt":"c2FsdA==","iterations":600000,"iv":"aXY=","data":"ZGF0YQ==","mac":"x","baseRev":7,"rev":9}"#),
+            Some(&token),
+        )
+        .expect("apply 请求失败");
+        assert_eq!(good.status, 200, "body={}", good.body);
+        // A 采纳了 B 推来的整包：快照与 rev 同步前进
+        {
+            let g = state.lock().unwrap();
+            assert_eq!(g.rev, 9);
+        }
+
+        // 6) 关闭
+        let off = http_request("POST", &format!("{base}/sync/deactivate"), Some("{}"), Some(&token))
+            .expect("deactivate 请求失败");
+        assert_eq!(off.status, 200);
+    }
+
+    #[test]
+    fn e2e_options_preflight_returns_cors() {
+        let (port, _state, _events) = spawn_test_server();
+        let reply = http_request("OPTIONS", &format!("http://127.0.0.1:{port}/sync/auth"), None, None)
+            .expect("预检请求失败");
+        assert_eq!(reply.status, 204);
+    }
+
+    /// 关闭后 worker 必须退出、端口释放（否则重开会串到下一个端口）
+    #[test]
+    fn stop_releases_the_port() {
+        let (port, state, _events) = spawn_test_server();
+        state.lock().unwrap().running = false;
+        // 等 worker 轮询发现 running=false 并退出（500ms 轮询 + 余量）
+        std::thread::sleep(Duration::from_millis(1200));
+        let again = tiny_http::Server::http(format!("127.0.0.1:{port}"));
+        assert!(again.is_ok(), "停止服务后端口 {port} 仍未释放");
     }
 }

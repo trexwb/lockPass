@@ -196,6 +196,7 @@ LockPass/
 │   ├── styles/            # 设计令牌 + 按域拆分（base/layout/entries/editor/modal/settings/utilities/particles）
 │   └── public/            # 静态资源（sw.js / manifest.json / assets/vendor/jsQR.js、qrcode.min.js）
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
+│                          # 注：Info.plist 声明 NSLocalNetworkUsageDescription（局域网同步必需的 macOS 本地网络用途）
 ├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）
 │                          # 注：copy-frontend.mjs 为 CI 兼容壳（内部 vite build）；serve.mjs 遗留未引用
 ├── dist/                  # 构建产物（vite build 生成，不手动修改）

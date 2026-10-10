@@ -154,6 +154,14 @@ async function request(method, url, bodyObj = null, bearer = '') {
       bearer: bearer || null,
     })
   }
+  // https 页面访问 http 服务 = 混合内容，浏览器按规则级硬拦（不是网络不通）。
+  // 不提前判定就只能拿到 Safari 的 "Load failed" / Chrome 的 "Failed to fetch"，
+  // 与被 AP 隔离的场景混在一起，用户会按错误的方向排查。
+  if (window.location.protocol === 'https:' && /^http:\/\//i.test(String(url))) {
+    const err = new Error('E_MIXED_CONTENT')
+    err.syncCode = 'E_MIXED_CONTENT'
+    throw err
+  }
   const headers = {}
   if (bodyObj) headers['Content-Type'] = 'application/json'
   if (bearer) headers['Authorization'] = 'Bearer ' + bearer
