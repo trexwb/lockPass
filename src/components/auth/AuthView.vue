@@ -297,12 +297,14 @@ onBeforeUnmount(() => {
           v-if="canBindRestore"
           id="bind-restore-btn"
           class="btn btn-ghost btn-full"
+          :class="{ 'is-loading': vaultState.restoreDirBusy }"
           type="button"
           tabindex="5"
+          :disabled="vaultState.restoreDirBusy"
           @click="bindRestoreFromDirectory()"
         >
           <span v-html="Icons.folder(13)"></span>
-          {{ t('lock.bindDirectory') }}
+          {{ vaultState.restoreDirBusy ? t('lock.bindingDirectory') : t('lock.bindDirectory') }}
         </button>
       </form>
 

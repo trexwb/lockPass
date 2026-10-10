@@ -79,6 +79,9 @@
   background: var(--danger-dim);
   color: var(--danger);
 }
+.modal-header .modal-close:active {
+  transform: rotate(90deg) scale(0.9);
+}
 
 /* Toast */
 #toast-container {
@@ -451,4 +454,317 @@
     min-height: 46px;
     font-size: 0.95rem;
   }
+}
+
+/* ── 备份导入：模式选择 + 合并结果 + 冲突表（多设备同步 P0） ─────── */
+.import-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.import-mode-toggle .mode-btn {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out-quart),
+              color var(--dur-fast) var(--ease-out-quart);
+}
+.import-mode-toggle .mode-btn:hover {
+  color: var(--text-primary);
+}
+.import-mode-toggle .mode-btn.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.import-result-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.import-result-metrics .metric {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+.import-result-metrics .metric.warn {
+  border-color: var(--warning-border);
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+.import-result-alert {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--warning-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-dim);
+  line-height: 1.5;
+}
+
+.conflict-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  padding: 10px 12px;
+}
+.conflict-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-dim);
+}
+.conflict-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.conflict-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.conflict-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  font-size: 0.82rem;
+}
+.conflict-versions .version {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+.conflict-versions .version.keep::before {
+  content: "●";
+  color: var(--success);
+}
+.conflict-versions .version.drop::before {
+  content: "●";
+  color: var(--text-faint);
+}
+.conflict-versions .text-muted {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+/* ═══ 同步服务弹窗（SyncServiceModal）═════════════════════════════
+   局域网同步：A 侧展示地址 + 端口 + 一次性口令，B 侧填写后四步同步。
+   口令用大号分词展示（逐字可核对），并显式声明「不是主密码」。 */
+.sync-service-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sync-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.sync-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--danger-bg, rgba(248, 81, 73, 0.12));
+  border: 1px solid var(--danger, #f85149);
+  color: var(--danger, #f85149);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.sync-hint {
+  margin: 4px 0 0;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.sync-hint-warn {
+  color: var(--warning, #d29922);
+}
+
+/* 角色选择 */
+.sync-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sync-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sync-menu-item:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+.sync-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.sync-menu-main {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.sync-menu-desc {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* 表单 */
+.sync-label {
+  display: block;
+  margin: 10px 0 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+.sync-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+.sync-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 口令：6 位数字，大号分格、等宽、可逐位核对 */
+.sync-passcode {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--bg-secondary);
+}
+.sync-digit {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-tertiary, var(--bg-primary));
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text-primary);
+  user-select: all;
+}
+.sync-input-code {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  letter-spacing: 0.35em;
+  text-align: center;
+}
+
+/* 服务运行中 */
+.sync-running {
+  display: flex;
+  flex-direction: column;
+}
+.sync-addr {
+  padding: 12px 14px;
+  border-radius: var(--radius, 8px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+  user-select: all;
+}
+.sync-addr-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.sync-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+/* 对端预览 / 结果 */
+.sync-preview,
+.sync-result {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--bg-secondary);
+}
+.sync-preview-title,
+.sync-result-title {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sync-preview-row {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+.sync-dim {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.sync-warn-row {
+  color: var(--warning, #d29922);
+}
+
+/* 进度条 */
+.sync-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.sync-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.sync-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.sync-progress-label {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
 }

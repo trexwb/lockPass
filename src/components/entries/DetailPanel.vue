@@ -275,7 +275,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
         if (!e.tags || !e.tags.includes(name)) return
         e.tags = e.tags.filter(tg => tg !== name)
         e.updatedAt = new Date().toISOString()
-        await saveVault()
+        if (!(await saveVault())) return
         window.Utils.showToast(t('detail.toastTagRemoved', { name }), 'success')
       }
       if (action === 'rename-here') {
@@ -296,7 +296,7 @@ const { ctxMenu, handleCtxMenu, onCtxAction } = useCtxMenu(async (action, payloa
         if (!e.tags.includes(newName)) e.tags.splice(idx, 1, newName)
         else e.tags.splice(idx, 1)
         e.updatedAt = new Date().toISOString()
-        await saveVault()
+        if (!(await saveVault())) return
         window.Utils.showToast(t('detail.toastTagRenamed'), 'success')
       }
       break

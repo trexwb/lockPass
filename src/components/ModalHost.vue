@@ -10,6 +10,7 @@ import ImportModal from './modals/ImportModal.vue'
 import ExportModal from './modals/ExportModal.vue'
 import QrShareModal from './modals/QrShareModal.vue'
 import QrImportModal from './modals/QrImportModal.vue'
+import SyncServiceModal from './modals/SyncServiceModal.vue'
 import PairRequestModal from './modals/PairRequestModal.vue'
 import PasswordGeneratorModal from './modals/PasswordGeneratorModal.vue'
 
@@ -18,6 +19,7 @@ const { closeModal } = useVault()
 // 已实现的模态框
 const IMPLEMENTED = new Set([
   'settings', 'change-pw', 'tags', 'import', 'export', 'qr-import', 'qr-share',
+  'sync-service',
 ])
 
 // activeName 返回模态框 key（'entry' | 'settings' | ...），
@@ -39,6 +41,7 @@ const activeName = computed(() => {
     <ExportModal v-else-if="activeName === 'export'" key="export" />
     <QrShareModal v-else-if="activeName === 'qr-share'" key="qr-share" />
     <QrImportModal v-else-if="activeName === 'qr-import'" key="qr-import" />
+    <SyncServiceModal v-else-if="activeName === 'sync-service'" key="sync-service" @close="closeModal()" />
   </Transition>
   <!-- 一键配对弹窗：独立于 activeModal，桌面版配对请求时弹出 -->
   <PairRequestModal />

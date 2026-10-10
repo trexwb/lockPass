@@ -19,6 +19,10 @@ const QR_FORMAT = 'LockPass-QR v1'
 const QR_VERSION = 1
 
 const loading = ref(false)
+/** 整轮生成的互斥锁（loading 会在中途置 false 以渲染容器，不能用作互斥） */
+const generating = ref(false)
+/** 互斥期间被合并掉的重新生成请求 */
+const pendingRegen = ref(false)
 const errorMsg = ref('')
 const qrText = ref('')
 const byteLen = ref(0)
@@ -50,12 +54,19 @@ function _loadVendor(src, check) {
 }
 
 async function generate() {
+  // 派生密钥 + 加密是异步的：生成中再次触发（快速切换条目）不并发，
+  // 只记录待重算标记，本轮结束后按最新条目补一次，保证结果与选中项一致。
+  if (generating.value) {
+    pendingRegen.value = true
+    return
+  }
   qrText.value = ''
   errorMsg.value = ''
   byteLen.value = 0
   if (qrContainer.value) qrContainer.value.innerHTML = ''
   if (!entry.value) return
 
+  generating.value = true
   loading.value = true
   try {
     const password = getSession()
@@ -134,6 +145,12 @@ async function generate() {
     errorMsg.value = t('qrshare.errGenerate', { msg: e.message || e })
   } finally {
     loading.value = false
+    generating.value = false
+    // 互斥期间被合并掉的请求：用最新选中条目补算一次
+    if (pendingRegen.value) {
+      pendingRegen.value = false
+      generate()
+    }
   }
 }
 

@@ -4,7 +4,7 @@
    - 顶栏空白 / Logo 区右键 → 应用级快捷菜单（设置/修改主密码/标签管理/锁定）
    - 设置按钮右键 → 设置快速菜单（主题模式 + 强调色原地切换，带 ✓ 当前态标记）
    - 搜索输入框保留原生右键菜单（粘贴/复制），不被顶栏守卫拦截 */
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import { useTheme } from '../../composables/useTheme'
 import CtxMenu from '../common/CtxMenu.vue'
@@ -16,10 +16,36 @@ const { themeMode, accentName, ACCENTS, setMode, setAccent } = useTheme()
 
 const searchInput = ref(null)
 
+/* ── 搜索输入防抖 ────────────────────────────────────────────
+   输入框文本与全局 searchQuery 解耦：文本即时回显，searchQuery 停顿
+   180ms 后才更新，避免每敲一个字符就触发整表重过滤 + 列表重挂载。 */
+const searchText = ref(vaultState.searchQuery)
+const pushSearchQuery = window.Utils.debounce((val) => {
+  vaultState.searchQuery = val
+}, 180)
+
+function onSearchInput(e) {
+  searchText.value = e.target.value
+  pushSearchQuery(searchText.value)
+}
+
+// 外部直接改写 searchQuery（清空 / 快捷键 / 切筛选）时同步回输入框
+watch(
+  () => vaultState.searchQuery,
+  (q) => {
+    if (q !== searchText.value) {
+      pushSearchQuery.cancel()
+      searchText.value = q
+    }
+  },
+)
+
 // 搜索框内 Escape 失焦并清空；⌘K 聚焦由全局快捷键 useShortcuts 统一处理
 function onSearchKeydown(e) {
   if (e.key === 'Escape') {
-    if (vaultState.searchQuery) {
+    if (vaultState.searchQuery || searchText.value) {
+      pushSearchQuery.cancel()
+      searchText.value = ''
       vaultState.searchQuery = ''
       e.preventDefault()
     } else {
@@ -29,6 +55,8 @@ function onSearchKeydown(e) {
 }
 
 function clearSearch() {
+  pushSearchQuery.cancel()
+  searchText.value = ''
   vaultState.searchQuery = ''
   searchInput.value?.focus()
 }
@@ -145,14 +173,15 @@ function onHeaderCtxAction(action) {
       <input
         ref="searchInput"
         id="global-search"
-        v-model="vaultState.searchQuery"
+        :value="searchText"
         type="text"
         :placeholder="t('header.searchPlaceholderShort')"
         :aria-label="t('header.ariaSearch')"
+        @input="onSearchInput"
         @keydown="onSearchKeydown"
       />
       <button
-        v-if="vaultState.searchQuery"
+        v-if="searchText"
         class="search-clear-btn"
         type="button"
         :aria-label="t('header.ariaClear')"

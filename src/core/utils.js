@@ -390,6 +390,7 @@ function confirmDialog(options) {
  * @param {string} [options.confirmText='确定'] - 确认按钮文字
  * @param {string} [options.cancelText='取消'] - 取消按钮文字
  * @param {boolean} [options.selectAll=true] - 聚焦时是否全选已有文本（默认全选便于直接覆盖）
+ * @param {boolean} [options.password=false] - 是否渲染为密码框（type=password，不回显明文）
  * @returns {Promise<string|null>} resolve(输入值) / resolve(null)=取消
  */
 function promptDialog(options) {
@@ -399,6 +400,7 @@ function promptDialog(options) {
       message: '',
       value: '',
       placeholder: '',
+      password: false,
       confirmText: t('confirm.default.ok'),
       cancelText: t('confirm.default.cancel'),
       selectAll: true,
@@ -424,7 +426,7 @@ function promptDialog(options) {
         </div>
         <div class="modal-body">
           ${messageHtml ? `<div class="confirm-message">${messageHtml}</div>` : ''}
-          <input class="prompt-input" type="text" value="${escHtml(opts.value)}" placeholder="${escHtml(opts.placeholder)}" autocomplete="off" spellcheck="false" />
+          <input class="prompt-input" type="${opts.password ? 'password' : 'text'}" value="${escHtml(opts.value)}" placeholder="${escHtml(opts.placeholder)}" autocomplete="off" spellcheck="false" />
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary confirm-cancel" tabindex="1">${escHtml(opts.cancelText)}</button>
@@ -896,6 +898,35 @@ const SvgIcons = {
   share: (s = 14) => _svg(s, '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'),
 };
 
+/**
+ * 尾部防抖：连续调用只在停止 wait 毫秒后执行最后一次
+ * @param {Function} fn - 被防抖的函数
+ * @param {number} [wait=200] - 等待毫秒数
+ * @returns {Function} 带 cancel() / flush() 的防抖函数
+ */
+function debounce(fn, wait = 200) {
+  let timer = null;
+  const debounced = function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn.apply(this, args);
+    }, wait);
+  };
+  debounced.cancel = function () {
+    clearTimeout(timer);
+    timer = null;
+  };
+  /** 立即执行挂起的调用（如弹窗关闭前需落盘的最后一帧） */
+  debounced.flush = function () {
+    if (timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+    fn();
+  };
+  return debounced;
+}
+
 // 导出模块
 window.Utils = {
   escHtml,
@@ -918,6 +949,7 @@ window.Utils = {
   getRandomTagAttrs,
   getTagDef,
   renderTagChip,
+  debounce,
   SvgIcons,
   TAG_COLOR_PALETTE,
   TAG_ICON_PALETTE

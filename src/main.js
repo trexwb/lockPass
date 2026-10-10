@@ -16,6 +16,10 @@ import './core/crypto.js'
 import './core/database.js'
 import './core/file-store.js'
 import './core/file-sync.js'
+// 多设备同步合并引擎（纯逻辑，window.SyncMerge；设计见 docs/multi-device-sync-design.md）
+import './core/sync-merge.js'
+// 局域网同步服务原语（window.SyncService；协议见设计文档 §7）
+import './core/sync-service.js'
 import './core/eff-wordlist.js'
 import './core/generator.js'
 import './core/utils.js'

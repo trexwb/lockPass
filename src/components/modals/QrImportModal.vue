@@ -233,7 +233,7 @@ async function bindOtpauthToEntry(uri) {
     algorithm: parsed.algorithm,
   }
   target.updatedAt = new Date().toISOString()
-  await saveVault()
+  if (!(await saveVault())) return
   window.Utils.showToast(t('qrimport.otpauthBound', { title: target.title || t('detail.untitled') }), 'success')
   setTimeout(() => resetToUpload(), 1500)
 }
@@ -301,7 +301,7 @@ async function autoImport(e) {
       delete vaultState.history[dup.id]
     }
   }
-  await saveVault()
+  if (!(await saveVault())) return
   window.Utils.showToast(dup ? t('qrimport.doneReplaced') : t('qrimport.done'), 'success')
 
   // 短暂停留后回到上传视图，可继续导入下一张

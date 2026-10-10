@@ -8,7 +8,12 @@ use tauri::{DragDropEvent, WindowEvent};
 
 mod server;
 mod passkey;
+mod sync;
 use passkey::{passkey_enroll, passkey_remove, passkey_status, passkey_unlock};
+use sync::{
+    sync_apply_verdict, sync_auth_verdict, sync_client_request, sync_list_local_ips,
+    sync_set_ready, sync_set_snapshot, sync_start, sync_status, sync_stop,
+};
 
 /// 拖放读取白名单（R3 修复）
 /// 记录最近一次拖放到窗口内的文件路径，read_text_file_any 仅允许读取白名单中的文件。
@@ -414,6 +419,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(DropPaths(Default::default()))
         .manage(server::ServerState::new())
+        .manage(sync::SyncState::new())
         .setup(|app| {
             // 启动内嵌本地 HTTP 服务（浏览器扩展自动填充用，仅绑定 127.0.0.1）
             {
@@ -497,6 +503,15 @@ pub fn run() {
             passkey_enroll,
             passkey_unlock,
             passkey_remove,
+            sync_list_local_ips,
+            sync_start,
+            sync_stop,
+            sync_status,
+            sync_set_ready,
+            sync_set_snapshot,
+            sync_auth_verdict,
+            sync_apply_verdict,
+            sync_client_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockPass tauri application");

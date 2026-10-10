@@ -25,6 +25,9 @@ const formIcon = ref('other')
 const mergeFrom = ref(null)
 const mergeTo = ref('')
 
+/** 落盘进行中标志：禁用提交按钮并阻止重入（新增/改名/删除/合并共用） */
+const busy = ref(false)
+
 const tagDefs = computed(() => vaultState.tagDefs || {})
 const tagCounts = computed(() => {
   const map = {}
@@ -79,6 +82,7 @@ function selectIcon(icon) {
 }
 
 async function saveTagForm() {
+  if (busy.value) return
   const name = formName.value.trim()
   if (!name) { window.Utils.showToast(t('tags.errNameRequired'), 'error'); return }
   if (name.length > 20) { window.Utils.showToast(t('tags.errNameTooLong'), 'error'); return }
@@ -88,36 +92,43 @@ async function saveTagForm() {
   if (!editingName.value && defs[name]) { window.Utils.showToast(t('tags.errExists'), 'error'); return }
   if (editingName.value && name !== editingName.value && defs[name]) { window.Utils.showToast(t('tags.errNameConflict'), 'error'); return }
 
-  // 改名时：更新所有条目的 tags 数组
-  if (editingName.value && name !== editingName.value) {
-    vaultState.entries.forEach(entry => {
-      if (entry.tags) {
-        const idx = entry.tags.indexOf(editingName.value)
-        if (idx !== -1) entry.tags[idx] = name
-      }
-    })
-  }
+  busy.value = true
+  try {
+    // 改名时：更新所有条目的 tags 数组
+    if (editingName.value && name !== editingName.value) {
+      vaultState.entries.forEach(entry => {
+        if (entry.tags) {
+          const idx = entry.tags.indexOf(editingName.value)
+          if (idx !== -1) entry.tags[idx] = name
+        }
+      })
+    }
 
-  const oldDef = defs[editingName.value || name]
-  defs[name] = {
-    color: formColor.value,
-    icon: formIcon.value,
-    isDefault: oldDef ? oldDef.isDefault : false,
-  }
-  if (editingName.value && name !== editingName.value) {
-    delete defs[editingName.value]
-  }
+    const oldDef = defs[editingName.value || name]
+    defs[name] = {
+      color: formColor.value,
+      icon: formIcon.value,
+      isDefault: oldDef ? oldDef.isDefault : false,
+    }
+    if (editingName.value && name !== editingName.value) {
+      delete defs[editingName.value]
+    }
 
-  await saveVault()
-  view.value = 'list'
-  window.Utils.showToast(
-    editingName.value && name !== editingName.value ? t('tags.renamed')
-      : editingName.value ? t('tags.updated') : t('tags.added'),
-    'success',
-  )
+    const persistOk = await saveVault()
+    if (!persistOk) return // 落盘失败 toast 已由 saveVault 弹出，留在表单页可重试
+    view.value = 'list'
+    window.Utils.showToast(
+      editingName.value && name !== editingName.value ? t('tags.renamed')
+        : editingName.value ? t('tags.updated') : t('tags.added'),
+      'success',
+    )
+  } finally {
+    busy.value = false
+  }
 }
 
 async function confirmDeleteTag(name) {
+  if (busy.value) return
   const usedCount = tagCounts.value[name] || 0
   const confirmed = await window.Utils.confirm({
     title: t('tags.deleteTitle'),
@@ -127,15 +138,21 @@ async function confirmDeleteTag(name) {
   })
   if (!confirmed) return
 
-  // 从所有条目中移除该标签
-  vaultState.entries.forEach(entry => {
-    if (entry.tags) {
-      entry.tags = entry.tags.filter(t => t !== name)
-    }
-  })
-  delete tagDefs.value[name]
-  await saveVault()
-  window.Utils.showToast(t('tags.deleted'), 'success')
+  busy.value = true
+  try {
+    // 从所有条目中移除该标签
+    vaultState.entries.forEach(entry => {
+      if (entry.tags) {
+        entry.tags = entry.tags.filter(t => t !== name)
+      }
+    })
+    delete tagDefs.value[name]
+    const persistOk = await saveVault()
+    if (!persistOk) return
+    window.Utils.showToast(t('tags.deleted'), 'success')
+  } finally {
+    busy.value = false
+  }
 }
 
 /* ── 标签合并 ── */
@@ -159,6 +176,7 @@ const mergeTargetOptions = computed(() =>
 const mergeAffectedCount = computed(() => tagCounts.value[mergeFrom.value] || 0)
 
 async function confirmMergeTag() {
+  if (busy.value) return
   if (!mergeFrom.value || !mergeTo.value) {
     window.Utils.showToast(t('tags.errMergeTarget'), 'error')
     return
@@ -175,25 +193,33 @@ async function confirmMergeTag() {
   })
   if (!confirmed) return
 
-  // 遍历所有条目，替换源标签为目标标签（去重）
-  vaultState.entries.forEach(entry => {
-    if (entry.tags) {
-      const idx = entry.tags.indexOf(mergeFrom.value)
-      if (idx !== -1) {
-        if (entry.tags.includes(mergeTo.value)) {
-          // 目标标签已存在，移除源标签即可
-          entry.tags.splice(idx, 1)
-        } else {
-          entry.tags[idx] = mergeTo.value
+  busy.value = true
+  const from = mergeFrom.value
+  const to = mergeTo.value
+  try {
+    // 遍历所有条目，替换源标签为目标标签（去重）
+    vaultState.entries.forEach(entry => {
+      if (entry.tags) {
+        const idx = entry.tags.indexOf(from)
+        if (idx !== -1) {
+          if (entry.tags.includes(to)) {
+            // 目标标签已存在，移除源标签即可
+            entry.tags.splice(idx, 1)
+          } else {
+            entry.tags[idx] = to
+          }
         }
       }
-    }
-  })
+    })
 
-  delete tagDefs.value[mergeFrom.value]
-  await saveVault()
-  window.Utils.showToast(t('tags.merged', { from: mergeFrom.value, to: mergeTo.value }), 'success')
-  view.value = 'list'
+    delete tagDefs.value[from]
+    const persistOk = await saveVault()
+    if (!persistOk) return
+    window.Utils.showToast(t('tags.merged', { from, to }), 'success')
+    view.value = 'list'
+  } finally {
+    busy.value = false
+  }
 }
 
 function tagIconSvg(name) {
@@ -320,13 +346,13 @@ const tagsCtxItems = computed(() => {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 {{ t('tags.editBtn') }}
               </button>
-              <button v-if="!(tagDefs[name] && tagDefs[name].isDefault)" class="btn btn-ghost btn-sm" @click="openMergeForm(name)" :title="t('tags.tipMerge')">
+              <button v-if="!(tagDefs[name] && tagDefs[name].isDefault)" class="btn btn-ghost btn-sm" :disabled="busy" @click="openMergeForm(name)" :title="t('tags.tipMerge')">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 7h8l-2-2"/><path d="M16 17H8l2 2"/><path d="M3 12h18"/></svg>
                 {{ t('tags.mergeAction') }}
               </button>
-              <button v-if="!(tagDefs[name] && tagDefs[name].isDefault)" class="btn btn-ghost btn-sm btn-danger-ghost" @click="confirmDeleteTag(name)" :title="t('tags.deleteAction')">
+              <button v-if="!(tagDefs[name] && tagDefs[name].isDefault)" class="btn btn-ghost btn-sm btn-danger-ghost" :class="{ 'is-loading': busy }" :disabled="busy" @click="confirmDeleteTag(name)" :title="t('tags.deleteAction')">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                {{ t('tags.deleteAction') }}
+                {{ busy ? t('tags.busying') : t('tags.deleteAction') }}
               </button>
             </div>
           </div>
@@ -382,8 +408,8 @@ const tagsCtxItems = computed(() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="view = 'list'">{{ t('confirm.default.cancel') }}</button>
-        <button class="btn btn-primary" @click="saveTagForm()">{{ t('tags.saveBtn') }}</button>
+        <button class="btn btn-secondary" :disabled="busy" @click="view = 'list'">{{ t('confirm.default.cancel') }}</button>
+        <button class="btn btn-primary" :class="{ 'is-loading': busy }" :disabled="busy" @click="saveTagForm()">{{ busy ? t('tags.busying') : t('tags.saveBtn') }}</button>
       </div>
     </template>
 
@@ -416,8 +442,8 @@ const tagsCtxItems = computed(() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="view = 'list'">{{ t('confirm.default.cancel') }}</button>
-        <button class="btn btn-primary" @click="confirmMergeTag()">{{ t('tags.mergeAction') }}</button>
+        <button class="btn btn-secondary" :disabled="busy" @click="view = 'list'">{{ t('confirm.default.cancel') }}</button>
+        <button class="btn btn-primary" :class="{ 'is-loading': busy }" :disabled="busy" @click="confirmMergeTag()">{{ busy ? t('tags.busying') : t('tags.mergeAction') }}</button>
       </div>
     </template>
 

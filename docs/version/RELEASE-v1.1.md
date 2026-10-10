@@ -4,6 +4,154 @@
 
 ---
 
+## 2026-10-10 · 局域网同步服务（P1 拉取 + P2 回写一并落地）—— **v1.1.5**（PATCH +1；上一版本 v1.1.4）
+
+用户批准实施 P1，并要求「单向拉取同步后，逆向提交给 A 端，这样也可以让 A 端同步数据，实现两边的数据都同步」—— 即把设计文档里拆成两期的 **P1（A→B 拉取）+ P2（B→A 回写）合成一轮**交付。本次按 PATCH +1 推进（v1.1.4 → v1.1.5）。
+
+### 1. 用户可见的能力
+
+侧栏「添加密码 → 更多添加方式」下拉新增第三项「同步服务」（与「二维码添加」「批量导入」同列）：
+
+- **A 端（开启服务）**：枚举本机局域网 IPv4 供单选（多网卡 / VPN / 热点下地址不固定），开启后显示「地址 : 端口」+ 一次性同步口令 + 10 分钟倒计时 + 「停止服务」。
+- **B 端（连接对端）**：填 A 显示的地址、端口、口令 → 对端信息预览（数据序号 / 时钟偏差）→ 「开始同步」→ 四步进度（鉴权 → 拉取 → 合并 → 回写）→ 结果页（新增 / 更新 / 回收 / 恢复 / 冲突计数）。
+- **一轮结束两端都是同一份合并结果**：B 拉到 A 的快照后在**本地**完成双向合并，再把合并结果整包推回 A（带 `baseRev` 乐观锁）。A 不做二次合并 —— 推来的已是合并完成的整包，只校验后原样落盘。
+- 冲突不静默覆盖：真冲突落选版本以新 id 写入回收站，用现有回收站界面即可找回。
+
+**同步口令是 6 位纯数字**（用户 2026-10-10 拍板「越简单越好」：本来就同网络、必须先手动开启服务、且只在同步那几分钟有效）。界面明确写着「这不是你的主密码」——主密码一旦成为要念出来 / 拍下来的东西就不再有保护力。
+
+> 口令强度由 5 词词组（≈51 bit）下调为 6 位数字（≈20 bit），**记录在案便于日后复核**。仍然可用的理由：
+> ① 只在用户主动开启服务的 **600 秒**内有效；② 在线猜测被 Rust 侧限制为 **3 次**（`MAX_AUTH_FAILS`），失败即销毁实例；③ 离线爆破要先拿到 `challenge` + `mac`，每个候选都要跑 600000 次 PBKDF2，无法在会话窗口内完成；④ 口令只做挑战-响应鉴权与载荷绑定，**不是数据加密密钥** —— 拿到它也仍需主密码才能解开保险箱。
+> 等价用法是蓝牙 / Wi-Fi 配对 PIN。若日后改公网或长期会话，必须换回 ≥40 bit 的词组口令。
+
+### 2. 与设计方案的偏差（三处，都是收紧而非放松）
+
+| 项 | 设计文档 §7 | 实际落地 | 理由 |
+|---|---|---|---|
+| 鉴权计算位置 | Rust 侧算 `HMAC(K_auth, …)` | **Rust 不碰任何密码学**，`mac` 经事件交前端 Web Crypto 裁决后回报布尔 | `K_auth` 完全不进 Rust 内存；且 `hmac` / `pbkdf2` 不可离线获取，离线优先不为此引入新依赖 |
+| 出站 HTTP | 未指定实现 | Rust 手写最小 HTTP/1.1 客户端（`std::net::TcpStream`） | 同上：不引入 `reqwest`；链路两端都由本项目实现，报文形态可控 |
+| 服务端停止 | 未细化 | worker 用 `recv_timeout(500ms)` 轮询 `running` 标志后退出 | tiny_http 无 shutdown 接口；若阻塞在 `recv()` 上，停止服务后端口永不释放、重开会串到下一个端口 |
+
+`reqwest` / `hmac` / `pbkdf2` 均评估过：前两者本地缓存不足以支撑新增依赖，故全部绕开。Rust 侧**零新增依赖**，仍是「只搬运密文」的哑管道。
+
+### 3. 新增 / 改动文件
+
+**新增**
+
+- `src-tauri/src/sync.rs`（约 1000 行）：独立 `tiny_http` 实例，端口 5613 起向后探测 20 个（**不复用扩展桥的 33555**）；端点 `/sync/hello` `/sync/challenge` `/sync/auth` `/sync/snapshot` `/sync/apply` `/sync/deactivate`，全部回 CORS 头（浏览器客户端 `file://` 的 `Origin` 为 `null`，`ACAO` 只能为 `*`）；会话 600s 绝对上限 + 600s 无活动、挑战一次性 60s、鉴权失败 3 次销毁实例、`apply` 带 `baseRev` 乐观锁（不等即 `409`，B 自动重跑一轮）、载荷上限 8 MB。**该实例不存在 `/credentials` 之类的明文面**（与扩展桥编译期隔离，不是路由内 `if` 判断）。
+- `src/core/sync-service.js`（`window.SyncService`）：口令生成（6 位纯数字，拒绝采样消除取模偏置）、`K_auth = PBKDF2(P, sessionSalt, 600000)`、挑战-响应 `mac`、载荷 `mac = HMAC(K_auth, iv‖data)`、传输层（桌面走 Rust invoke 绕开 CSP `connect-src`；浏览器直连 `fetch`）、信封读写与 `maxRev`。
+- `src/composables/useSyncService.js`：编排层 —— A 侧开启服务并裁决对端请求；B 侧 `鉴权 → 拉取 → 合并 → 回推 → 结束`。
+- `src/components/modals/SyncServiceModal.vue`：角色选择 / 开启服务 / 连接对端 / 进度 / 结果。
+
+**改动**
+
+- `SidebarNav.vue`：下拉新增「同步服务」项（`menuH` 估算 96 → 140）。
+- `ModalHost.vue`：`IMPLEMENTED` 注册 `sync-service`。
+- `crypto.js`：新增 `deriveHmacKey` / `hmacHex`（同步会话鉴权专用，不触碰数据面）。
+- `tauri-env.js`：新增 `listen`（Rust 经事件把「待裁决请求」交给前端）。
+- `utils.js`：`Utils.prompt` 支持 `password` 选项（生物识别解锁的会话没有主密码，需显式询问时以密码框呈现）。
+- `useVault.js`：新增 `syncPending`（同步期间挂起自动锁定）、导出 `refreshSyncDigests`。
+- `styles/modal.css`：同步服务弹窗样式。
+- `src/i18n/{zh,en}.json`：各 +66 键（键数一致，各 1275；`syncService.err.noWordlist` 随词组口令废弃，改为 `syncService.err.badPassFormat`）。
+
+### 4. 关键设计落点
+
+- **回推沿用 A 的 `salt / iterations`** 加密合并结果，A 用自身主密码解密后原样落盘，**不改动 `meta.salt`**（§7.2），避免把「修改主密码」的语义搅进来。
+- **A 落盘前先写一份本地加密快照**作回滚点（`BackupManager.createSnapshot()`）。
+- A 侧落盘后 `refreshSyncDigests()` 重建 rev 基线 —— 否则下次写盘会把全部条目 `rev` 误 +1（与 P0 修掉的「`syncDigests` 按 useVault 实例各存一份」同类问题）。
+- 同步期间 `vaultState.syncPending = true` 挂起自动锁定（与捕获确认同口径顺延 180s），避免跨机器耗时把会话锁掉。
+- 旅行模式开启时入口置灰并在 Rust 侧硬拒（`E_TRAVEL_MODE`）。
+
+### 5. 已知限制（本次未做，均不属于丢数据）
+
+- **墓碑表不随同步交换**：`meta.syncBaseline.tombstones` 是各端本地元数据，不在加密信封内。一轮同步后两端状态已一致，墓碑只对「后续又独立产生旧副本」起作用，风险由 §6.3 的交换律 / 幂等收敛性兜底；要做需给协议加墓碑交换端点。
+- **`sync_set_snapshot` 命令已提供但前端未接**：服务运行中若 A 本机发生编辑，Rust 内存中的快照会滞后；当前由「开启时写入 + 回写时更新」覆盖。
+- **手机形态（P2b）仍不排期**，原因不变（origin 不固定 → 孤儿数据；http origin 无 `crypto.subtle` → 客户端解不开密文）。
+- **未做真机联调**：本环境只有一台机器，端到端需两台桌面端在同一网段验证。
+
+### 6. 修复补记（同日，同一模块，**不推进版本号**，仍为 v1.1.5）
+
+用户实测反馈「二次启动服务会报错：`Argument 2 ('key') to SubtleCrypto.sign must be an instance of CryptoKey`」。
+
+- **根因**：`stopHost()` 把一次性会话材料（会话盐 / 口令 / `K_auth`）全部丢弃，但再次点「开启服务」走的是 `startHost()`，它假设 `prepareHost()` 已经跑过 —— 二次开启时 `hostAuthKey` 仍是 `null`，直接喂给 `crypto.subtle.sign('HMAC', null, …)` 必崩。
+- **修法**：抽出幂等的 `ensureHostSession()`，由 `prepareHost()` 与 `startHost()` 共同调用；只要口令材料缺失就整套重发（新盐 + 新口令 + 新 `K_auth`），网卡列表只在首次拉取以免重置用户已选的 IP。`stopHost()` 在组件仍挂载时立即换一副新口令，避免面板停在「空白口令」状态；卸载中通过 `mounted` 标志不再发起异步工作。
+- **顺带修掉的相邻缺陷**：二次开启时沿用内存里的旧信封 —— 上一轮同步已经把合并结果落盘，不重读会让对端拉到过期数据，且 `mac` 与 `rev` 对不上。现在每次 `startHost()` 都重新 `readLocalEnvelope()`。
+- **防御**：`crypto.js` 的 `hmacHex` 增加 `CryptoKey` 校验，把 Web Crypto 那句看不出来源的报错换成「HMAC 密钥无效：不是 CryptoKey（会话密钥未派生或已失效）」，便于定位。
+
+按 AGENTS.md「同自然日对同一模块 / 同一类 bug 的追加修复禁止推进版本号」，本次不升版本。
+
+### 7. 验证
+
+- `cargo check` 通过（零 error 零 warning）；`cargo test --lib sync::` 5 项全绿（URL 解析 / LAN IPv4 过滤 / 常数时间比较 / CSPRNG）。
+- `npx vite build` 通过。
+- i18n 中英键数一致（各 1275），无缺失。
+- `npm run version:check` 11 处版本号一致（v1.1.5）。
+
+### 8. 文档同步
+
+- `docs/multi-device-sync-design.md`：页眉状态行改为「P1 + P2 已落地」并写明两处实施偏差；§10 分阶段表 P1 / P2 由 ⏳ 待授权 改为 ✅ 已落地。
+- `docs/spec.md`：新增 3.18「多设备同步（局域网）」章节（原 3.18 设置 → 3.19 设置，3.19 自动更新 → 3.20 自动更新）。
+- `README.md`：功能清单新增「局域网同步」行；「跨设备迁移」补充局域网同步路径。
+- 本文件 + `docs/version/README.md` 索引 + `RELEASE-v1.1.5-github.md`。
+
+---
+
+## 2026-10-10 · 勘误：浏览器客户端形态的结论写反了（§7.4 重写）—— 不推进版本号（仍为 v1.1.4）
+
+上一条 §4 里记的「浏览器客户端必须 A 上自签 TLS（IP SAN）+ 手机打开 A 下发的页面」**是错的**，由用户指出「浏览器不管手机还是电脑都不能当服务端，但它们都能访问 http 服务」后重新实测纠正。本条为发布日志的追加勘误，上一条正文不删改。
+
+**错在哪**：把「服务端形态」和「客户端页面从哪来」混成了一件事，并给 A 加了一条不必要且有害的 TLS 前置。A 的服务**始终是明文 http，全程不上 TLS**。
+
+**实测证据（本机局域网 IP 实为 `192.168.3.177`，非 192.168.1.x）**：
+
+- `file:///…/dist/index.html` 双击打开：`isSecureContext: true`、`crypto.subtle` 存在，且从该页面 `POST`（带自定义头）到 `http://192.168.3.177:5613` **返回 200**（服务端回 `Access-Control-Allow-Origin: *`）。→ **另一台电脑的浏览器可直接作客户端，A 无需任何证书设施**，单列为 P2a。
+- 同一页面 `fetch('https://192.168.3.177:5614')`（自签证书）**失败：`Failed to fetch`**；直接导航该地址 `ERR_CERT_AUTHORITY_INVALID`。→ 自签 TLS 不但多余，反而会把所有浏览器客户端锁死（证书警告只能对导航点「继续」，对 `fetch` 无效）。原结论的因果完全颠倒。
+- `http://192.168.3.177:5615/index.html`：`isSecureContext: false`、`crypto.subtle` 不存在，页面正常渲染但产品自身的守卫（`src/i18n/zh.json:414` `lock.envHttp`）提示加密被禁用。→ 手机「就是个浏览器、能访问 http 页面」这句是对的，卡点不在访问能力，而在**该 origin 没有 Web Crypto，客户端解不开密文**。
+
+**手机（P2b）因此仍未打通，且新增一个必须先定的问题**：可绕开安全上下文限制的只有 Android Chrome 的 `unsafely-treat-insecure-origin-as-secure` 实验开关（iOS 无对应）或给手机装根证书；另外手机库存的是**该 origin 自己的 IndexedDB**，A 的 IP 一变即成孤儿数据（表现为"手机上的密码没了"）—— 固定 origin 没定下来之前，手机形态本身就是一个丢数据源，故 P2b 标为「形态未证实，暂不排期」。
+
+**A 侧为浏览器客户端要加的东西缩到一项**：CORS（`OPTIONS` 预检放行 + `ACAO: *`；`file://` 的 `Origin` 为 `null` 无法做白名单；不发 `Allow-Credentials`、不用 Cookie，鉴权仍完全靠一次性口令 + `K_auth` 挑战-响应）。原记的三块 Rust 侧代价（rustls 证书、IP SAN、指纹展示）**取消**。
+
+**同步落点**：`docs/multi-device-sync-design.md` §2 决策 5 改写、§7.1 增「CORS」行并注明浏览器客户端由页面直连（浏览器构建无 CSP `meta`，不存在削弱问题）、§7.4 整节按实测矩阵重写、§8 用户流程入口改为侧栏「添加密码 → 更多添加方式」下拉（与「二维码添加」「批量导入」同列，`SidebarNav.vue:444-459`）且删去证书指纹一项、§9 三行改写、§10 拆为 **P2a（电脑浏览器，已实测可行）/ P2b（手机，暂不排期）**、§12 与页脚同步。纯文档 + 实测勘误，**不推进版本号**。
+
+**补记（同日，用户再纠正一次角色划分）**：「桌面版客户端都能开启或访问 http 服务，浏览器端只能访问、不能开启，手机端同理」—— 已写入文档页眉与 §2 决策 5；A / B 角色由谁先点开启服务决定，不绑定机器。同时把本条勘误上方那句「自签 TLS 会把浏览器客户端全部锁死」**收窄**：实测否掉的只是「`file://` 页面**跨源** fetch 不受信证书」，并没有否掉「手机在**同一标签页**点过警告后连 A 的**同源**页面 + 接口」。因此 §7.4 结论 3 与 §10 P2b 改为：手机形态的候选路径是 **A 在同一端口同时静态服务 `dist/` 与同步端点 + 自签 TLS（IP SAN）+ 面板展示证书指纹前 8 位**，仍属"未落地 + 需真机验证"；上文"原记的三块 Rust 侧代价取消"仅对**桌面↔桌面与电脑浏览器（P2a）**成立，P2b 若要落地这三块仍要回来。仍不推进版本号。
+
+---
+
+## 2026-10-10 · 多设备同步 P0 落地（合并引擎 + 冲突表 UI）—— 不推进版本号（仍为 v1.1.4）
+
+按用户批准的「开工 P0（id-based 合并引擎 + rev + 墓碑 + 冲突表，零网络）」实施，并用同日追加确认的浏览器客户端形态补全设计文档。全程**零网络代码**：同步通道的验证走 `.vault` 互导，两台设备的真实形态实测也用的是两个浏览器源。
+
+### 1. 新增能力
+
+- **`src/core/sync-merge.js`（`window.SyncMerge`）**：纯逻辑合并引擎，按条目 `id` 双向合并。`rev` 单调序为主判据（替代纯时间戳 LWW），`updatedAt` 只用于并列时的次级判定；内容一致时只取高 `rev` 不进位，是幂等的来源。合并满足交换律 + 幂等（半途失败的同步会在下一轮自动收敛）。
+- **墓碑表 `meta.syncBaseline`**：已彻底删除条目的 `id + rev` 独立于回收站存活（保留 365 天），对端旧副本无法把已删密码复活；删除入口即时记墓碑（`rememberDead`），避免「删除 + 彻底删除落在同一次防抖写入」而漏记。
+- **时钟漂移保护**：`clockSkewMs()` 量出对端超前量，超过 5 分钟即 `strict` 合并 —— 所有差异全量进冲突表而不按 `rev` 自动选，避免快时钟机器静默赢得每一次冲突。
+- **导入链路改走引擎（`useVault.mergeExternalState`）**：`.vault` / 明文备份导入默认「合并（推荐）」，可选「覆盖」保留 v1.1.1 的同类型 + 同标题语义供「以这份备份为准」的恢复场景；CSV 向导仍走原标题匹配，语义不混用。
+- **冲突表 UI**：导入结果页展示新增/更新/删除/恢复/冲突计数、漂移警示条、并排两版（保留方 / 落选方 + 原 `rev` + 日期）；落选版本以新 id 写入回收站（`conflictOf` 指回原条目、`deletedReason: 'sync-conflict'`），列表卡片带「冲突副本」徽标，用现有回收站界面即可恢复 —— **不需要新增任何找回 UI**。
+
+### 2. 实测发现并修掉的两个缺陷（都是会丢数据 / 丢信任级别）
+
+- **标签级冲突撑崩导入弹窗**：引擎把标签冲突塞在同一条 `conflicts` 数组里（形状只有 `winnerSide`，没有 `winner/loser`），冲突表 `v-for` 直接读 `c.winner.side` 抛 `TypeError`，Vue 把整个弹窗卸载 —— 表象是「导入后弹窗自己关了」，用户看不到任何结果。已按 `tagConflict` 分流（`entryConflicts` 计算属性），并顺带修正：新建保险箱给 8 个热门标签随机配色，两台机器几乎必然不同，**没有被任何条目用到的标签差异不再占用冲突表名额**（外观差异静默取舍即可）。
+- **`syncDigests` / `syncTombstones` 按 useVault 实例各存一份**：`useVault()` 不是单例，每个组件各调一次就各有一份闭包状态。后果一是基线为空的实例触发的每次写盘都把**全部**条目 `rev +1`（`rev` 不再是「改过几次」，会被用来静默压掉对端真实修改）；后果二是 `doSave` 用本实例的墓碑表覆盖 `meta.syncBaseline`，别的实例刚记录的彻底删除被清空 —— 正是墓碑本要防的复活事故。两者已提升为模块级变量；实测无改动的 `saveVault()` 连续两次 `rev` 不再自增，真实编辑仍正常 +1。
+
+### 3. 验证
+
+- `npm run test:sync`：**75 条断言全绿 / 0 失败**。固定用例从 20 组扩到 33 组（新增漂移、strict 强制进表、即时墓碑、365 天裁剪、冲突表投影不含密码字段、**A→B→A 往返吸收**），代数性质随机对拍跑普通 + strict 两轮。
+- 浏览器双源实测（两个独立 IndexedDB 起源，同一主密码）：跨机合并保留原 `id` 与 `rev`；重复导入同一份文件得到全零摘要（幂等）；同 `rev` 双改 → 冲突表 1 行「保留 · 对端 #6 / 落选 · 本机 #6」，落选副本在回收站带徽标且恢复后两版并存；彻底删除 + 清空回收站后重新导入旧文件，**该条目未被复活**（墓碑在 `meta.syncBaseline` 内计数为 2）。
+- `npm run vite:build` 通过；`npm run version:check` 11 处一致（v1.1.4）。
+
+### 4. 文档（用户同日批准 + 追加形态）
+
+- [`docs/multi-device-sync-design.md`](../multi-device-sync-design.md)：§10 分阶段表加「状态」列并把 P0 记为已落地（含实测口径）；新增 **§7.4 浏览器客户端形态** —— 用户提出「同网段的手机浏览器也应能打开 A 的地址 + 口令完成同步」，经核对 Web Crypto 只在安全上下文暴露、`http://192.168.x.x` 不是安全上下文、https 页面访问私有网段受混合内容与 Private Network Access 拦截，结论为**可行但必须：A 上自签 TLS（IP SAN）+ 手机打开 A 自己下发的页面**；端点与合并语义零改动，新增代价只有静态文件服务、证书与指纹展示三块 Rust 侧工作，单列为 **P2b**。§9「手机浏览器不支持」一并改写，§12 两处措辞改写记为已完成。
+- [`docs/v1.1-plan.md`](../v1.1-plan.md) §三：把「P2P / 自托管云同步」拆开 —— 局域网设备直连同步移出已排除项并纳入规划，云端存储 / 远程中继仍排除（「零网络」精确化为「零远程网络」）。
+- [`docs/wiki/常见问题.md`](../wiki/常见问题.md)：「可以多设备同步吗」改写为「手动互导现已支持双向合并 + 局域网直连在规划中」。
+
+### 5. 版本号
+
+本轮新增的是与既往修复**不同类、不同根因**的功能与缺陷修复，按规范本可推进 PATCH，但用户本轮未授权推进 → **不推进版本号，仍为 v1.1.4**（`version:check` 11 处一致）。是否升 v1.1.5 由用户决定。
+
+---
+
 ## 2026-10-09 · v1.1.4 发布汇总 —— 版本号推进 PATCH：v1.1.3 → v1.1.4（用户明确授权）
 
 本轮浏览器扩展「保存新密码到桌面端」链路经多轮修复与增强，已具备完整可用闭环，经用户授权推进末位版本号至 **v1.1.4**（`npm run version:set 1.1.4` 已同步 package.json / tauri.conf.json / extension manifest / Cargo.toml / AGENTS.md / docs/spec.md 共 11 处，`version:check` 全绿）。以下分节为本版本包含的明细（最新在前，同日各节标注的「不推进版本号」为当时过程记录，统一由本节收尾）：
@@ -15,6 +163,96 @@
 - **「返回异常」误报三处根因**：Rust 终态槽位不再被 TTL 误删、410 单独映射 `expired`、浮层看门狗 195s 对齐后台 185s；capabilities 无效权限项导致的构建失败已修复。
 
 发布验证：`cargo test --lib` 14/14、`node --check` 全部通过、`npm run vite:build` 通过、`npm run version:check` 11 处一致。GitHub Release 正文见 [`RELEASE-v1.1.4-github.md`](RELEASE-v1.1.4-github.md)。
+
+---
+
+## 2026-10-09 · 多设备同步设计方案落文档 —— 不推进版本号（仍为 v1.1.4）
+
+用户提出「两台电脑之间快速同步密码」为真实需求（手机走浏览器形态，本轮不覆盖），要求**只做计划、不做任何落地**。经三轮澄清后定稿，产出 [`docs/multi-device-sync-design.md`](../multi-device-sync-design.md)（纯文档，无代码改动，**不推进版本号**）。
+
+### 1. 用户拍板的四项决策
+
+- 同步通道 = **局域网 HTTP**：A 电脑开启服务并显示 `ip:端口 + 同步口令`，B 填写后先拉取合并、再回写 A。
+- **硬前置：两台电脑必须同一主密码** —— 密钥分发问题由此消失，直接复用现有 `LockPass-file-sync` 密文信封，A 端不解密也不重加密。
+- 只考虑局域网 IP，不做跨网段 / 远程中继兜底。
+- 合并以「最后更新」为准，但落地为 `rev` 单调序 + 冲突表。
+
+### 2. 设计对口头方案的三处必要修正（均已写入文档）
+
+- **纯时间戳 LWW 有静默丢数据硬伤**：`updatedAt` 依赖各机系统时钟，时钟快的机器会永久赢下每次冲突。改为 Lamport 风格 `rev` 为主判据 + 握手时钟偏差 > 5 分钟即拒绝自动合并。
+- **「B 拉 A」不满足需求**：单向拉取 A 永远拿不到 B 的修改，必须是 pull → merge → apply 双向；回写采用 `baseRev` 乐观锁（CAS），A 期间被改则整轮重跑。
+- **现有导入合并不可复用**：`mergeEntries` 按「同类型 + 同标题」查重，同步场景会把「一条改两次」变成两条，必须新增 id-based 合并原语；墓碑（`meta.syncBaseline.tombstones`）独立于回收站自动清理，否则已删条目会在对端复活。
+
+### 3. 安全红线（评审要点）
+
+- 🔴 同步服务必须是**独立实例、独立端口**，不复用扩展桥的 33555；现有 `/credentials` + `server_set_entries` 会把明文条目放进 Rust 内存并回发给已配对客户端，只因绑 `127.0.0.1` 才安全，**绝不可出现在局域网面上**。
+- 🔴 同步口令是一次性凭据（600s、单会话、错 3 次销毁服务），**不等于也不得显示主密码**；口令本身不过网络线，改为 `K_auth` 挑战-响应鉴权 + `HMAC(K_auth, iv‖data)` 载荷完整性绑定。
+- 网络请求由 B 侧 Rust 发起、密文经 IPC 交回 webview，不放宽 CSP `connect-src`；旅行模式 `sensitive` 条目作为第六个出口同样被过滤（旅行模式下禁止开启服务）。
+- 蓝牙（吞吐与跨平台成本）、二维码传数据（分片易断）、云端中继（违反零网络）明确排除。
+
+### 4. 待用户批准的连带文档改动
+
+`docs/v1.1-plan.md` §三 仍记「P2P / 自托管云同步：与零网络原则冲突」已排除，`docs/wiki/常见问题.md` 仍答「只能手动同步」，与新方向冲突；建议措辞为「局域网内设备直连同步纳入规划，远程中继 / 云端存储仍排除」，属产品边界重定义，**未获批准前不擅自修改那两份文档**。
+
+分阶段交付：P0 合并引擎（零网络，可独立验证）→ P1 单向拉取 → P2 双向回写 → P3 便利层。当前状态为**设计定稿、等待实施授权**。
+
+---
+
+## 2026-10-09 · 交互反馈与节流防抖专项 —— 不推进版本号（仍为 v1.1.4）
+
+系统级体验巡检（`src/` 全量静态审计）后，把「操作必须有反馈」「异步操作可被重复触发」「高频事件未做节流」三类缺口一次性补齐。同日同一模块的体验打磨，**不推进版本号**（仍为 v1.1.4）。
+
+### 1. 新增节流防抖公共设施
+
+- `src/core/utils.js`：新增 `Utils.debounce(fn, wait=200)`（带 `cancel()` / `flush()`）。此前全仓无任何通用实现，只有 `PasswordGeneratorModal` / `editorDraftStore` / `saveVault` 三处各自的 ad-hoc 定时器。
+- 未同时落地 `Utils.throttle`：巡检出的高频点（搜索、滚动、resize）经比对后全部属于「等停顿再算一次」的尾部合并语义，rAF 门控与 debounce 已覆盖，留一个无调用点的节流函数即死代码，故不引入。
+
+### 2. 保存 / 危险类异步操作的防重入与进行中反馈
+
+统一沿用 `ChangePwModal` 既有约定（`busy` ref + 入口 `return` 守卫 + `:disabled` + 文案切换）：
+
+- `EntryEditorModal`：新增 `saving`，保存按钮在「加密 + 写库 + 文件同步」期间禁用并显示「保存中…」；连点不再产生重复历史版本；保存期间取消按钮一并禁用。
+- `TagsModal`：新增共享 `busy`，覆盖新建/改名、删除、合并三条落盘路径与列表行的删除/合并入口。
+- `SettingsModal`：新增 `dirBusy`（绑定数据目录）、`destroyBusy`（销毁保险箱，二次确认后到删库完成期间锁死，含右键菜单入口）。
+- `useVault.bindRestoreFromDirectory` + `AuthView`：新增 `vaultState.restoreDirBusy`，锁屏「绑定已有数据目录」不再叠加多个目录选择器。
+- `QrShareModal`：`generate()` 增加 `generating` 互斥锁（`loading` 中途会被置 false 以渲染容器，不能作互斥）；生成中快速切换条目改为合并成「结束后按最新条目补算一次」，结果不再与选中项错位。
+
+### 3. 落盘失败不再假报成功（反馈正确性）
+
+`saveVault()` 返回 `Promise<boolean>` 且失败时已自行弹出错误 toast，但多处调用方忽略返回值、紧跟着再弹「已保存 / 已删除」成功 toast，形成自相矛盾的假成功。现统一以落盘结果为准：
+
+- `useVault`：`softDelete` / `restoreEntry` / `permanentDelete` / `emptyRecycleBin` / `rollbackEntry`。
+- 组件侧 12 处：`DetailPanel`(2)、`SidebarNav`(7)、`QrImportModal`(2)、`ImportModal`(1)。
+- `ImportModal.confirmImport` 额外复位 `importing` / `progress`，否则导入写入失败会把弹窗永久卡在「导入中」无法重试。
+
+### 4. 高频事件节流 / 防抖
+
+- `HeaderBar` 搜索：输入框文本与全局 `searchQuery` 解耦，180ms 停顿后才提交，消掉「每敲一个字符 → 整表重过滤 + 列表 epoch 重挂载 + 滚动复位/行高重测」；外部改写 `searchQuery`（清空 / Escape / 切筛选）仍会同步回输入框。
+- `AppShell.onContentScroll`：改为 rAF 门控（每帧最多写一次响应式状态），与 `BaseSelect.requestLayout` 既有写法对齐。
+- `AppShell` 视口 resize：200ms 防抖后再重算视口与行高（拖拽窗口不再逐帧触发 `measureRowHeight`），注册/解绑两侧同步替换。
+- `particles.js`：`resize` 监听 150ms 防抖，`destroy()` 一并 `cancel()` 并解绑同一函数引用（原 `resize` 裸绑会泄漏）。
+
+### 5. 交互态样式补全
+
+- `base.css`：新增 `--btn-disabled-opacity` 令牌与全局 `.btn:disabled` / `.btn-icon:disabled` / `.btn-link-plain:disabled`（降透明度 + `not-allowed` + 按变体抵消 hover 抬升）。此前**不存在任何 `.btn:disabled` 规则**，散落在 `editor.css` / `entries.css` / `components.css` 的局部 `:disabled` 是唯一例外——这意味着代码里原本就写对的 `:disabled` 绑定在视觉上是不可见的。
+- `base.css`：新增 `.btn.is-loading::before` 内联 spinner（`currentColor` + `prefers-reduced-motion` 降级），沿用 `ChangePwModal` 的文案切换，不引入新组件。
+- `base.css`：`.btn-link-plain` 补 `:active` / `:focus-visible`；`modal.css` 补 `.modal-close:active` 按压反馈。
+- `i18n`：新增 `editor.saving`、`tags.busying`、`sync.binding`、`settings.data.destroying`、`lock.bindingDirectory`（zh-CN / en-US 双语，按字典既有排序插入，未硬编码任何中文）。
+
+### 有意未改动的项（安全 / 时序敏感）
+
+- 自动锁屏定时器、剪贴板 30s 自清链路：属安全时序，不做节流。
+- `saveVault` 的 150ms 写入合并与 `Promise<boolean>` 语义：保持不动，避免「硬保存」路径提前返回。
+- `lockVault()` 未加成功 toast：界面切到锁屏本身已是明确反馈，自动锁屏场景弹 toast 反而会误报是用户手动触发。
+- `toggleFavorite` 的乐观 UI：`saveVault` 失败已有错误 toast 兜底，不追加回滚。
+
+### 验证状态
+
+- `npm run vite:build` 通过（77 modules，`dist/assets/js/index.js` 647.93 kB / gzip 201.31 kB）。
+- `npm run version:check` 11 处版本号一致，仍为 v1.1.4（三处真源未改动）。
+- `src/i18n/zh.json` / `en.json` `JSON.parse` 通过。
+- **未做人工 UI 回归**（需真实浏览器 / 桌面版操作）：重点待验证项为①保存按钮连点不再产生重复历史、②搜索输入停顿后列表才刷新、③拖拽窗口时列表不抖动、④落盘失败时只出现错误 toast 不再出现成功 toast、⑤销毁保险箱与目录绑定期间按钮为禁用态。
+- 同类问题的持续打磨，**不推进版本号**；未执行任何 Git 提交类操作，全部改动留在工作树。
 
 ---
 

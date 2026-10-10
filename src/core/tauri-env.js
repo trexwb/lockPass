@@ -28,10 +28,20 @@
     console.warn('[LockPass] __TAURI__ 全局不可用，已回退 __TAURI_INTERNALS__ 桥接');
   }
 
+  // 事件监听（Tauri v2：__TAURI__.event.listen 返回 Promise<unlisten>）。
+  // 桌面端同步服务由 Rust 经事件把「待裁决请求」交给前端，故此处统一挂载。
+  var listen = null;
+  if (globalT && globalT.event && typeof globalT.event.listen === 'function') {
+    listen = function (name, handler) {
+      return globalT.event.listen(name, handler);
+    };
+  }
+
   // 是否运行在 Tauri 桌面 WebView 中：
   // 有可用 invoke 即视为桌面；正常注入与兜底两种形态都覆盖
   window.LockTauri = {
     isTauri: typeof invoke === 'function',
     invoke: invoke,
+    listen: listen,
   };
 })();
