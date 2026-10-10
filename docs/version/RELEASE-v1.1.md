@@ -4,7 +4,90 @@
 
 ---
 
-## 2026-10-10 · 局域网同步服务（P1 拉取 + P2 回写一并落地）—— **v1.1.5**（PATCH +1；上一版本 v1.1.4）
+## 2026-10-10 · 局域网同步：修掉「同步失败：」空错误 + 补 macOS 本地网络权限 —— **不推进版本号**（基线仍 v1.1.5）
+
+**现象**：A 端已开启服务，B 端点「连接」报 `同步失败：`，冒号后面什么都没有；同一局域网 `ping` 通，`nc -z -v -G 5 192.168.3.176 5613` 也 `succeeded!`。
+
+排查下来是**两个独立问题叠在一起**：一个让错误没法看，一个才是真根因。
+
+### 1. 错误被吞（必修 bug，与网络无关）
+
+Tauri v2 的 `invoke` 在命令返回 `Err(String)` 时 **reject 的是裸字符串**，不是 `Error` 对象；而 `describeError` 只读 `err.message` → `undefined` → 兜底文案 `syncService.err.unknown` 的 `{msg}` 渲染成空串。
+
+后果：**任何** Rust 侧原因（连接失败 / 读超时 / 系统拦截）到界面上都只剩「同步失败：」，等于没有日志。修复后 `messageOf()` 统一取文本（裸字符串 / `Error` / 对象载荷三种形态），顺带修掉同类漏网的 `E_TRAVEL_MODE`（Rust 侧那条也是裸字符串 reject，原来比对 `e.message` 永不命中）和缺 `sessionToken` 时抛的 `E_BAD_MAC`（没带 `syncCode`，会掉进兜底）。
+
+### 2. 真根因：打包产物缺 `NSLocalNetworkUsageDescription`
+
+实测 `/Applications/LockPass.app` 的 `Info.plist` **没有** `NSLocalNetworkUsageDescription` 这个键。按 Apple TN2420（本地网络隐私），未声明用途的 app 访问同网段设备会被系统直接拒绝，Rust 侧 `TcpStream::connect` 返回 `Operation not permitted`；而 `nc` / `curl` 从终端发起用的是**终端自己**的本地网络授权 —— 所以「端口能通、应用连不上」正是这个组合的标准症状。A 端监听同样受这条隐私管控，**两端都要授权**。
+
+### 3. 改动
+
+- `src/composables/useSyncService.js`：新增 `messageOf()`，重写 `describeError()` 兜底分支。新增「系统拦截本机访问局域网」判定，且**必须排在「连不上」之前** —— EPERM 的 Rust 文案里含「连接」二字，先判会被误读成「网段选错」而给出完全错误的引导。
+- `src/i18n/{zh,en}.json`：+2 键（`syncService.err.localNetworkBlocked` / `syncService.err.noDetail`），两侧各 1277 键一致。
+- **新增 `src-tauri/Info.plist`**（只放 `NSLocalNetworkUsageDescription`）+ `tauri.conf.json` 的 `bundle.macOS.infoPlist` 指向它。
+- `AGENTS.md`：目录结构补上 `src-tauri/Info.plist` 的来由，免得被当无用文件删掉。
+
+### 4. 用户侧验证步骤
+
+1. **先在 B 的终端**跑 `curl -v http://192.168.3.176:5613/sync/hello`：拿到 JSON 说明 A 侧服务与链路正常、问题只在应用权限；拿不到说明 A 侧也缺授权（两端都要处理）。
+2. 两端 `npm run tauri:build` 重新打包覆盖安装，首次「开启服务 / 连接」应弹出「LockPass 希望允许本地网络访问」→ 允许。没弹窗就去「系统设置 → 隐私与安全性 → 本地网络」手动勾选。
+3. ⚠️ 当前是 **ad-hoc 签名**（`codesign` 显示 `Signature=adhoc`、`Identifier=lockpass-<cdhash>`），每次重新构建 TCC 都视作新程序，**旧授权随之失效，需要重新允许一次**。
+
+版本号：本次为 v1.1.5 已发布版本的缺陷修复，**不推进版本号**（是否升到 v1.1.6 由用户决定；若升，另起新分节，本条不改动）。
+
+---
+
+## 2026-10-10 · v1.1.6 —— 局域网同步联调修复 + macOS 隔离属性说明（PATCH +1；上一版本 v1.1.5）
+
+> **v1.1.5 未单独发布**，其「局域网同步服务」内容与本版一并发布，故 v1.1.6 是本次功能的实际发布版本。v1.1.5 分节保留不删改（历史记录只增不改）。
+
+### 1. 本版新增（相对 v1.1.4 的完整范围）
+
+局域网同步服务：侧栏「添加密码 → 更多添加方式」下拉新增「同步服务」，桌面端可「开启服务」（显示地址 + 端口 + 6 位一次性口令 + 倒计时）或「连接对端」（填地址 / 端口 / 口令 → 预览 → 四步进度 → 结果）。**一轮结束两端都是同一份合并结果**：B 拉取 A 的快照后在本地做双向合并，再把合并结果整包推回 A（`baseRev` 乐观锁，不等即 409 自动重跑一轮）。
+
+详见下方 v1.1.5 分节（第 1–5 节）与本分节第 2 节的联调修复。
+
+### 2. 联调阶段的修复（v1.1.5 → v1.1.6）
+
+用户联调反馈「A 已开启服务、`nc -z` 端口通，但 B 连接失败且报错没有具体原因；手机浏览器报 `Load failed`」。
+
+- **报错原因被吞掉**：Tauri v2 的 `invoke` 在命令返回 `Err(String)` 时，Promise 是用**裸字符串**拒绝的，不是 `Error` 实例 —— 只读 `err.message` 得到 `undefined`，界面显示「同步失败：」空串。已加 `messageOf()` 归一（字符串 / Error / 对象 / DOMException 都取得到文本），并补充「未返回具体原因（详见控制台日志）」兜底文案。
+- **macOS 系统拦截可识别**：新增 `syncService.err.localNetworkBlocked` —— macOS「本地网络」隐私未授权时 Rust 的 `connect` 直接 EPERM，`nc` 在终端有授权所以能通、应用没有。现在会直接给出「系统设置 → 隐私与安全性 → 本地网络 → 允许 LockPass」的引导，并提示**重新构建过应用会使原授权失效，需重新勾选**。
+- **手机 `Load failed` 精确定性**：新增 `E_MIXED_CONTENT` —— https 页面（在线版）访问 http 同步服务属混合内容，浏览器按规则级硬拦，不是网络不通。原来只会落到笼统的「连不上」，引导方向是错的。
+- **可测试化重构 + 端到端测试**：`route()` / `spawn_sync_server()` 不再依赖 `tauri::AppHandle`（事件经注入的 `EventSender` 发出，与 `server.rs` 同手法），裁决逻辑抽出不依赖 `tauri::State` 的 `answer_auth_inner` / `answer_apply_inner`。新增 6 项真实 socket 上的端到端测试（`cargo test --lib sync::` 共 **11 项全绿**）：hello 正常 / 锁定 403、challenge + 未鉴权取快照 401、OPTIONS 预检 204、鉴权→取快照→回写（409 / 200）→关闭 完整往返、停止后端口释放。
+- **测试抓到的真 bug（「同步显示成功、对端没更新」）**：`answer_apply_inner` 用 `take()` 取走 `apply_pending` 发送裁决结果，HTTP 线程随后拿到 `None` —— `apply` 返回 200，但服务端快照 / `mac` / `rev` **完全没被采纳**，A 的 `rev` 停在旧值导致下次同步 `baseRev` 必然对不上、反复 409。已改为只借用（`as_ref`）不取走。
+- **二次开启服务崩溃**（v1.1.5 同期修复，一并随本版发布）：`stopHost()` 清空会话材料后再次点「开启服务」不重新派生 `K_auth`，`crypto.subtle.sign('HMAC', null, …)` 抛 `Argument 2 ('key') … must be an instance of CryptoKey`。已抽出幂等的 `ensureHostSession()`；顺带修掉「二次开启沿用旧信封」导致对端拉到过期数据的问题；`crypto.js` 的 `hmacHex` 增加 `CryptoKey` 守卫便于定位。
+
+**结论**：传输层已在真实 socket 上验证通过，B 端失败不属于协议 / 客户端缺陷，剩余可能集中在系统授权（macOS 本地网络）与手机混合内容限制。
+
+### 3. macOS 首次打开被拦截（本版发布说明重点）
+
+macOS 产物为 ad-hoc 签名（未配 Developer ID 证书），首次打开会被 Gatekeeper 拦截并提示「已损坏，无法打开」。**解除方式（只需执行一次）**：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/LockPass.app"
+```
+
+> 每次**下载新版本重新安装**后都需要再执行一次——隔离属性是随下载施加的，不是随应用版本。
+> 若不是装在 `/Applications`，把路径换成实际位置，例如 `~/Downloads/LockPass-macos-aarch64/LockPass.app`。
+
+### 4. 验证
+
+- `cargo check` 零 error 零 warning；`cargo test --lib sync::` 11 项全绿。
+- `npx vite build` 通过；i18n 中英键数一致（各 1278），无缺失。
+- `npm run version:check` 11 处版本号一致（v1.1.6）。
+
+### 5. 文档同步
+
+- `docs/version/RELEASE-v1.1.md`（本文件）：新增 v1.1.6 分节。
+- `docs/version/RELEASE-v1.1.6-github.md`：面向 GitHub Release 正文的用户版发布说明（重点写明上面的 `xattr` 命令）。
+- `docs/version/README.md`：索引新增 v1.1.6 一行，v1.1 日志覆盖范围更新为 v1.1.0 – v1.1.6。
+- `AGENTS.md`：更新日志新增 v1.1.6 条目。
+- `README.md`：macOS 解除隔离的命令统一为 `xattr -dr`（原为 `-rd`，等价但两处写法不一致），并补充「重新构建 / 重装后本地网络授权需重新勾选」。
+
+---
+
+## 2026-10-10 · 局域网同步服务（P1 拉取 + P2 回写一并落地）—— **v1.1.5**（PATCH +1；上一版本 v1.1.4；**未单独发布，随 v1.1.6 发布**）
 
 用户批准实施 P1，并要求「单向拉取同步后，逆向提交给 A 端，这样也可以让 A 端同步数据，实现两边的数据都同步」—— 即把设计文档里拆成两期的 **P1（A→B 拉取）+ P2（B→A 回写）合成一轮**交付。本次按 PATCH +1 推进（v1.1.4 → v1.1.5）。
 
@@ -76,6 +159,16 @@
 - **修法**：抽出幂等的 `ensureHostSession()`，由 `prepareHost()` 与 `startHost()` 共同调用；只要口令材料缺失就整套重发（新盐 + 新口令 + 新 `K_auth`），网卡列表只在首次拉取以免重置用户已选的 IP。`stopHost()` 在组件仍挂载时立即换一副新口令，避免面板停在「空白口令」状态；卸载中通过 `mounted` 标志不再发起异步工作。
 - **顺带修掉的相邻缺陷**：二次开启时沿用内存里的旧信封 —— 上一轮同步已经把合并结果落盘，不重读会让对端拉到过期数据，且 `mac` 与 `rev` 对不上。现在每次 `startHost()` 都重新 `readLocalEnvelope()`。
 - **防御**：`crypto.js` 的 `hmacHex` 增加 `CryptoKey` 校验，把 Web Crypto 那句看不出来源的报错换成「HMAC 密钥无效：不是 CryptoKey（会话密钥未派生或已失效）」，便于定位。
+
+**补记 2（同日，联调阶段，仍不推进版本号）**
+
+用户联调反馈「A 已开启服务、`nc -z` 端口通，但 B 连接失败且报错没有具体原因；手机浏览器报 `Load failed`」。为此把同步服务端改成可测试的形态并补了真实 socket 上的端到端测试：
+
+- **可测试化重构**：`route()` / `spawn_sync_server()` 不再依赖 `tauri::AppHandle`，事件经注入的 `EventSender` 发出（与 `server.rs` 同手法）；裁决逻辑抽出不依赖 `tauri::State` 的 `answer_auth_inner` / `answer_apply_inner`。这样测试能在真实端口上跑通整条 HTTP 腿，而不是只测纯函数。
+- **新增 6 项端到端测试**（`cargo test --lib sync::` 共 11 项全绿）：`hello` 正常 / 锁定 403、`challenge` + 未鉴权取快照 401、`OPTIONS` 预检 204、**鉴权→取快照→回写 baseRev 校验（409 / 200）→关闭 的完整往返**、停止后端口释放。
+- **测试抓到的真 bug（会导致「同步显示成功、对端没更新」）**：`answer_apply_inner` 用 `take()` 把 `apply_pending` 取走发送裁决结果，HTTP 处理线程随后拿到的 `pending` 是 `None` —— `apply` 返回 200，但服务端的快照 / `mac` / `rev` **完全没被采纳**。后果是 A 的 `rev` 永远停在旧值，下一次同步的 `baseRev` 必然对不上，反复 409。已改为只借用（`as_ref`）不取走。
+- **手机 `Load failed` 的精确定性**：新增 `E_MIXED_CONTENT` 判定 —— https 页面（在线版）访问 http 同步服务属混合内容，浏览器按规则级硬拦，不是网络不通；原来只会落到笼统的「连不上」，引导方向是错的。
+- **结论**：传输层已在真实 socket 上验证通过（手写客户端 ↔ 同步服务端），B 端失败不属于协议/客户端缺陷，剩余可能集中在系统授权（macOS「本地网络」隐私未授权时 Rust `connect` 直接 EPERM —— `nc` 在终端有授权所以能通，应用没有）与手机的混合内容限制。
 
 按 AGENTS.md「同自然日对同一模块 / 同一类 bug 的追加修复禁止推进版本号」，本次不升版本。
 
