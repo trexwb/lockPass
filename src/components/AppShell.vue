@@ -728,6 +728,7 @@ onBeforeUnmount(() => {
                     <span v-if="cardSubtitle(entry)" class="entry-subtitle" v-html="highlightSubtitle(entry)"></span>
                     <span v-for="tag in (entry.tags || []).slice(0, 3)" :key="tag" v-html="tagChipHtml(tag)"></span>
                     <span v-if="(entry.tags || []).length > 3" class="entry-tag-more">+{{ entry.tags.length - 3 }}</span>
+                    <span v-if="entry.conflictOf" class="conflict-badge" :title="t('import.conflict.hint')">{{ t('card.conflictBadge') }}</span>
                     <span class="entry-date">{{ formatCardDate(entry) }}</span>
                   </div>
                 </div>

@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.1.4`
+**当前版本**：`v1.1.5`
 
 ---
 
@@ -369,6 +369,16 @@ LockPass/
 ---
 
 ## 更新日志
+
+### 2026-10-10 局域网同步服务（v1.1.4 → v1.1.5，PATCH +1）
+
+- 新增局域网同步：侧栏「添加密码 → 更多添加方式」下拉新增「同步服务」，桌面端可「开启服务」（显示地址+端口+一次性口令）或「连接对端」，一轮同步结束两台设备都是同一份合并结果（拉取 → 本地双向合并 → 回推，A 侧 `baseRev` 乐观锁 + 不做二次合并）
+- 新增 `src-tauri/src/sync.rs`（独立 tiny_http 实例，端口 5613，不复用扩展桥 33555；`/sync/hello|challenge|auth|snapshot|apply|deactivate` + CORS + 600s 会话 + 错 3 次销毁 + 8MB 上限 + 手写出站 HTTP 客户端）、`src/core/sync-service.js`、`src/composables/useSyncService.js`、`src/components/modals/SyncServiceModal.vue`
+- 实施相对设计文档的两处收紧：**Rust 侧不做任何密码学**（`mac` 交前端 Web Crypto 裁决，`K_auth` 不进 Rust 内存）、**不引入 reqwest**（手写 `TcpStream` 客户端），Rust 侧零新增依赖
+- 同步口令为 **6 位纯数字**（用户拍板「越简单越好」：同网络 + 需手动开启服务 + 只在同步那几分钟有效）；强度取舍已记录在 `docs/multi-device-sync-design.md` §4.2 与 `RELEASE-v1.1.md` 的 v1.1.5 分节（600 秒窗口 + 3 次猜测上限 + 600000 次 PBKDF2 + 口令非数据密钥；改公网或长期会话须换回 ≥40 bit 词组口令）。硬前提两端主密码相同，不同报 `E_KEY_MISMATCH` 引导改走 .vault 单边迁移
+- 配套改动：`crypto.js` 增 `deriveHmacKey` / `hmacHex`、`tauri-env.js` 增 `listen`、`utils.js` 的 `Utils.prompt` 支持 `password`、`useVault.js` 增 `syncPending` 并导出 `refreshSyncDigests`、i18n 中英各 +66 键
+- 文档：`docs/multi-device-sync-design.md`（§10 的 P1 / P2 标为已落地 + 记录实施偏差）、`docs/spec.md` 新增 3.18「多设备同步（局域网）」（原 3.18/3.19 顺延为 3.19/3.20）、`README.md` 功能清单与跨设备迁移、`docs/version/RELEASE-v1.1.md` 与 `RELEASE-v1.1.5-github.md`
+- 版本号由 v1.1.4 推进至 **v1.1.5**（PATCH +1）
 
 ### 2026-09-04 版本日志目录约定
 

@@ -3,15 +3,17 @@
    Vue 3 迁移：对齐旧版 src/js/import-export.js 的导入流程
    - .vault / .json：加密备份（需输入主密码解密）或明文备份
    - .csv：Chrome/通用 CSV 导入向导（列映射 → 预览 → 确认，C2）
-   备份导入采用覆盖合并：同类型 + 同标题覆盖旧条目，其余新增；CSV 仍按「标题 + 用户名」查重逐条询问。
-   支持进度条与中途取消。数据通过 useVault 的 vaultState / saveVault 操作。 */
+   备份导入两种模式（多设备同步设计文档 §6 / §10 P0）：
+   - 合并（默认）：按条目 ID 走双向合并引擎，序号高者胜，真冲突进冲突表、落选版本入回收站；
+   - 覆盖：同类型 + 同标题覆盖旧条目（旧版语义，供「以这份备份为准」的恢复场景）。
+   CSV 仍按「标题 + 用户名」查重逐条询问。支持进度条与中途取消。 */
 import { ref, computed } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
 import BaseSelect from '../common/BaseSelect.vue'
 import { useI18n } from '../../composables/useI18n'
 
-const { saveVault, closeModal } = useVault()
+const { saveVault, closeModal, closeDetail, mergeExternalState } = useVault()
 const { t } = useI18n()
 
 // P3-4：图标统一走 Utils.SvgIcons
@@ -26,6 +28,10 @@ const masterPassword = ref('')
 const importing = ref(false)
 const progress = ref({ pct: 0, text: '' })
 const cancelled = ref(false)
+// 备份导入模式：'merge' = 按条目 ID 双向合并（默认）；'overwrite' = 同类型+同标题覆盖（旧语义）
+const mergeMode = ref('merge')
+// 合并结果（摘要 + 冲突表）；非空时停在结果页，等用户确认后才关闭
+const result = ref(null)
 
 /* C2 CSV 向导状态 */
 const csvHeaders = ref([])
@@ -69,10 +75,24 @@ function resetState() {
   importing.value = false
   progress.value = { pct: 0, text: '' }
   cancelled.value = false
+  mergeMode.value = 'merge'
+  result.value = null
   csvHeaders.value = []
   csvMapping.value = {}
   csvStats.value = null
 }
+
+/** 结果页「完成」：合并可能产生冲突副本留在回收站，必须由用户确认后才收起 */
+function finishImport() {
+  resetState()
+  closeModal()
+}
+
+/**
+ * 冲突表只渲染条目级冲突：引擎把标签级冲突塞在同一数组里（形状不同，只有 winnerSide），
+ * 直接遍历会在读取 c.winner 时抛错并让弹窗整体卸载。
+ */
+const entryConflicts = computed(() => (result.value?.conflicts || []).filter((c) => !c.tagConflict))
 
 function pickFile() {
   const input = document.getElementById('import-file-input')
@@ -202,6 +222,11 @@ async function confirmImport() {
       // （saveVault 内部已弹出失败 toast）
       importing.value = false
       progress.value = { pct: 0, text: '' }
+      return
+    }
+    // 合并模式：停在结果页展示摘要与冲突表，用户点「完成」才关闭
+    if (result.value) {
+      importing.value = false
       return
     }
     setTimeout(() => {
@@ -397,112 +422,80 @@ async function importEncryptedVault(data) {
   if (!masterPassword.value) {
     throw new Error(t('lock.errorPwEmpty'))
   }
+  let decrypted
   try {
     // 使用文件的 salt、iterations 和 iv 解密（兼容性：旧文件无 iterations 时回退到 LEGACY_ITERATIONS）
     const salt = window.CryptoUtils.base64ToArrayBuffer(data.salt)
     const iterations = Number(data.iterations) || window.CryptoUtils.LEGACY_ITERATIONS
     const key = await window.CryptoUtils.deriveKey(masterPassword.value, new Uint8Array(salt), iterations)
-    const decrypted = await window.CryptoUtils.decrypt(data.data, data.iv, key)
-
-    let added = 0
-    let replaced = 0
-    for (const entry of (decrypted.entries || [])) {
-      // 旧 category 字段升级为标签
-      const e = { ...entry }
-      if (e.category) {
-        const cat = (decrypted.categories || []).find(c => c.id === e.category)
-        const name = cat ? cat.name : e.category
-        e.tags = (e.tags || []).slice()
-        if (!e.tags.includes(name)) e.tags.push(name)
-        delete e.category
-      }
-      // v1.1.1 覆盖合并：同类型 + 同标题覆盖旧条目（保留 id/favorite/createdAt，历史随 id 延续）；否则新增
-      const dup = vaultState.entries.find(x =>
-        normEntryType(x.entryType) === normEntryType(e.entryType) &&
-        (x.title || '') === (e.title || '') && (e.title || '') !== ''
-      )
-      if (dup) {
-        const merged = Object.assign({}, dup, e, {
-          id: dup.id,
-          favorite: !!dup.favorite,
-          createdAt: dup.createdAt || e.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          entryType: e.entryType || dup.entryType || 'website',
-          customFields: Array.isArray(e.customFields) ? e.customFields : (dup.customFields || []),
-        })
-        const idx = vaultState.entries.indexOf(dup)
-        if (idx !== -1) vaultState.entries.splice(idx, 1, merged)
-        replaced++
-      } else {
-        vaultState.entries.push({
-          ...e,
-          entryType: e.entryType || 'website',
-          id: window.CryptoUtils.uuid(),
-          createdAt: e.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份补默认空数组
-          customFields: (e.customFields || []),
-        })
-        added++
-      }
-    }
-
-    // 合并标签注册表
-    vaultState.tagDefs = vaultState.tagDefs || {}
-    ;(decrypted.categories || []).forEach(c => {
-      mergeTagDef(c.name, { color: c.color, icon: c.icon, isDefault: true })
-    })
-    if (decrypted.tagDefs) {
-      Object.keys(decrypted.tagDefs).forEach(name => mergeTagDef(name, decrypted.tagDefs[name]))
-    }
-
-    // 数据完整性修复：恢复回收站（deleted）与编辑历史（history），
-    // 与 .vault 导出负载对齐；兼容旧备份缺失字段时保持现状
-    restoreDeletedAndHistory(decrypted.deleted, decrypted.history)
-
-    const doneMsg = replaced
-      ? t('import.backupDoneReplaced', { added, replaced })
-      : t('import.importedN', { added })
-    progress.value = { pct: 100, text: doneMsg }
-    window.Utils.showToast(doneMsg, 'success')
+    decrypted = await window.CryptoUtils.decrypt(data.data, data.iv, key)
   } catch (e) {
     throw new Error(t('import.errPwOrCorrupt'))
   }
+  applyVaultImport(decrypted)
 }
 
 /* ── 导入明文备份 ─────────────────────────────────────────────── */
 async function importPlaintextVault(data) {
-  const { entries, categories, tagDefs } = data
+  applyVaultImport(data)
+}
+
+/**
+ * 备份负载落库，按所选模式二选一。
+ * @param {object} payload 备份明文负载 { entries, deleted, tagDefs, categories, history }
+ */
+function applyVaultImport(payload) {
+  if (mergeMode.value === 'merge') {
+    // 引擎只改内存态，落盘由 confirmImport 的 saveVault 完成
+    result.value = mergeExternalState(payload)
+    if (vaultState.selectedEntry && !vaultState.entries.some(e => e.id === vaultState.selectedEntry)) {
+      closeDetail()
+    }
+    return
+  }
+  overwriteImport(payload)
+}
+
+/* ── 覆盖导入（v1.1.1 旧语义：同类型 + 同标题覆盖，其余新增） ───── */
+function overwriteImport(payload) {
   let added = 0
   let replaced = 0
 
-  for (const entry of (entries || [])) {
-    // v1.1.1 覆盖合并：同类型 + 同标题覆盖旧条目（保留 id/favorite/createdAt，历史随 id 延续）；否则新增
+  for (const raw of (payload.entries || [])) {
+    // 旧 category 字段升级为标签
+    const e = { ...raw }
+    if (e.category) {
+      const cat = (payload.categories || []).find(c => c.id === e.category)
+      const name = cat ? cat.name : e.category
+      e.tags = (e.tags || []).slice()
+      if (!e.tags.includes(name)) e.tags.push(name)
+      delete e.category
+    }
     const dup = vaultState.entries.find(x =>
-      normEntryType(x.entryType) === normEntryType(entry.entryType) &&
-      (x.title || '') === (entry.title || '') && (entry.title || '') !== ''
+      normEntryType(x.entryType) === normEntryType(e.entryType) &&
+      (x.title || '') === (e.title || '') && (e.title || '') !== ''
     )
     if (dup) {
-      const merged = Object.assign({}, dup, entry, {
+      const merged = Object.assign({}, dup, e, {
         id: dup.id,
         favorite: !!dup.favorite,
-        createdAt: dup.createdAt || entry.createdAt || new Date().toISOString(),
+        createdAt: dup.createdAt || e.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        entryType: entry.entryType || dup.entryType || 'website',
-        customFields: Array.isArray(entry.customFields) ? entry.customFields : (dup.customFields || []),
+        entryType: e.entryType || dup.entryType || 'website',
+        customFields: Array.isArray(e.customFields) ? e.customFields : (dup.customFields || []),
       })
       const idx = vaultState.entries.indexOf(dup)
       if (idx !== -1) vaultState.entries.splice(idx, 1, merged)
       replaced++
     } else {
       vaultState.entries.push({
-        ...entry,
-        entryType: entry.entryType || 'website',
+        ...e,
+        entryType: e.entryType || 'website',
         id: window.CryptoUtils.uuid(),
-        createdAt: entry.createdAt || new Date().toISOString(),
+        createdAt: e.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        // 自定义字段扩展（upgrade-design.md §1.3）：v1 明文备份补默认空数组
-        customFields: entry.customFields || [],
+        // 自定义字段扩展（upgrade-design.md §1.3）：v1 备份补默认空数组
+        customFields: (e.customFields || []),
       })
       added++
     }
@@ -510,18 +503,19 @@ async function importPlaintextVault(data) {
 
   // 合并标签注册表
   vaultState.tagDefs = vaultState.tagDefs || {}
-  if (categories) {
-    categories.forEach(c => mergeTagDef(c.name, { color: c.color, icon: c.icon, isDefault: true }))
-  }
-  if (tagDefs) {
-    Object.keys(tagDefs).forEach(name => mergeTagDef(name, tagDefs[name]))
+  ;(payload.categories || []).forEach(c => {
+    mergeTagDef(c.name, { color: c.color, icon: c.icon, isDefault: true })
+  })
+  if (payload.tagDefs) {
+    Object.keys(payload.tagDefs).forEach(name => mergeTagDef(name, payload.tagDefs[name]))
   }
 
-  // 数据完整性修复：恢复回收站（deleted）与编辑历史（history）
-  restoreDeletedAndHistory(data.deleted, data.history)
+  // 数据完整性修复：恢复回收站（deleted）与编辑历史（history），
+  // 与 .vault 导出负载对齐；兼容旧备份缺失字段时保持现状
+  restoreDeletedAndHistory(payload.deleted, payload.history)
 
   const doneMsg = replaced
-    ? t('import.plainBackupDoneReplaced', { added, replaced })
+    ? t('import.backupDoneReplaced', { added, replaced })
     : t('import.importedN', { added })
   progress.value = { pct: 100, text: doneMsg }
   window.Utils.showToast(doneMsg, 'success')
@@ -574,8 +568,54 @@ function restoreDeletedAndHistory(deleted, history) {
 
     <div class="modal-body">
       <template v-if="!importing">
+        <!-- 合并结果页：摘要 + 时钟漂移警示 + 冲突表，用户确认后才关闭 -->
+        <div v-if="result" class="import-result">
+          <div class="import-result-metrics">
+            <span class="metric">{{ t('import.result.added', { n: result.summary.added }) }}</span>
+            <span class="metric">{{ t('import.result.updated', { n: result.summary.updated }) }}</span>
+            <span class="metric">{{ t('import.result.removed', { n: result.summary.removed }) }}</span>
+            <span class="metric">{{ t('import.result.restored', { n: result.summary.restored }) }}</span>
+            <span class="metric" :class="{ warn: result.summary.conflicts > 0 }">{{ t('import.result.conflicts', { n: result.summary.conflicts }) }}</span>
+          </div>
+
+          <p v-if="result.summary.conflicts === 0 && result.summary.tagConflicts === 0" class="text-muted text-sm">
+            {{ t('import.result.clean') }}
+          </p>
+
+          <div v-if="result.strict" class="import-result-alert text-warning text-sm">
+            {{ t('import.result.skewWarning', { mins: Math.round(result.skewMs / 60000) }) }}
+          </div>
+
+          <div v-if="result.summary.tagConflicts > 0" class="text-sm text-muted mt-1">
+            {{ t('import.result.tagConflictNote', { n: result.summary.tagConflicts }) }}
+          </div>
+
+          <div v-if="entryConflicts.length" class="conflict-table mt-2">
+            <div class="text-sm"><strong>{{ t('import.conflict.title') }}</strong></div>
+            <div class="text-muted text-sm mt-1">{{ t('import.conflict.hint') }}</div>
+            <div v-for="c in entryConflicts" :key="c.id" class="conflict-row">
+              <div class="conflict-head">
+                <span class="conflict-name">{{ c.title || t('common.unnamed') }}</span>
+                <span class="text-muted text-sm">{{ c.username }}</span>
+              </div>
+              <div class="conflict-versions">
+                <span class="version keep">
+                  {{ t('import.conflict.kept') }} · {{ t(c.winner.side === 'local' ? 'import.conflict.local' : 'import.conflict.remote') }}
+                  <span class="text-muted">#{{ c.winner.rev }}</span>
+                  <span class="text-muted">{{ c.winner.updatedAt ? c.winner.updatedAt.slice(0, 10) : t('common.unknown') }}</span>
+                </span>
+                <span class="version drop">
+                  {{ t('import.conflict.dropped') }} · {{ t(c.loser.side === 'local' ? 'import.conflict.local' : 'import.conflict.remote') }}
+                  <span class="text-muted">#{{ c.loser.rev }}</span>
+                  <span class="text-muted">{{ c.loser.updatedAt ? c.loser.updatedAt.slice(0, 10) : t('common.unknown') }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div
-          v-if="!previewInfo"
+          v-else-if="!previewInfo"
           class="file-drop"
           @click="pickFile()"
           @dragover.prevent="e => e.currentTarget.classList.add('dragover')"
@@ -646,6 +686,29 @@ function restoreDeletedAndHistory(deleted, history) {
             </div>
           </div>
 
+          <!-- 备份导入模式：合并（按条目 ID 双向合并，默认）/ 覆盖（以这份备份为准） -->
+          <div v-if="previewInfo.kind !== 'csv'" class="import-mode mt-2">
+            <div class="import-mode-toggle" role="group" :aria-label="t('import.mode.label')">
+              <button
+                type="button"
+                class="mode-btn"
+                :class="{ active: mergeMode === 'merge' }"
+                :aria-pressed="mergeMode === 'merge'"
+                @click="mergeMode = 'merge'"
+              >{{ t('import.mode.merge') }}</button>
+              <button
+                type="button"
+                class="mode-btn"
+                :class="{ active: mergeMode === 'overwrite' }"
+                :aria-pressed="mergeMode === 'overwrite'"
+                @click="mergeMode = 'overwrite'"
+              >{{ t('import.mode.overwrite') }}</button>
+            </div>
+            <div class="text-muted text-sm mt-1">
+              {{ mergeMode === 'merge' ? t('import.mode.mergeHint') : t('import.mode.overwriteHint') }}
+            </div>
+          </div>
+
           <div v-if="previewInfo.warning" class="text-warning text-sm mt-1">{{ previewInfo.warning }}</div>
           <div v-if="previewInfo.kind === 'plaintext'" class="text-warning text-sm mt-2">{{ t('import.plaintextWarning') }}</div>
           <div v-if="previewInfo.kind === 'encrypted'" class="form-group mt-2 mb-0">
@@ -666,9 +729,10 @@ function restoreDeletedAndHistory(deleted, history) {
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-secondary" @click="closeModal()">{{ t('confirm.default.cancel') }}</button>
+      <button v-if="!result" class="btn btn-secondary" @click="closeModal()">{{ t('confirm.default.cancel') }}</button>
+      <button v-else class="btn btn-primary" @click="finishImport()">{{ t('import.result.done') }}</button>
       <button
-        v-if="previewInfo && !importing"
+        v-if="previewInfo && !importing && !result"
         class="btn btn-primary"
         :disabled="(importMode === 'encrypted-vault' && !masterPassword) || (importMode === 'csv' && !csvWizardValid)"
         @click="confirmImport()"

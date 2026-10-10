@@ -1,7 +1,7 @@
 # 版本迭代日志
 
 > 本目录专门存储 LockPass 每次升级迭代的发布日志。
-> 命名规则：`RELEASE-v{主版本}.md`（当前主版本 v1.0 → RELEASE-v1.0.md）
+> 命名规则：`RELEASE-v{主版本}.md`（当前主版本 v1.1 → RELEASE-v1.1.md）
 
 ---
 
@@ -10,9 +10,10 @@
 | 文件 | 覆盖版本 | 状态 |
 |------|---------|------|
 | [v1.0 日志](RELEASE-v1.0.md) | v1.0.0 – v1.0.5（v1.0.0 全新起点，版本号整体重置） | 📝 待发布 |
-| [v1.1 日志](RELEASE-v1.1.md) | v1.1.0 – v1.1.4 | 已发布至 v1.1.4 |
+| [v1.1 日志](RELEASE-v1.1.md) | v1.1.0 – v1.1.5 | 已发布至 v1.1.4；v1.1.5 📝 待发布 |
 | [v1.1.3 GitHub 发布说明](RELEASE-v1.1.3-github.md) | v1.1.3（面向 GitHub Release 正文的用户版） | 待发布 |
 | [v1.1.4 GitHub 发布说明](RELEASE-v1.1.4-github.md) | v1.1.4（面向 GitHub Release 正文的用户版） | 📝 待发布 |
+| [v1.1.5 GitHub 发布说明](RELEASE-v1.1.5-github.md) | v1.1.5（面向 GitHub Release 正文的用户版） | 📝 待发布 |
 
 ---
 

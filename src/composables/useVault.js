@@ -82,6 +82,8 @@ export const vaultState = reactive({
   lockTimer: null,
   // 捕获确认弹窗是否打开：打开期间自动锁定顺延到槽位 TTL，避免跨应用确认时被锁屏打断落盘
   capturePending: false,
+  // 局域网同步进行中：与 capturePending 同口径顺延自动锁定（同步跨两台机器，耗时不可控）
+  syncPending: false,
   lockTimeoutMs: loadSettingInt('lockpass_lock_timeout', 5 * 60 * 1000),
   clipboardClearMs: loadSettingInt('lockpass_clipboard_clear', 30 * 1000),
   // C4 回收站自动清空：0 = 从不；30/60/90 = 天数（localStorage lockpass_recycle_ttl）
@@ -248,6 +250,51 @@ function migrateVaultData(data) {
   return { entries, history: data.history || {}, tagDefs, tags: data.tags || [], deleted, changed }
 }
 
+/**
+ * 对端备份归一化：与 migrateVaultData 同口径（旧 category 升级为标签、补默认字段），
+ * 但不替对端发明标签定义 —— 未知标签若在此处随机配色，合并时会把本机随机出来的
+ * 颜色当成对端声明，凭空造出标签冲突。标签定义的裁决权只属于合并规则。
+ * @param {object} data 对端明文负载（.vault 解密结果 / 文件同步 blob）
+ * @returns {{entries: object[], deleted: object[], tagDefs: object, history: object, tags: object[]}} 合并引擎输入
+ */
+function normalizeRemoteVault(data) {
+  const src = data || {}
+  const legacyCategories = src.categories || []
+  const tagDefs = {}
+
+  DEFAULT_TAGS.forEach(t => {
+    tagDefs[t.name] = { color: t.color, icon: t.icon, isDefault: true }
+  })
+  legacyCategories.forEach(c => {
+    tagDefs[c.name] = { color: c.color, icon: c.icon, isDefault: true }
+  })
+  if (src.tagDefs) {
+    Object.keys(src.tagDefs).forEach(name => { tagDefs[name] = src.tagDefs[name] })
+  }
+
+  const fix = (e) => {
+    const tags = e.tags ? e.tags.slice() : []
+    if (e.category) {
+      const cat = legacyCategories.find(c => c.id === e.category)
+      const name = cat ? cat.name : e.category
+      if (!tags.includes(name)) tags.push(name)
+    }
+    const { category, ...rest } = e
+    rest.tags = tags
+    if (!rest.entryType) rest.entryType = 'website'
+    if (!Array.isArray(rest.customFields)) rest.customFields = []
+    return rest
+  }
+
+  return {
+    entries: (src.entries || []).map(fix),
+    deleted: (src.deleted || []).map(fix),
+    tagDefs,
+    history: src.history || {},
+    tags: src.tags || [],
+  }
+}
+
 /* ── 桌面版自动捕获入口（本地 HTTP 通道）──────────────────────
    useVault() 会被多个组件调用，监听必须只在模块作用域注册一次，
    否则一次捕获请求会弹多个确认框并重复回报结果。
@@ -269,6 +316,19 @@ window.addEventListener('lockpass:capture-request', (ev) => {
     .then(() => desktopCaptureHandler(detail))
     .catch(() => {})
 })
+
+/* ── 同步序号基线与墓碑（多设备同步 P0，见 docs/multi-device-sync-design.md §5 / §6.1） ──
+   syncDigests：上次真实落盘时各条目/标签的内容指纹，写盘前据此判定「这条是不是
+   真的改过」，只有改过的 rev +1；rev 是冲突判定主键，必须从没有同步通道的现在就开始
+   累积，否则首次同步无法区分「对端新增」与「本机改过」。仅内存态，解锁时重建。
+   syncTombstones：已彻底删除条目的 id + 删除时序号，持久化在 meta.syncBaseline。
+   它必须独立于回收站存活——回收站受 C4 自动清理支配，墓碑若跟着消失，对端手里的旧
+   副本就会在下次同步把已删密码复活。
+   两者都必须是模块级：useVault() 每个组件各调一次，闭包变量会变成「每实例一份」。
+   实测后果：① 新实例基线为空，它触发的每次写盘都把全部条目 rev +1；② doSave 用本
+   实例墓碑表覆盖 meta.syncBaseline，别的实例刚记录的彻底删除被清空。 */
+let syncDigests = { entries: new Map(), tags: new Map() }
+let syncTombstones = {}
 
 /* ── 主 composable ────────────────────────────────────────── */
 
@@ -362,7 +422,75 @@ export function useVault() {
   // 最近一次真实写入是否成功（草稿生命周期 v1.1.12b：保存失败须保留草稿可重试）
   let lastSaveOk = true
 
+  /** 用当前内存态刷新序号基线（解锁加载后、写盘成功后调用） */
+  function refreshSyncDigests() {
+    if (!window.SyncMerge) return
+    syncDigests = {
+      entries: window.SyncMerge.digestIndex(vaultState),
+      tags: window.SyncMerge.tagDigestIndex(vaultState.tagDefs),
+    }
+  }
+
+  /** 清空序号基线（锁屏 / 登出 / 新建保险箱） */
+  function resetSyncDigests() {
+    syncDigests = { entries: new Map(), tags: new Map() }
+  }
+
+  /** 解锁时载入墓碑，并裁掉超出保留窗口的记录 */
+  async function loadSyncBaseline() {
+    syncTombstones = {}
+    if (!window.SyncMerge) return
+    const rec = await window.DBUtils.dbGet(window.DBUtils.STORE_META, 'syncBaseline')
+    syncTombstones = window.SyncMerge.pruneTombstones((rec && rec.value && rec.value.tombstones) || {})
+  }
+
+  /** 条目即将彻底删除：即时记墓碑（删除与彻底删除可能落在同一次防抖写入里） */
+  function rememberDead(rec) {
+    if (window.SyncMerge && rec) window.SyncMerge.rememberTombstone(syncTombstones, rec)
+  }
+
+  /** 锁屏 / 登出 / 新建保险箱：内存态墓碑清零（下次解锁从 meta 重载） */
+  function resetSyncBaseline() {
+    syncTombstones = {}
+  }
+
+  /**
+   * 合并外部状态（P0 走 .vault 互导验证，P2 走局域网同步）。
+   * 只改内存态，落盘由调用方 saveVault() 完成；墓碑随合并结果一起更新。
+   * @param {object} rawRemote 对端明文负载（.vault 解密结果 / 同步快照），兼容旧格式
+   * @returns {{summary: object, conflicts: object[], skewMs: number, strict: boolean}} 合并结果
+   */
+  function mergeExternalState(rawRemote) {
+    const remote = normalizeRemoteVault(rawRemote)
+    const nowIso = new Date().toISOString()
+    const skewMs = window.SyncMerge.clockSkewMs(remote, nowIso)
+    // 对端时钟超前超过阈值 → 时间戳不可信，不按 rev/时间自动选，差异全量进冲突表
+    const strict = skewMs > window.SyncMerge.MAX_CLOCK_SKEW_MS
+    const result = window.SyncMerge.mergeState({
+      local: {
+        entries: vaultState.entries,
+        deleted: vaultState.deleted,
+        tagDefs: vaultState.tagDefs,
+        history: vaultState.history,
+        tags: vaultState.tags,
+      },
+      remote: remote,
+      tombstones: syncTombstones,
+      newId: () => window.CryptoUtils.uuid(),
+      now: nowIso,
+      historyLimit: HISTORY_LIMIT,
+      strict,
+    })
+    vaultState.entries = result.state.entries
+    vaultState.deleted = result.state.deleted
+    vaultState.tagDefs = result.state.tagDefs
+    vaultState.history = result.state.history
+    syncTombstones = result.tombstones
+    return { summary: result.summary, conflicts: result.conflicts, skewMs, strict }
+  }
+
   async function doSave() {
+    if (window.SyncMerge) window.SyncMerge.stampRevs(vaultState, syncDigests.entries, syncDigests.tags)
     const { iv, data } = await window.CryptoUtils.encrypt(
       {
         entries: vaultState.entries,
@@ -374,6 +502,18 @@ export function useVault() {
       vaultState.cryptoKey,
     )
     await window.DBUtils.dbPut(window.DBUtils.STORE_VAULT, { id: 'main', iv, data })
+    // 落盘成功才把当前内容认作基线；失败时保持旧基线，下一次保存会重新判定
+    refreshSyncDigests()
+    // 墓碑随落盘更新：回收站里的软删除并入，超保留窗口的丢弃
+    if (window.SyncMerge) {
+      syncTombstones = window.SyncMerge.pruneTombstones(
+        window.SyncMerge.collectTombstones(vaultState, syncTombstones),
+      )
+      await window.DBUtils.dbPut(window.DBUtils.STORE_META, {
+        key: 'syncBaseline',
+        value: { tombstones: syncTombstones },
+      })
+    }
     await window.FileSync.syncNow()
     // 保存完成后同步最新条目到 Tauri 本地服务（桌面版扩展自动填充用）
     // 旅行模式：本地服务是扩展的数据来源之一，必须与页面桥同口径过滤敏感条目
@@ -482,6 +622,8 @@ export function useVault() {
         vaultState.tagDefs = seedDefaultTagDefs()
         vaultState.tags = []
         vaultState.deleted = []
+        resetSyncDigests()
+        resetSyncBaseline()
         // 保存会话密码（与原生一致：内存级，刷新后需重新解锁）
         saveSession(password)
         vaultState.isUnlocked = true
@@ -507,6 +649,9 @@ export function useVault() {
       vaultState.tagDefs = migrated.tagDefs
       vaultState.tags = migrated.tags
       vaultState.deleted = migrated.deleted
+      // 墓碑必须先于任何写盘载入：doSave 会用内存墓碑覆盖 meta.syncBaseline
+      await loadSyncBaseline()
+      refreshSyncDigests()
       if (migrated.changed) await saveVault()
 
       saveSession(password)
@@ -578,6 +723,9 @@ export function useVault() {
       vaultState.tagDefs = migrated.tagDefs
       vaultState.tags = migrated.tags
       vaultState.deleted = migrated.deleted
+      // 墓碑必须先于任何写盘载入：doSave 会用内存墓碑覆盖 meta.syncBaseline
+      await loadSyncBaseline()
+      refreshSyncDigests()
       if (migrated.changed) await saveVault()
 
       // 生物会话：不保留主密码（saveSession('')），依赖主密码功能走提示
@@ -803,6 +951,8 @@ export function useVault() {
     vaultState.tagDefs = {}
     vaultState.tags = []
     vaultState.deleted = []
+    resetSyncDigests()
+    resetSyncBaseline()
     vaultState.selectedEntry = null
     // 清除密码显示自动隐藏计时器
     Object.keys(_pwHideTimers).forEach(k => { clearTimeout(_pwHideTimers[k]); delete _pwHideTimers[k] })
@@ -830,6 +980,8 @@ export function useVault() {
     vaultState.tags = []
     // S1 修复：与 lockVault 对齐，补清回收站与界面状态，杜绝明文滞留
     vaultState.deleted = []
+    resetSyncDigests()
+    resetSyncBaseline()
     vaultState.selectedEntry = null
     vaultState.history = {} // P1-1 修复：历史快照含明文，退出登录必须清空
     vaultState.activeModal = null
@@ -858,8 +1010,8 @@ export function useVault() {
   function resetLockTimer() {
     clearTimeout(vaultState.lockTimer)
     if (vaultState.lockTimeoutMs <= 0) return
-    // 捕获确认期间顺延自动锁定，防止用户在桌面/浏览器间切换确认时被锁屏打断
-    const due = vaultState.capturePending ? CAPTURE_DEFER_LOCK_MS : vaultState.lockTimeoutMs
+    // 捕获确认 / 局域网同步期间顺延自动锁定，防止跨应用确认或跨机器同步时被锁屏打断落盘
+    const due = (vaultState.capturePending || vaultState.syncPending) ? CAPTURE_DEFER_LOCK_MS : vaultState.lockTimeoutMs
     vaultState.lockTimer = setTimeout(lockVault, due)
   }
 
@@ -1098,6 +1250,9 @@ export function useVault() {
       await new Promise(r => setTimeout(r, 240))
     }
 
+    // 墓碑：彻底删除即记账，不等下一次落盘（删除与彻底删除可能落在同一次防抖写入里）
+    const purged = vaultState.deleted.find(e => e.id === id)
+    if (purged) rememberDead(purged)
     vaultState.deleted = vaultState.deleted.filter(e => e.id !== id)
     // 彻底删除后清理该条目的密码历史（无主数据不保留）
     if (vaultState.history[id]) {
@@ -1124,6 +1279,7 @@ export function useVault() {
     if (!confirmed) return
 
     const deadIds = vaultState.deleted.map(e => e.id)
+    vaultState.deleted.forEach(e => rememberDead(e))
     vaultState.deleted = []
     // 清空回收站时同步清理这些条目的密码历史
     if (deadIds.length) {
@@ -1153,6 +1309,7 @@ export function useVault() {
     })
     if (!expired.length) return 0
     const deadIds = expired.map(e => e.id)
+    expired.forEach(e => rememberDead(e))
     vaultState.deleted = vaultState.deleted.filter(e => !deadIds.includes(e.id))
     // 同步清理这些条目的密码历史（无主数据不保留）
     if (deadIds.length) {
@@ -1882,5 +2039,8 @@ export function useVault() {
     handleRestoreFileSelect,
     bindRestoreFromDirectory,
     editCurrentEntry,
+    mergeExternalState,
+    // 外部整包替换内存态后（同步回写落盘）用：重建 rev 基线，避免下次写盘把全部条目 rev 误 +1
+    refreshSyncDigests,
   }
 }

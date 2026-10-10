@@ -30,8 +30,8 @@ function toggleAddDropdown() {
   if (!host) return
   const r = host.getBoundingClientRect()
   const gap = 6
-  // 向下展开，底部空间不足时上翻（菜单高度按两行按钮估算，最小留 8px 边距）
-  const menuH = 96
+  // 向下展开，底部空间不足时上翻（菜单高度按三行按钮估算，最小留 8px 边距）
+  const menuH = 140
   const top = (r.bottom + gap + menuH <= window.innerHeight)
     ? r.bottom + gap
     : Math.max(8, r.top - gap - menuH)
@@ -362,6 +362,7 @@ async function handleAdd(action) {
   if (action === 'new') openEntryModal()
   else if (action === 'qr-import') openModal('qr-import')
   else if (action === 'import') openModal('import')
+  else if (action === 'sync-service') openModal('sync-service')
 }
 
 /** 标签区标题右键：打开标签管理 / 新建 / 展开 / 清空自定义标签 */
@@ -455,6 +456,13 @@ async function handleLogout(action) {
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               {{ t('import.batch') }}
+            </button>
+            <button @click="handleAdd('sync-service')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <polyline points="17 1 21 5 17 9" /><line x1="3" y1="5" x2="21" y2="5" />
+                <polyline points="7 23 3 19 7 15" /><line x1="21" y1="19" x2="3" y2="19" />
+              </svg>
+              {{ t('syncService.title') }}
             </button>
           </div>
         </Teleport>

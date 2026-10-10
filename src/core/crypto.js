@@ -194,12 +194,64 @@ function bytesToHex(buf) {
   return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * 从同步口令派生会话鉴权密钥（HMAC-SHA256）
+ * 与 deriveKey 同算法同强度（PBKDF2-SHA256，600000 次），但输出 HMAC 用途的
+ * CryptoKey —— 同步口令只做「挑战-响应鉴权」与「载荷完整性绑定」，绝不做数据加密，
+ * 也绝不等于主密码（设计文档 docs/multi-device-sync-design.md §4.2）。
+ * @param {string} password - 一次性同步口令 P
+ * @param {Uint8Array} salt - 会话盐（由 A 端 CSPRNG 生成，随 /sync/hello 下发）
+ * @param {number} [iterations=DEFAULT_ITERATIONS] - PBKDF2 迭代次数
+ * @returns {Promise<CryptoKey>} HMAC-SHA256 密钥（不可导出）
+ */
+async function deriveHmacKey(password, salt, iterations = DEFAULT_ITERATIONS) {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt, iterations: iterations, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'HMAC', hash: 'SHA-256', length: 256 },
+    false,
+    ['sign', 'verify']
+  );
+}
+
+/**
+ * HMAC-SHA256 摘要（hex）
+ * @param {CryptoKey} key - HMAC 密钥
+ * @param {string} message - 待签消息
+ * @returns {Promise<string>} hex 摘要
+ */
+async function hmacHex(key, message) {
+  // 显式校验：Web Crypto 的原话是 "Argument 2 ('key') to SubtleCrypto.sign must
+  // be an instance of CryptoKey"，看不出是哪个会话环节漏了派生。这里提前拦下，
+  // 把「密钥没准备好」变成可定位的错误（通常意味着该重新生成会话材料了）。
+  const isKey = typeof CryptoKey !== 'undefined'
+    ? key instanceof CryptoKey
+    : !!(key && typeof key === 'object' && key.algorithm && key.usages)
+  if (!isKey) {
+    throw new Error('HMAC 密钥无效：不是 CryptoKey（会话密钥未派生或已失效）')
+  }
+  const encoder = new TextEncoder();
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+  return bytesToHex(sig);
+}
+
 // 导出模块
 window.CryptoUtils = {
   DEFAULT_ITERATIONS,
   LEGACY_ITERATIONS,
   deriveKey,
   deriveKeyBytes,
+  deriveHmacKey,
+  hmacHex,
   importRawAesKey,
   bytesToHex,
   encrypt,

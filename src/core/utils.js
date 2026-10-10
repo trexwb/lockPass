@@ -390,6 +390,7 @@ function confirmDialog(options) {
  * @param {string} [options.confirmText='确定'] - 确认按钮文字
  * @param {string} [options.cancelText='取消'] - 取消按钮文字
  * @param {boolean} [options.selectAll=true] - 聚焦时是否全选已有文本（默认全选便于直接覆盖）
+ * @param {boolean} [options.password=false] - 是否渲染为密码框（type=password，不回显明文）
  * @returns {Promise<string|null>} resolve(输入值) / resolve(null)=取消
  */
 function promptDialog(options) {
@@ -399,6 +400,7 @@ function promptDialog(options) {
       message: '',
       value: '',
       placeholder: '',
+      password: false,
       confirmText: t('confirm.default.ok'),
       cancelText: t('confirm.default.cancel'),
       selectAll: true,
@@ -424,7 +426,7 @@ function promptDialog(options) {
         </div>
         <div class="modal-body">
           ${messageHtml ? `<div class="confirm-message">${messageHtml}</div>` : ''}
-          <input class="prompt-input" type="text" value="${escHtml(opts.value)}" placeholder="${escHtml(opts.placeholder)}" autocomplete="off" spellcheck="false" />
+          <input class="prompt-input" type="${opts.password ? 'password' : 'text'}" value="${escHtml(opts.value)}" placeholder="${escHtml(opts.placeholder)}" autocomplete="off" spellcheck="false" />
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary confirm-cancel" tabindex="1">${escHtml(opts.cancelText)}</button>

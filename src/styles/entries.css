@@ -229,6 +229,16 @@
   color: var(--text-faint);
   font-size: 0.86rem;
 }
+/* 同步合并产生的冲突副本（回收站）：标明它不是被用户删掉的，而是落选的那一版 */
+.conflict-badge {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-xs);
+  background: var(--warning-dim);
+  color: var(--warning);
+  font-size: 0.78rem;
+}
 
 /* ═══════════════════════════════════════════════════════════
    内联操作按钮（卡片右侧的收藏/复制/删除）
