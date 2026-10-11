@@ -3,7 +3,8 @@
    Vue 3 迁移：对齐旧版 src/js/qr-sync.js 的载荷结构
    （format: 'LockPass-QR v1'，payload 含 title/username/password/url/notes/tags/
    entryType/port/root/appId/privateKey）。
-   主密码从 useVault 的会话（getSession）获取；二维码库懒加载 /assets/vendor/qrcode.min.js */
+   主密码从 useVault 的会话（getSession）获取；二维码库懒加载 /assets/vendor/qrcode.js
+   （qrcode-generator@2.0.4，构建期从 npm 包拷贝；载荷格式不受渲染库影响） */
 import { ref, watch, nextTick } from 'vue'
 import { useVault, vaultState } from '../../composables/useVault'
 import ModalBase from '../common/ModalBase.vue'
@@ -114,7 +115,13 @@ async function generate() {
 
     qrText.value = text
     await nextTick()
-    await _loadVendor(import.meta.env.BASE_URL + 'assets/vendor/qrcode.min.js', () => typeof QRCode === 'function')
+    // 库名与参数和旧版不同属有意为之：原先手工存放的 qrcode.min.js 是 qrcodejs 的压缩产物，
+    // 其作者从未发布到 npm、且那份文件与所有公开副本都不逐字节相同（无法核实来源）；
+    // 现改用作者本人发布的 qrcode-generator，图案由下面的 canvas 直绘。
+    await _loadVendor(
+      import.meta.env.BASE_URL + 'assets/vendor/qrcode.js',
+      () => typeof qrcode === 'function'
+    )
     // 先结束 loading，使 v-else-if="qrText" 分支渲染出 qrContainer，
     // 再等待 DOM 就绪后生成图案（否则 qrContainer 为 null，静默退出导致空白）
     loading.value = false
@@ -133,14 +140,20 @@ async function generate() {
         - 24 // qr-paper 左右内边距 12px × 2
       if (avail > 0) size = Math.max(180, Math.min(320, Math.floor(avail)))
     }
-    new QRCode(container, {
-      text,
-      width: size,
-      height: size,
-      correctLevel: QRCode.CorrectLevel.M,
-      colorDark: '#000000',
-      colorLight: '#ffffff',
-    })
+    // typeNumber 传 0 = 由库按数据长度自动选版本；纠错级沿用 M
+    // 库默认按 charCode 编码，显式切到 UTF-8 与旧 vendor 库行为一致（当前载荷是 base64
+    // JSON 全 ASCII，此句只为将来载荷里出现非 ASCII 字段时不出错）
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']
+    const qr = qrcode(0, 'M')
+    qr.addData(text)
+    qr.make()
+    const modules = qr.getModuleCount()
+    // 边长按整数模块取整，避免 CSS 缩放把模块边界插值成灰边影响扫码
+    const cell = Math.max(1, Math.floor(size / modules))
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = cell * modules
+    container.appendChild(canvas)
+    qr.renderTo2dContext(canvas.getContext('2d'), cell)
   } catch (e) {
     errorMsg.value = t('qrshare.errGenerate', { msg: e.message || e })
   } finally {

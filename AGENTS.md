@@ -108,7 +108,8 @@
 - ✅ **UI 组件**放 `src/components/`，Vue 3 `<script setup>` 语法
 - ✅ **样式**放 `src/styles/`（按域拆分：base/layout/entries/editor/modal/settings/utilities/particles），
   组件内不写 `<style>` 块（保持样式集中管理）
-- ✅ **静态资源**放 `src/public/`（sw.js / manifest.json / assets/vendor/*.js，原样拷贝到 dist 根）
+- ✅ **静态资源**放 `src/public/`（sw.js / manifest.json / assets/icons，原样拷贝到 dist 根）；
+  第三方运行期库不进仓库，声明为 npm 依赖后由构建期拷贝（见 `vite.config.js` 的 `VENDOR_LIBS`）
 - ✅ **新增功能模块**：纯逻辑 → `core/` 新文件 + main.js 注册；新状态 → composable；新界面 → 组件
 
 ### 2. 代码风格
@@ -151,7 +152,8 @@
 
 ### 6. 离线优先
 
-- ✅ 禁止使用 CDN 链接，所有资源必须本地化（`src/public/assets/vendor/`）
+- ✅ 禁止使用 CDN 链接，所有资源必须本地化（第三方运行期库 jsQR / qrcode-generator 由 npm 安装，
+  构建期由 `vite.config.js` 的 `copyVendorLibs` 拷到 `dist/assets/vendor/`，仓库内不再存放其源码）
 - ✅ 禁止使用 Google Fonts 等外部字体，使用系统字体栈
 - ✅ 禁止使用外部 API（可选联网功能必须默认关闭 + 设置开关）
 - ✅ 测试时必须断网验证，确保完全离线可用
@@ -194,7 +196,9 @@ LockPass/
 │   │   │                  # QrShare / QrImport / ChangePw
 │   │   └── common/        # ModalBase
 │   ├── styles/            # 设计令牌 + 按域拆分（base/layout/entries/editor/modal/settings/utilities/particles）
-│   └── public/            # 静态资源（sw.js / manifest.json / assets/vendor/jsQR.js、qrcode.min.js）
+│   └── public/            # 静态资源（sw.js / manifest.json / assets/icons）
+│                          # 注：第三方二维码库（jsQR 解码 + qrcode-generator 生成）不再手工存放于此，
+│                          #     由 npm 依赖提供，构建期 vite 插件拷到 dist/assets/vendor/*.js；缺包即构建失败
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 │                          # 注：Info.plist 声明 NSLocalNetworkUsageDescription（局域网同步必需的 macOS 本地网络用途）
 ├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）

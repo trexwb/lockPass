@@ -4,6 +4,88 @@
 
 ---
 
+## 2026-10-11 · 二维码生成库改由 npm 提供：原手工副本系被改过的压缩代码，已核实并替换 —— **不推进版本号**（基线仍 v1.1.7）
+
+**动机**：同日 jsQR 已改为 npm 依赖，故按其同样思路处理 `qrcode.min.js`。核实后发现这**不是**一次同源替换，结论与本文件上一节「第 2 节未合规事实 1」相互印证并予以闭合。
+
+### 1. 核实结果（三条都是可复现的证据，不是推断）
+
+- 仓库那份 `src/public/assets/vendor/qrcode.min.js` 为 **19926 字节**，sha256 前缀 `c84bf920`。
+- 上游 `davidshimjs/qrcodejs` master（commit `06c7a5e134f1`）的同名文件为 **19927 字节**；`difflib` 逐字符比对结果只有**一处**差异：第 1257 个字符少了一个 `=`，即自动选版本循环 `r()` 的 `g>=f` 在本地是 `g>f`。
+  - 该改动不是坏的：`g>=f` 会让循环多跑一轮去读 `l[40]`（越界 undefined）从而抛 TypeError；`g>f` 才能走到库自己那句 `throw new Error("Too long data")`。
+- cdnjs `qrcodejs/1.0.0`、jsdelivr `qrcodejs@1.0.0`、jsdelivr `davidshimjs-qrcodejs@0.0.2` 三份公开副本**都是 19927 字节、sha256 前缀 `c541ef06`** —— 与仓库这份不一致。
+- **结论**：仓库里的文件是「上游压缩产物 + 手工改 1 个字符」，无法归到任何已发布版本；原作者从未向 npm 发布，npm 上叫 `qrcodejs` 的包全是第三方镜像（`license: null` 或另属他人仓库）。让一份改过的压缩代码继续留在「用主密码派生密钥加密的载荷」这条渲染路径上，正是 npm 化要消除的问题。
+
+### 2. 采用作者本人发布的 `qrcode-generator@2.0.4`（MIT）
+
+- `npm install --save-exact qrcode-generator@2.0.4`；`vite.config.js` 的 `VENDOR_LIBS` 增加一条，构建期把 `node_modules/qrcode-generator/dist/qrcode.js`（56694 字节）拷到 `dist/assets/vendor/qrcode.js`，并删除 `src/public/assets/vendor/qrcode.min.js`（`src/public/assets/` 至此不再存放任何第三方代码）。
+- 库能力核对（读 `dist/qrcode.js` 源码而非凭印象）：`qrcode(0, 'M')` 的 `make()` 内 `if (_typeNumber < 1)` 分支**自带 1→40 自动选版本**，纠错级 `'L'|'M'|'Q'|'H'`、`addData/getModuleCount/isDark/renderTo2dContext` 齐备，与原用法一一对应；`qrcode.js` 尾部 UMD 在无 `define`/`exports` 时落到全局 `var qrcode`，因此组件仍可用「运行时 script 注入」的懒加载方式（不破坏 iife 单 chunk 的首屏体积）。
+- 包内**无 LICENSE 文件**：许可依据是该包 `package.json` 的 `"license": "MIT"` 与 `dist/qrcode.js` 文件头（`Copyright (c) 2009 Kazuhiko Arase` / `Licensed under the MIT license` / `'QR Code' is registered trademark of DENSO WAVE INCORPORATED`），已如实写进 `THIRD-PARTY-NOTICES.txt` 的备注，不夸大成「包内自带许可正文」。
+- 按需加载代价：该库为未压缩版，懒加载文件 19926 → 56694 字节；不进入首屏 `index.js`（构建产物 695.28 kB 与改动前一致）。
+
+### 3. `QrShareModal.vue` 的渲染分支
+
+- 原 `new QRCode(container, { text, width, height, correctLevel, colorDark, colorLight })` 换成显式四步：设 `qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']`（库默认按 charCode 编码，旧 vendor 库按 UTF-8；当前载荷是 base64 JSON 全 ASCII，此句只为防载荷将来出现非 ASCII 字段）→ `qrcode(0, 'M')` + `addData` + `make` → 建 `canvas` → `renderTo2dContext(ctx, cell)`。
+- 边长取整数模块（`cell = floor(size / modules)`），画布尺寸即 `cell × modules`，避免 CSS 缩放把模块边界插值成灰边；`.qr-paper canvas { max-width:100% }` 与 12px 白底内边距沿用原样式，未新增 CSS。
+- 载荷格式 `LockPass-QR v1` 未做任何改动，扫码端（移动端 / 扩展）无需同步变更。
+
+### 4. 验证（未启动浏览器，改为对产物做等价验证）
+
+- 新增 `scripts/test-qr-roundtrip.mjs`（`npm run test:qr`）：**直接以经典 script 方式加载 `dist/assets/vendor/qrcode.js`**（无 DOM 的 vm sandbox），断言全局名确实是 `qrcode`（即组件 `_loadVendor` 的判定条件），再按组件的调用序列编码 → 转 RGBA 位图 → 用同一套里的 jsQR 解码，比对取回文本逐字节相等。
+- 覆盖短载荷 / 600B / 1800B（警告线）/ 2200B（错误线上限）/ 非 ASCII 五档 × ｛无留白（等同弹窗实际输出）、4 模块留白对照｝，另加 canvas 直绘的模块数与黑块数核对、超容量必须抛错。**17 项断言全绿。**
+- 顺带记录的库行为差异：超容量时 `qrcode-generator` `throw` 的是**裸字符串** `'code length overflow. (19220>18672)'` 而非 `Error`；组件 catch 里取的是 `e.message || e`，故提示文案不受影响。
+- `npm run vite:build` 通过，`dist/assets/vendor/` 为 `jsQR.js` + `qrcode.js`，全仓库与产物内已无 `qrcode.min.js` 引用；`npm run version:check` 11 处一致（v1.1.7）。
+- **界面未做真人验证**：本会话尝试用浏览器打开产物被权限拦截，未获准启动应用，故扫码弹窗的实际视觉渲染（尺寸自适应、暗色主题下的白底纸）仍需用户手动过一遍。
+
+### 5. 文档同步
+
+- `AGENTS.md`：静态资源条目与目录结构改为「第三方运行期库不进仓库，声明为 npm 依赖 + 构建期拷贝」；离线优先条目补 `VENDOR_LIBS` / `copyVendorLibs` 的具体位置。
+- `docs/spec.md` 3.10、`README.md` 目录树：`qrcode.min.js` 表述改为 npm 依赖 + 构建期拷贝。
+- `scripts/gen-third-party-notices.mjs`：`VENDORED` 移除二维码库（已非内嵌手工文件），新增 `NPM_NOTES` 记录「包内无 LICENSE 文件」的许可依据；第【4】段把二维码库从「待确认」移入「已处理（保留记录）」，并写明 1 字符差异这一事实。
+
+### 6. 版本号
+
+- 与同日 jsQR 改造属**同一模块（第三方依赖治理）的追加处理**，按规范不推进版本号；基线仍 **v1.1.7**。
+
+---
+
+## 2026-10-11 · 授权与依赖治理：MIT 落地 + 第三方声明可生成 + jsQR 改由 npm 提供 —— **不推进版本号**（基线仍 v1.1.7）
+
+**动机**：项目定位转为面向他人使用，但仓库 `license` 字段为空（GitHub API 返回 `license: null`），且分发产物内嵌的第三方文件没有任何许可正文。这两件事在"只有自己在用"时无感，一旦有陌生人下载就是硬伤。
+
+### 1. MIT 授权落地
+
+- 新增仓库根 `LICENSE`（MIT 正文，版权人 `trexwb`，2026）。
+- `package.json` 补 `"license": "MIT"`。
+- `README.md` 顶部加协议徽章与「许可与商标」节，其中**品牌排除句**（名称/标志/图标不随代码授权）写在 README 而非 LICENSE 内：MIT 正文一旦附加自定义条款就不再是 MIT，会破坏 GitHub 的许可识别并让审计者需要额外判断。
+
+### 2. 第三方声明改为脚本生成（`scripts/gen-third-party-notices.mjs` → `THIRD-PARTY-NOTICES.txt`）
+
+- 桌面版链接 **512 个 crate**（版本取自 `src-tauri/Cargo.lock`），许可逐条读本地 cargo registry 各 crate 自身 `Cargo.toml` 的 `license` 字段，**不凭记忆书写**。
+- 本机未解包的 189 个（多为 Windows / Linux 平台专用依赖）如实标注「未获取」，在对应平台重新构建后重跑脚本即可补齐。
+- 产出中确认的两项**未合规事实**，文件内明确标注"不得对外表述为已合规"：
+  1. `src/public/assets/vendor/qrcode.min.js`（19926 字节）文件内**无任何版权 / 许可 / 版本声明**，确切上游只能由结构特征推定，未经核实。
+  2. `src/core/eff-wordlist.js` 文件头只记录来源 URL，**词表数据条款未记录**；EFF 说明页上的许可声明针对该页 JavaScript（GPLv3），不覆盖词表文件本身。
+
+### 3. jsQR 从仓库手工副本改为 npm 依赖（本次已消除第 2 节的一项风险）
+
+- **事实修正**：jsQR 常被当作 MIT，npm registry 元数据为 **Apache-2.0**（`jsqr@1.4.0`，上游 `github.com/cozmo/jsQR`）；Apache-2.0 随分发还须附许可正文与 NOTICE。
+- `npm install --save-exact jsqr@1.4.0`：包内自带 `LICENSE`，且 `node_modules/jsqr/dist/jsQR.js` 与删除前仓库里那份手工副本 **`cmp` 逐字节一致** —— 替换零行为差异、零体积差异。
+- `vite.config.js` 新增 `copyVendorLibs()` 插件（注册在 `injectSwVersion` 与 `demoteModuleScripts` 之间），构建期把 `node_modules/jsqr/dist/jsQR.js` 拷到 `dist/assets/vendor/jsQR.js`，**路径与历史完全一致**；删除 `src/public/assets/vendor/jsQR.js`。
+- **为什么不改成 `import jsQR from 'jsqr'`**：产物是 rollup `format: 'iife'` 单 chunk，静态 import 会把 256KB 解码器压进首屏，所有不扫码的用户一起背；`QrImportModal.vue` 的运行时 script 注入按需加载（`_loadVendor`，第 101 / 369 行）是既有设计，必须保留。
+- 缺包时**构建直接抛错**而非静默跳过：静默跳过的后果是扫码功能到线上才 404。
+
+### 4. 验证
+
+- `npm run vite:build` 通过（81 modules，index.js 695.13 kB / gzip 218.73 kB，与改动前同量级）。
+- `cmp node_modules/jsqr/dist/jsQR.js dist/assets/vendor/jsQR.js` 一致；`dist/assets/vendor/` 两个文件齐全。
+- `npm run version:check` 11 处一致（v1.1.7）。
+- `AGENTS.md` 目录结构段的 `src/public/` 一行同步为"jsQR 不再手工存放于此"。
+
+版本号保持 **v1.1.7 不变**：本轮为授权声明、构建期资产来源与文档改动，未引入新的用户可见逻辑分支。
+
+---
+
 ## 2026-10-11 · v1.1.7 —— 打包后「连不上对端」根治：默认 IP 选对 + 权限引导前置（PATCH +1；上一版本 v1.1.6）
 
 **现象**：`npm run tauri:dev` 能正常同步，但 GitHub 打包安装后报「连不上对端。请确认两端在同一网段……」。dev 与 release 跑的是同一份 Rust，差异只可能在环境/网络，不是逻辑。

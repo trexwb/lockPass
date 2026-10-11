@@ -2,6 +2,18 @@
 
 一款纯前端离线密码管理器，Vue 3 + Vite 构建，无后端服务器。浏览器双击 `dist/index.html` 即用，也可作为 Tauri 桌面应用（Windows / macOS）或 PWA 在线版使用。
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## 许可与商标
+
+源代码与文档以 **MIT License** 授权，见仓库根 [LICENSE](LICENSE)；第三方组件的许可与归属见 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
+
+> **本授权不涵盖 LockPass 名称、标志与图标的商用权。**
+> 你可以自由使用、修改、再分发代码（含商用），但**不得以「LockPass」名义发布或宣传你的衍生构建**。
+> 名称与图标的授权需另行取得，请联系仓库维护者。
+
+（徽章图片由 GitHub 仓库首页渲染，应用运行时不加载任何外部资源，离线可用不受影响。）
+
 ---
 
 ## 功能清单
@@ -230,7 +242,7 @@ LockPass/
 │   │   ├── modals/        # EntryEditor / Settings / Import / Export / Tags / QrShare / QrImport / ChangePw
 │   │   └── common/        # ModalBase 等公共组件
 │   ├── styles/            # 设计令牌 + 按域拆分样式（base/layout/entries/editor/modal/settings/utilities）
-│   └── public/            # 静态资源（sw.js / manifest.json / assets/vendor/*.js）
+│   └── public/            # 静态资源（sw.js / manifest.json / assets/icons；第三方二维码库改由 npm 提供）
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 ├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）
 ├── dist/                  # 构建产物（vite build 生成，不手动修改）
