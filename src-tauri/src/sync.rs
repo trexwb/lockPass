@@ -233,6 +233,17 @@ fn list_local_ips() -> Vec<String> {
         if let Some(ip) = default_route_ip() {
             ips.push(ip);
         }
+        return ips;
+    }
+    // 把"出默认路由的那张网卡"的地址排到最前：多网卡 / VPN / 热点下 ifconfig
+    // 顺序不可靠，而 `ips[0]` 是前端默认选中值。默认路由 IP 几乎一定是用户实际
+    // 上网的那张网卡（Wi-Fi/以太网），对端最可能在同子网，避免默认选中到 VPN /
+    // 雷雳网桥等错误网卡导致"连不上"。
+    if let Some(preferred) = default_route_ip() {
+        if let Some(pos) = ips.iter().position(|ip| ip == &preferred) {
+            ips.remove(pos);
+            ips.insert(0, preferred);
+        }
     }
     ips
 }

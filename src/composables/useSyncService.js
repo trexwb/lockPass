@@ -84,9 +84,10 @@ function describeError(err) {
         return t('syncService.err.localNetworkBlocked')
       }
       // 连不上（fetch/invoke 抛错，无 syncCode）按网络不通给专门的引导文案：
-      // 选错网段是「连不上」的头号原因（§9）
+      // 选错网段是「连不上」的头号原因（§9）。必须把原始原因一起显示 ——
+      // 「超时」「拒绝连接」「系统拦截」在界面上长得一样，只有原文能分开
       if (/Failed to fetch|Load failed|NetworkError|timed out|Connection refused|No route to host|Host is down|连接/i.test(msg)) {
-        return t('syncService.err.unreachable')
+        return t('syncService.err.unreachable', { reason: msg })
       }
       return t('syncService.err.unknown', { msg: msg || t('syncService.err.noDetail') })
   }

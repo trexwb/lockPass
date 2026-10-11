@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-10-11 · v1.1.7 —— 打包后「连不上对端」根治：默认 IP 选对 + 权限引导前置（PATCH +1；上一版本 v1.1.6）
+
+**现象**：`npm run tauri:dev` 能正常同步，但 GitHub 打包安装后报「连不上对端。请确认两端在同一网段……」。dev 与 release 跑的是同一份 Rust，差异只可能在环境/网络，不是逻辑。
+
+### 1. 根因：默认选中 IP 可能选错网卡
+
+`list_local_ips()` 原先按 `ifconfig` 输出顺序返回，`前端默认选中 ips[0]`。开发机通常只有一张网卡，默认 IP 恰好对；但打包后用户机器常有 Wi-Fi + VPN + 雷雳网桥等多张网卡，`ifconfig` 排第一的不一定是客户端所在子网的那个 IP → 客户端填到错误网卡的 IP → `TcpStream::connect` 超时/拒绝 → 落到 `unreachable`。
+
+**修复**：`list_local_ips()` 把 `default_route_ip()`（出默认路由、即实际上网的那张网卡）排到列表**第一位**，让默认选中值更可能是客户端同子网的 IP。
+
+### 2. 文案补全：本地网络权限没写进 `unreachable`
+
+macOS 拒绝本地网络访问时，很多时候表现为**连接超时**而非 EPERM，因此会落到 `unreachable` 而不是 `localNetworkBlocked`。原 `unreachable` 文案只提了 AP 隔离/防火墙，漏了「本地网络权限」这条头号坑。
+
+**修复**：`syncService.err.unreachable`（中/英）补全 —— ① 系统设置→隐私与安全性→本地网络 需允许 LockPass（打包版与开发版是不同身份、各需授权；重装/重构建令原授权失效且不重新弹窗，可 `tccutil reset LocalNetwork com.lockpass` 重置后再触发一次同步让它重弹）；② 两端同 Wi-Fi 子网、地址填主机显示那条；③ 路由器 AP 隔离 / macOS 防火墙可用手机热点直连排除。
+
+### 3. 改动清单
+
+- `src-tauri/src/sync.rs`：`list_local_ips()` 把默认路由 IP 置顶。
+- `src/i18n/{zh,en}.json`：`syncService.err.unreachable` 重写，补权限/tccutil 引导（两侧键数仍一致）。
+- `SyncServiceModal.vue`（v1.1.6 已加）：https 页面打开时的前置红字提示继续生效。
+
+### 4. 用户侧排查顺序（打包后连不上，按此排查）
+
+1. **先看主机地址**：进入「开启服务」后，确认选中的 IP 是客户端机器**同一 Wi-Fi 子网**的那个（现在默认就是默认路由网卡，一般即对）；改选后重试。
+2. **本地网络权限**：两端「系统设置 → 隐私与安全性 → 本地网络」确保 LockPass 已开；若之前授权过又重装/重构建过，需 `tccutil reset LocalNetwork com.lockpass` 后重触发一次同步重新弹窗。
+3. **macOS 防火墙**：系统设置→网络→防火墙，确认允许 LockPass 接收传入连接。
+4. **xattr**：`xattr -dr com.apple.quarantine "/Applications/LockPass.app"`（首次打开通常已自动移除，重装后仍需）。
+5. **AP 隔离**：用手机热点让两端直连，排除路由器把 Wi-Fi 客户端互相隔离。
+6. 仍不行 → 改用 `.vault` 手动互导。
+
+版本号由 v1.1.6 推进至 **v1.1.7**（PATCH +1，与 v1.1.6 不同日、不同根因）。
+
+---
+
 ## 2026-10-10 · 局域网同步：修掉「同步失败：」空错误 + 补 macOS 本地网络权限 —— **不推进版本号**（基线仍 v1.1.5）
 
 **现象**：A 端已开启服务，B 端点「连接」报 `同步失败：`，冒号后面什么都没有；同一局域网 `ping` 通，`nc -z -v -G 5 192.168.3.176 5613` 也 `succeeded!`。
@@ -53,7 +88,7 @@ Tauri v2 的 `invoke` 在命令返回 `Err(String)` 时 **reject 的是裸字符
 
 - **报错原因被吞掉**：Tauri v2 的 `invoke` 在命令返回 `Err(String)` 时，Promise 是用**裸字符串**拒绝的，不是 `Error` 实例 —— 只读 `err.message` 得到 `undefined`，界面显示「同步失败：」空串。已加 `messageOf()` 归一（字符串 / Error / 对象 / DOMException 都取得到文本），并补充「未返回具体原因（详见控制台日志）」兜底文案。
 - **macOS 系统拦截可识别**：新增 `syncService.err.localNetworkBlocked` —— macOS「本地网络」隐私未授权时 Rust 的 `connect` 直接 EPERM，`nc` 在终端有授权所以能通、应用没有。现在会直接给出「系统设置 → 隐私与安全性 → 本地网络 → 允许 LockPass」的引导，并提示**重新构建过应用会使原授权失效，需重新勾选**。
-- **手机 `Load failed` 精确定性**：新增 `E_MIXED_CONTENT` —— https 页面（在线版）访问 http 同步服务属混合内容，浏览器按规则级硬拦，不是网络不通。原来只会落到笼统的「连不上」，引导方向是错的。
+- **手机 `Load failed` 精确定性 + 前置提示**：新增 `E_MIXED_CONTENT` —— https 页面（在线版）访问 http 同步服务属混合内容，浏览器按规则级硬拦，不是网络不通。原来只会落到笼统的「连不上」，引导方向是错的。并在弹窗里加了**前置红字提示**：以 https 打开时，进入同步服务就直接显示「请改用 file:// 双击打开本机 dist/index.html 或桌面版作为客户端」，避免用户点「连接」失败后才去猜原因。
 - **可测试化重构 + 端到端测试**：`route()` / `spawn_sync_server()` 不再依赖 `tauri::AppHandle`（事件经注入的 `EventSender` 发出，与 `server.rs` 同手法），裁决逻辑抽出不依赖 `tauri::State` 的 `answer_auth_inner` / `answer_apply_inner`。新增 6 项真实 socket 上的端到端测试（`cargo test --lib sync::` 共 **11 项全绿**）：hello 正常 / 锁定 403、challenge + 未鉴权取快照 401、OPTIONS 预检 204、鉴权→取快照→回写（409 / 200）→关闭 完整往返、停止后端口释放。
 - **测试抓到的真 bug（「同步显示成功、对端没更新」）**：`answer_apply_inner` 用 `take()` 取走 `apply_pending` 发送裁决结果，HTTP 线程随后拿到 `None` —— `apply` 返回 200，但服务端快照 / `mac` / `rev` **完全没被采纳**，A 的 `rev` 停在旧值导致下次同步 `baseRev` 必然对不上、反复 409。已改为只借用（`as_ref`）不取走。
 - **二次开启服务崩溃**（v1.1.5 同期修复，一并随本版发布）：`stopHost()` 清空会话材料后再次点「开启服务」不重新派生 `K_auth`，`crypto.subtle.sign('HMAC', null, …)` 抛 `Argument 2 ('key') … must be an instance of CryptoKey`。已抽出幂等的 `ensureHostSession()`；顺带修掉「二次开启沿用旧信封」导致对端拉到过期数据的问题；`crypto.js` 的 `hmacHex` 增加 `CryptoKey` 守卫便于定位。
