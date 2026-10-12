@@ -42,4 +42,4 @@
 - `vite build` 0 error（72 modules，含 usePasskey composable）
 - 代码审查修复：补 `SvgIcons.shield` 方法（原生物解锁按钮引用不存在图标致渲染崩溃）；抽 `usePasskey` 统一状态查询与平台判定。
 - 版本号随项目整体重置后自增至 v1.0.1；未执行任何 git 操作。
-- 2026-10-08（v1.1.3）本机直调 Security 框架实测：三标志叠加返回 -50；去掉 `userPresence` 后访问控制对象创建成功；`kSecPrivateKeyAttrs` 嵌套布局被接受，失败点仅剩 -34018（未签名环境的 entitlement）。同机 `security find-identity -v -p codesigning` = 0 valid identities，故 **enroll → 生物验证 → unlock 全链尚未在任何签名构建上端到端跑通**，需在 Apple 开发者证书签名的构建上回归（启用一次 → 锁屏出现生物入口 → 生物验证解密 → `status.enabled` 为 true）。
+- 本机直调 Security 框架验证：三标志（含 `userPresence`）叠加返回 -50；去掉 `userPresence` 后访问控制对象创建成功；`kSecPrivateKeyAttrs` 嵌套布局被接受，失败点仅剩 -34018（未签名环境的 entitlement）。因此 **enroll → 生物验证 → unlock 全链尚未在任何签名构建上端到端跑通**，需在 Apple 开发者证书签名的构建上回归（启用一次 → 锁屏出现生物入口 → 生物验证解密 → `status.enabled` 为 true）。

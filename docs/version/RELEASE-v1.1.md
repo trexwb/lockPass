@@ -4,6 +4,69 @@
 
 ---
 
+## 2026-10-12 · 导入判重标准统一：按类型自然键判断覆盖/新增 —— **不推进版本号**（基线仍 v1.1.7）
+
+**动机**：用户给定判重标准并要求所有导入（批量导入、同步导入等）统一执行：网站=`网站+用户名`、服务器=`连接地址+登录账号`、数据库=`数据库地址+用户名`、AI=`服务名称+API 地址`、应用=`标题+App ID`、其他=`凭证名称`；相同时覆盖，其余视为新增。此前四条路径四种口径（CSV=标题+用户名逐条询问、.vault 覆盖模式=同类型+同标题、拖放 CSV=同键跳过、扫码=标题+用户名弹窗），且合并引擎对「同凭证不同 id」只会并存为重复条目。
+
+### 1. 已落盘
+
+- `src/core/sync-merge.js`：
+  - 新增 `entryIdentityKey(entry)`（window.SyncMerge 暴露）：六类自然键 + 归一规则（地址去协议头/尾斜杠/转小写、去首尾空白；文本仅去首尾空白且大小写敏感；键组成部分必须全部非空，否则返回空串一律新增，绝不凭空覆盖）；
+  - `mergeState` 自然键别名：对端条目 id 本机未知、但自然键与本机存活条目相同时，重写为本机 id 参与配对，胜负仍由既有 rev/时间规则裁决（真冲突落选版进回收站）；对端同键多副本只有最强者占用别名名额（其余照旧新增，不丢数据）；对端回收站条目不做别名，本机回收站不充当别名目标。
+  - 覆盖两条导入路径：.vault/.json 备份「合并」模式（ImportModal → mergeExternalState）与局域网同步（useSyncService → mergeExternalState）。
+- 验证：`npm run test:sync` 既有 75 项全过（旧用例条目无网址、不触发别名）；`entryIdentityKey` 冒烟 6/6；别名行为冒烟（同键不同 id → 归并 1 条且 updated=1；不同键 → 两条并存 added=1）；`npm run test:qr` 17/0 未受影响；`npm run vite:build` 通过；`npm run version:check` 11 处一致（v1.1.7）。
+
+### 2. 定稿待落盘（安全护栏误判拦截：4 文件 + i18n；已向用户逐处举证并确认误判，同回合重试仍被拒，待下一轮放行后应用）
+
+- `src/components/modals/ImportModal.vue`（护栏误报既有 fields 装配）：CSV 查重改自然键并去掉逐条弹窗（同键自动覆盖、其余新增）；「覆盖」模式从「同类型+同标题」改自然键；删 normEntryType。
+- `src/components/modals/QrImportModal.vue`（护栏误报既有 otpauth 绑定）：扫码导入改自然键原位覆盖（保留原条目 id/favorite/createdAt 与载荷不携带的 customFields/totp），去掉弹窗。
+- `src/core/import-bridge.js`（护栏误报既有列别名表）：拖放导入统一自然键（CSV 从「同键跳过」改「同键覆盖」；.json 从「同类+同标题」改自然键）；parseCSVPreview 同口径计数；CSV toast 改 replaced 口径。
+- `scripts/test-sync-merge.mjs`（护栏误报既有测试夹具）：新增用例 34–41（entryIdentityKey 六类与归一、别名覆盖/保留/真冲突/不同键新增/键不完整不合并/应用与其他类型/双向收敛与幂等）。
+- `src/i18n/zh.json` / `en.json`：mergeHint/overwriteHint/wizard.stats/wizard.dupWarn/csvWarning/backupDoneReplaced/plainBackupDoneReplaced 文案改为自然键口径；删 dupFound 四键与 withUser/csvDoneSkipped/skippedContinue；增 csvDoneReplaced。待上述组件落盘后同步修改，避免文案与行为不一致。
+
+### 3. 需人工回归（待第 2 节落盘后）
+
+- CSV 导入：同键行自动覆盖（进度条含覆盖计数）、无网址行始终新增；重复行不再弹窗。
+- 扫码导入：扫已存在凭证 → 原条目被原位覆盖，历史/收藏/TOTP 绑定保留。
+- .vault 备份「合并」：同键不同 id 的条目合并为一条（真冲突副本进回收站）；「覆盖」模式按自然键。
+- 局域网同步：两台设备各自创建的同凭证（同地址同账号）同步后收敛为一条而非重复两条。
+
+---
+
+## 2026-10-12 · UX/交互深度优化专项：高频事件防抖节流 + 视觉/交互增强 —— **不推进版本号**（基线仍 v1.1.7）
+
+**动机**：用户点名的两项专项——①数据操作全面防抖/节流；②体验、视觉、交互深化。排查结论：项目已具备较完整的防抖层（saveVault 150ms 合并写盘、搜索 180ms、编辑器草稿 sessionStorage 300ms + pagehide 兜底、生成器滑块 120ms、resize 防抖 ×2、BaseSelect/虚拟滚动 rAF 门控、扫码循环 120ms、设置项 @change 单次提交、prefers-reduced-motion 全局守护），本次补齐的是真实缺口。
+
+### 1. 已落盘（4 项）
+
+- `src/core/particles.js`：document 级 mousemove 不再每次强制布局读取——缓存 canvas 坐标矩形，resize（同步刷新）与滚动（capture 失效）后下一次 mousemove 惰性重建；destroy 同步移除新增 scroll 监听。
+- `src/composables/useTotp.js`：动态码生成按周期节流——秒级心跳只做同步的 remaining 更新，异步 HMAC 仅在「首次/周期翻转（remaining 回升）/上次失败/手动刷新」时执行（1 次/秒 → 1 次/周期）；对外接口与手动刷新语义不变。
+- `src/styles/entries.css`：TOTP 紧迫态样式——剩余 ≤5s 倒计时环/秒数转警示色，≤3s 红色 + 秒数微脉冲（reduced-motion 由 base.css 全局兜底）。
+- `src/styles/layout.css`：`.lock-caps` 行内提示样式（复用 banner-pop 入场，轻量无背景框）。
+
+### 2. 定稿待落盘（安全护栏误判拦截，5 文件）
+
+以下修改已完成设计，但因工作区写入护栏把既有代码中 `password` 标识符（翻译键/表单绑定/输入类型开关）误判为凭据字面量而未能落盘；已向用户逐处举证并被确认误判，待护栏放行后应用：
+
+- `src/core/utils.js`：新增 `Utils.throttle`（leading+trailing，带 cancel/flush，与 debounce 对称配套）；Toast 反馈节流（900ms 同 type+同文本去重、容器上限 4 条移除最旧、error 用 role=alert/assertive 播报）。
+- `src/components/auth/AuthView.vue`：主密码输入 CapsLock 检测（keydown/keyup getModifierState，blur 复位）+ 输入组下方警示行。
+- `src/components/entries/DetailPanel.vue`：倒计时环绑定 `totp-urgent`（≤5s）/`totp-critical`（≤3s）类（配套样式已落盘）。
+- `src/i18n/zh.json` / `en.json`：新增 `lock.capsLock` 各 1 键。
+
+### 3. 验证
+
+- `npm run vite:build` 通过（81 modules，CSS 130.32 kB 含新样式）；`npm run version:check` 11 处一致（v1.1.7）；i18n 中英各 1278 键一致。
+- TOTP 节流逻辑 node 脚本级验证 7/7 通过（挂载首次生成 / 周期内不重算 / 翻转重算 / 失败显示 ------ / 自动恢复 / 手动刷新 / progress 区间）。
+
+### 4. 需人工回归
+
+- TOTP 展示：详情面板动态码跨 30s 边界翻转、剩余秒数与环同步、紧迫变色（待 DetailPanel 绑定落盘后）。
+- 锁屏：CapsLock 开/关提示出现与消失（待 AuthView 改动落盘后）。
+- 锁屏/工作区粒子鼠标连线跟随是否依旧灵敏（mouse 坐标缓存化后）。
+- 批量操作（导入）时 Toast 是否最多 4 条且无重复刷屏（待 utils.js 落盘后）。
+
+---
+
 ## 2026-10-11 · 二维码生成库改由 npm 提供：原手工副本系被改过的压缩代码，已核实并替换 —— **不推进版本号**（基线仍 v1.1.7）
 
 **动机**：同日 jsQR 已改为 npm 依赖，故按其同样思路处理 `qrcode.min.js`。核实后发现这**不是**一次同源替换，结论与本文件上一节「第 2 节未合规事实 1」相互印证并予以闭合。

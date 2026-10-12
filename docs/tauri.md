@@ -87,12 +87,11 @@ npm run version:check    # 校验版本号一致性
 - 访问：`https://trexwb.github.io/lockPass/`（首次需在仓库 Settings → Pages → Source 选 GitHub Actions）
 - 在线版与桌面版数据独立（浏览器 IndexedDB），可用 .vault 导入导出互通
 
-## macOS 本地构建实测（2026-08-20）
+## macOS 本地构建
 
-- 工具链：Rust 1.97.1 (aarch64-apple-darwin) + Node 22 + Xcode CLT；首次 `cargo build` 约 **3m27s** 完成。
-- `src-tauri/target/release/bundle/macos/LockPass.app` **生成成功**（Mach-O arm64，ad-hoc 签名），
-  可在构建机直接运行。
-- **`.dmg` 已与 `tauri build` 解耦**：Tauri 自带 create-dmg 的末尾 `osascript`（Finder AppleScript）美化步骤，在无 GUI / 无 Finder 自动化授权的环境（CI、远程、部分本地终端）必失败（报错 “failed to run bundle_dmg.sh”）。为此 `bundle.targets` 已设为 `["app","msi","nsis"]`（macOS 只出 `.app`），dmg 改由 `npm run make-dmg`（`scripts/make-dmg.sh`，纯 `hdiutil`、无 AppleScript）生成：`src-tauri/target/release/bundle/dmg/LockPass_<版本>_aarch64.dmg`（已挂载验证）。这样 `tauri build` 在任意环境都能干净跑完。
+- 工具链：Rust + Node 22 + Xcode Command Line Tools；`cargo build` 首次构建约数分钟完成。
+- `src-tauri/target/release/bundle/macos/LockPass.app` 生成成功（Mach-O arm64，ad-hoc 签名），可在构建机直接运行。
+- **`.dmg` 已与 `tauri build` 解耦**：Tauri 自带 create-dmg 的末尾 `osascript`（Finder AppleScript）美化步骤，在无 GUI / 无 Finder 自动化授权的环境（CI、远程、部分本地终端）必失败（报错 “failed to run bundle_dmg.sh”）。为此 `bundle.targets` 设为 `["app","msi","nsis"]`（macOS 只出 `.app`），dmg 改由 `npm run make-dmg`（`scripts/make-dmg.sh`，纯 `hdiutil`、无 AppleScript）生成：`src-tauri/target/release/bundle/dmg/LockPass_<版本>_aarch64.dmg`。这样 `tauri build` 在任意环境都能干净跑完。
 - 分发到其他 Mac 需 **Apple Developer ID 签名 + 公证**（CI 现未配置该步骤，见上一节）。
 
 ## 安全 / 发布说明

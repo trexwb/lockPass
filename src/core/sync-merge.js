@@ -12,7 +12,12 @@
    - 墓碑表维护：collectTombstones / rememberTombstone / pruneTombstones，
      已彻底删除的条目在对端旧副本里不得复活；
    - 时钟漂移：clockSkewMs 量出对端超前量，超限则以 strict 合并 —— 所有差异
-     进冲突表而不按 rev 自动选，避免快时钟机器静默赢得每一次冲突。
+     进冲突表而不按 rev 自动选，避免快时钟机器静默赢得每一次冲突；
+   - 自然键别名（导入判重标准 2026-10-12）：对端条目 id 本机未知、但自然键
+     entryIdentityKey 与本机存活条目相同（网站/服务器/数据库/AI = 地址+账号，
+     应用 = 标题+App ID，其他 = 凭证名称）时，视为同一凭证、重写为本机 id
+     参与配对，胜负仍由 rev/时间规则裁决；自然键不同或无法判定（键为空）
+     一律视为新增，绝不凭空覆盖。
    ═══════════════════════════════════════════════════════════════════ */
 
 /** 指纹忽略的键：rev 自身（否则自激）、showPassword（纯 UI 态，切换会假报变更） */
@@ -215,6 +220,74 @@ export function clockSkewMs(state, now) {
   return Math.max(0, max - nowMs)
 }
 
+/* ── 条目自然键（导入判重标准，2026-10-12 用户规范）──────────────
+   所有导入（批量 CSV / .vault 备份 / 扫码 / 局域网同步 / 桌面拖放）判断
+   「覆盖还是新增」统一按类型自然键：
+     - 网站 website   ：网站地址 url（兼容旧字段 host/baseUrl）+ 用户名 username
+     - 服务器 server  ：连接地址 url（兼容旧字段 host/baseUrl）+ 登录账号 username
+     - 数据库 database：数据库地址 url（兼容旧字段 host/baseUrl）+ 用户名 username
+     - AI ai          ：服务名称 username + API 地址 url（兼容旧字段 host/baseUrl）
+     - 应用 app       ：标题 title + App ID appId
+     - 其他 other     ：凭证名称 title
+   归一规则：地址类字段去 http(s):// 协议头、去尾部“/”、转小写、去首尾空白；
+   其余字段仅去首尾空白（大小写敏感，避免误并大小写不同的不同账号）。
+   键的组成部分必须全部非空，否则返回 '' —— 无法判定同一性时一律视为新增，
+   绝不凭空覆盖（与旧覆盖模式「标题非空才参与匹配」的护栏同思路）。 */
+
+/** 自然键归一：地址类字段（去协议头 / 尾斜杠、转小写、去首尾空白） */
+function normIdentityAddr(v) {
+  return String(v ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '')
+}
+
+/** 自然键归一：文本字段（仅去首尾空白，大小写敏感） */
+function normIdentityText(v) {
+  return String(v ?? '').trim()
+}
+
+/** 自然键归一：条目类型（未知类型一律按 website，与 toEntryType 同口径） */
+function normIdentityType(v) {
+  const t = String(v || '').trim().toLowerCase()
+  return ['website', 'server', 'database', 'ai', 'app', 'other'].includes(t) ? t : 'website'
+}
+
+/**
+ * 计算条目自然键（导入判重标准；字段映射见文件头注释与 docs/spec.md 导入章节）。
+ * @param {object} entry 条目或待导入字段集（读取 entryType / url / host / baseUrl / username / title / appId）
+ * @returns {string} 形如 "website|github.com|user" 的自然键；无法判定时返回 ''
+ */
+export function entryIdentityKey(entry) {
+  if (!entry) return ''
+  const type = normIdentityType(entry.entryType)
+  if (type === 'other') {
+    const title = normIdentityText(entry.title)
+    return title ? 'other|' + title : ''
+  }
+  if (type === 'app') {
+    const title = normIdentityText(entry.title)
+    const appId = normIdentityText(entry.appId)
+    return title && appId ? 'app|' + title + '|' + appId : ''
+  }
+  // website / server / database / ai：地址 + 账号（AI 的「服务名称」即 username 字段）
+  const addr = normIdentityAddr(entry.url ?? entry.host ?? entry.baseUrl)
+  const user = normIdentityText(entry.username)
+  return addr && user ? type + '|' + addr + '|' + user : ''
+}
+
+/**
+ * 同键候选的确定性强弱比较（与谁是本机无关）：rev 大 → updatedAt 新 → 指纹小者强。
+ * 用于自然键别名时在多个同键条目中确定性选出参与 id 配对的代表。
+ * @param {object} a 候选条目
+ * @param {object} b 候选条目
+ * @returns {boolean} a 是否强于 b
+ */
+function identityStronger(a, b) {
+  const ra = revOf(a), rb = revOf(b)
+  if (ra !== rb) return ra > rb
+  const ua = String(a.updatedAt || ''), ub = String(b.updatedAt || '')
+  if (ua !== ub) return ua > ub
+  return fingerprint(a) < fingerprint(b)
+}
+
 /** 条目视图：id → { alive, rec } */
 function viewOf(state) {
   const map = new Map()
@@ -245,6 +318,38 @@ export function mergeState({ local, remote, tombstones = {}, newId, now, history
   const stamp = () => now || new Date().toISOString()
   const L = viewOf(local)
   const R = viewOf(remote)
+
+  /* ── 自然键别名（导入判重标准，见 entryIdentityKey 注释）──────────
+     对端条目 id 本机不存在、但自然键与本机存活条目相同 → 视为同一凭证
+     的不同谱系，重写为本机 id 参与配对；胜负仍由既有 rev/时间规则裁决，
+     真冲突落选版进回收站。仅本机存活条目充当别名目标（回收站不参与
+     判定）；对端回收站条目不做别名，照旧按 id 处理。 */
+  const localKeyIndex = new Map()
+  L.forEach((v, id) => {
+    if (!v.alive) return
+    const k = entryIdentityKey(v.rec)
+    if (!k) return
+    const cur = localKeyIndex.get(k)
+    if (cur === undefined || identityStronger(v.rec, L.get(cur).rec)) localKeyIndex.set(k, id)
+  })
+  // 对端同键多副本时只让最强者占用别名名额，其余保持原 id 照旧新增（不丢数据）
+  const aliasCandidates = new Map()
+  R.forEach((v, id) => {
+    if (!v.alive || L.has(id)) return
+    const k = entryIdentityKey(v.rec)
+    if (!k) return
+    const targetId = localKeyIndex.get(k)
+    if (targetId === undefined) return
+    const cur = aliasCandidates.get(targetId)
+    if (!cur || identityStronger(v.rec, cur.rec)) aliasCandidates.set(targetId, v)
+  })
+  const RAliased = new Map(R)
+  aliasCandidates.forEach((v, targetId) => {
+    // 对端本身已有同 id 条目时让位于 id 配对，不做别名
+    if (RAliased.has(targetId)) return
+    RAliased.delete(v.rec.id)
+    RAliased.set(targetId, { alive: true, rec: { ...v.rec, id: targetId } })
+  })
 
   const entries = []
   const deleted = []
@@ -319,14 +424,15 @@ export function mergeState({ local, remote, tombstones = {}, newId, now, history
   }
 
   // 顺序：本机条目在前、对端独有条目追加在后。展示顺序不属于 join 等价性。
+  // 对端以自然键别名归并后的视图（RAliased）为准。
   const orderedIds = []
   const pushed = new Set()
-  ;[...L.keys(), ...R.keys(), ...Object.keys(tombstones)].forEach((id) => {
+  ;[...L.keys(), ...RAliased.keys(), ...Object.keys(tombstones)].forEach((id) => {
     if (!pushed.has(id)) { pushed.add(id); orderedIds.push(id) }
   })
 
   for (const id of orderedIds) {
-    const l = L.get(id), r = R.get(id)
+    const l = L.get(id), r = RAliased.get(id)
     const tomb = tombstones[id]
 
     if (!l && !r) {
@@ -414,6 +520,7 @@ const SyncMerge = {
   TOMBSTONE_RETENTION_DAYS,
   MAX_CLOCK_SKEW_MS,
   fingerprint,
+  entryIdentityKey,
   digestIndex,
   tagDigestIndex,
   stampRevs,
