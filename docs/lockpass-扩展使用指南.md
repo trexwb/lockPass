@@ -111,7 +111,7 @@ LockPass 扩展为 Manifest V3 单份代码，除 Safari 外主流浏览器均�
 1. **解锁同步**：桌面端解锁时，前端经 `tauri-server-bridge.js`（`window.TauriServer`）调用 `server_ready` + `server_set_entries`，把明文条目同步到 Rust 内存（仅内存，不落盘；推的是**旅行模式可见集合**，敏感条目不外泄）；锁定/登出调用 `server_lock` 清空；
 2. **一键配对**：扩展首次使用时发起配对，桌面端弹窗展示 nonce，用户确认后发放 token（token 仅存 Rust 内存与扩展 `chrome.storage.local`）；
 3. **自动填充**：网页发现密码输入框时，`content.js` 上报 `LP_PAGE_READY(domain)`；扩展就绪后调用 `GET /credentials?domain=`（Bearer 鉴权）取回条目并填充。
-4. **自动捕获（v1.1.3）**：网站登录成功时扩展浮层询问「保存到 LockPass？」，用户点「保存」后经 `POST /capture` 登记待确认请求，桌面应用弹出确认框——**必须在桌面窗口点「保存」才入库**；扩展轮询 `GET /capture/status?id=` 领取结果（`created` / `updated` / `exists` / `rejected` / `error`）。Rust 侧只登记 `{id, created_at, status}`，凭据随事件交给窗口、不在后台进程留存。
+4. **自动捕获**：网站登录成功时扩展浮层询问「保存到 LockPass？」，用户点「保存」后经 `POST /capture` 登记待确认请求，桌面应用弹出确认框——**必须在桌面窗口点「保存」才入库**；扩展轮询 `GET /capture/status?id=` 领取结果（`created` / `updated` / `exists` / `rejected` / `error`）。Rust 侧只登记 `{id, created_at, status}`，凭据随事件交给窗口、不在后台进程留存。
 
 ### 一键配对流程
 
@@ -170,7 +170,7 @@ LockPass 扩展为 Manifest V3 单份代码，除 Safari 外主流浏览器均�
 - ⚠️ **33555 只服务浏览器扩展，与「局域网同步服务」是两套完全独立的服务**（v1.1.5 起）：后者由 `src-tauri/src/sync.rs` 提供，绑定**局域网 IPv4**、端口从 **5613** 起向后探测，端点前缀为 `/sync/`，且**不存在 `/credentials` 之类的明文面**。改 33555 不会影响同步，反之亦然；排障时请先确认自己在看哪一套。
 - 桌面端**锁定后**，扩展回到未解锁态（`/status` 返回 `unlocked: false`）；重新解锁后自动恢复，无需重新配对；
 - 桌面端 popup 列表**仅显示当前网站匹配的条目**（按域名匹配，含上级域），不提供全量浏览；浏览器版仍为全量列表；
-- 捕获待确认槽位**最多 4 条、60s 过期即丢弃、锁定即清空**；扩展侧等待上限 45s（短于槽位 TTL），浮层另有 50s 兜底恢复按钮，超时只代表未收到结果，桌面端确认过的入库不受影响；
+- 捕获待确认槽位**最多 4 条、180s 过期即丢弃、锁定即清空**；扩展侧等待上限 185s（≥ Rust 槽位 TTL），浮层另有 195s 看门狗兜底恢复按钮，超时只代表未收到结果，桌面端确认过的入库不受影响；
 - 安全设计：仅绑定回环地址、Bearer 常数时间比较、明文仅存内存、锁定即清、捕获必须经桌面窗口用户确认。
 
 ---

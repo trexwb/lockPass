@@ -1,0 +1,574 @@
+LockPass — 第三方声明 / THIRD-PARTY NOTICES
+
+本文件由 `node scripts/gen-third-party-notices.mjs` 生成，禁止手改正文之外的内容。
+生成时间：2026-10-11T02:41:54.450Z
+LockPass 自身以 MIT License 分发，见仓库根 LICENSE。
+
+说明：LockPass 不主张对第三方组件的版权，亦不授予其额外许可。
+各条目「许可正文」列指向本地存在该包时的许可文件位置；未安装的依赖只能
+依据其自身元数据标注，标注为「未获取」的条目表示本地无证据，未经核实。
+
+───────────────────────────────────────────────────────────────────
+
+【1】内嵌进前端产物的第三方文件（随 dist 分发）
+
+· EFF Large Diceware Wordlist（7776 词）
+  版本：2016-07-18 版
+  许可：未标注（待人工核实）
+  来源：https://www.eff.org/files/2016-07-18/eff_large_wordlist.txt
+  本仓库位置：src/core/eff-wordlist.js
+  备注：词表正文已内嵌于源码，文件头仅记录来源 URL，未记录许可条款。需向 EFF 的来源页面确认数据条款后再补写此条。
+
+───────────────────────────────────────────────────────────────────
+
+【2】npm 运行时依赖（打进前端产物，或构建期拷贝到 dist/assets/vendor/）
+
+· jsqr@1.4.0（声明范围 1.4.0） — 许可：Apache-2.0
+  许可正文：node_modules/jsqr/LICENSE
+· qrcode-generator@2.0.4（声明范围 2.0.4） — 许可：MIT
+  许可正文：包内未附许可文件
+  备注：包内未附 LICENSE 文件；许可依据为该包 package.json 的 "license": "MIT" 与 dist/qrcode.js 文件头声明（Copyright (c) 2009 Kazuhiko Arase / Licensed under the MIT license / The word 'QR Code' is registered trademark of DENSO WAVE INCORPORATED）。
+· vue@3.5.43（声明范围 ^3.5.43） — 许可：MIT
+  许可正文：node_modules/vue/LICENSE
+
+【2b】npm 构建期依赖（不进入产物，但随源码仓库分发时同样适用其许可）
+
+· @tauri-apps/cli@2.11.4（声明范围 ^2） — 许可：Apache-2.0 OR MIT
+  许可正文：node_modules/@tauri-apps/cli/LICENSE_APACHE-2.0、node_modules/@tauri-apps/cli/LICENSE_MIT
+· @vitejs/plugin-vue@6.0.10（声明范围 ^6.0.10） — 许可：MIT
+  许可正文：node_modules/@vitejs/plugin-vue/LICENSE
+· vite@8.3.4（声明范围 ^8.3.4） — 许可：MIT
+  许可正文：node_modules/vite/LICENSE.md
+· vite-plugin-singlefile@2.3.3（声明范围 ^2.3.3） — 许可：MIT
+  许可正文：node_modules/vite-plugin-singlefile/LICENSE
+
+───────────────────────────────────────────────────────────────────
+
+【3】桌面版链接的 Rust 依赖（共 512 个，版本取自 src-tauri/Cargo.lock）
+
+格式：crate 版本 — 许可（该 crate 的 Cargo.toml 自身声明）
+
+· adler2 2.0.1 — 0BSD OR MIT OR Apache-2.0
+· aho-corasick 1.1.5 — Unlicense OR MIT
+· alloc-no-stdlib 3.0.0 — BSD-3-Clause
+· alloc-stdlib 0.3.0 — BSD-3-Clause
+· android_system_properties 0.1.6 — 未获取（本地 registry 无该 crate 解包）
+· anyhow 1.0.104 — MIT OR Apache-2.0
+· arbitrary 1.5.0 — 未获取（本地 registry 无该 crate 解包）
+· arboard 3.6.1 — MIT OR Apache-2.0
+· ascii 1.1.0 — Apache-2.0 OR MIT
+· atk 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· atk-sys 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· atomic-waker 1.1.2 — Apache-2.0 OR MIT
+· autocfg 1.5.1 — Apache-2.0 OR MIT
+· base64 0.21.7 — MIT OR Apache-2.0
+· base64 0.22.1 — MIT OR Apache-2.0
+· base64 0.23.1 — MIT OR Apache-2.0
+· bit-set 0.8.0 — Apache-2.0 OR MIT
+· bit-vec 0.8.0 — Apache-2.0 OR MIT
+· bitflags 1.3.2 — MIT/Apache-2.0
+· bitflags 2.13.2 — MIT OR Apache-2.0
+· block-buffer 0.10.4 — MIT OR Apache-2.0
+· block2 0.6.2 — MIT
+· brotli 9.0.0 — BSD-3-Clause AND MIT
+· brotli-decompressor 6.0.1 — BSD-3-Clause/MIT
+· bs58 0.5.1 — MIT/Apache-2.0
+· bumpalo 3.20.3 — 未获取（本地 registry 无该 crate 解包）
+· bytemuck 1.25.2 — Zlib OR Apache-2.0 OR MIT
+· byteorder 1.5.0 — Unlicense OR MIT
+· byteorder-lite 0.1.0 — Unlicense OR MIT
+· bytes 1.12.1 — MIT
+· cairo-rs 0.18.5 — 未获取（本地 registry 无该 crate 解包）
+· cairo-sys-rs 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· camino 1.2.6 — MIT OR Apache-2.0
+· cargo_metadata 0.19.2 — MIT
+· cargo_toml 1.0.1 — Apache-2.0 OR MIT
+· cargo-platform 0.1.9 — MIT OR Apache-2.0
+· cc 1.7.0 — MIT OR Apache-2.0
+· cesu8 1.1.0 — 未获取（本地 registry 无该 crate 解包）
+· cfb 0.14.0 — MIT
+· cfg-expr 0.15.8 — 未获取（本地 registry 无该 crate 解包）
+· cfg-if 1.0.5 — MIT OR Apache-2.0
+· chrono 0.4.45 — MIT OR Apache-2.0
+· chunked_transfer 1.5.0 — MIT OR Apache-2.0
+· clipboard-win 5.4.1 — 未获取（本地 registry 无该 crate 解包）
+· combine 4.6.8 — 未获取（本地 registry 无该 crate 解包）
+· cookie 0.18.2 — MIT OR Apache-2.0
+· core-foundation 0.10.1 — MIT OR Apache-2.0
+· core-foundation 0.9.4 — MIT OR Apache-2.0
+· core-foundation-sys 0.8.7 — MIT OR Apache-2.0
+· core-graphics 0.25.0 — MIT OR Apache-2.0
+· core-graphics-types 0.2.0 — MIT OR Apache-2.0
+· cpufeatures 0.2.17 — MIT OR Apache-2.0
+· crc32fast 1.5.2 — MIT OR Apache-2.0
+· crossbeam-channel 0.5.17 — MIT OR Apache-2.0
+· crossbeam-utils 0.8.23 — MIT OR Apache-2.0
+· crunchy 0.2.4 — 未获取（本地 registry 无该 crate 解包）
+· crypto-common 0.1.7 — MIT OR Apache-2.0
+· cssparser 0.37.0 — MPL-2.0
+· cssparser-macros 0.7.1 — MPL-2.0
+· ctor 1.0.13 — Apache-2.0 OR MIT
+· darling 0.24.1 — MIT
+· darling_core 0.24.1 — MIT
+· darling_macro 0.24.1 — MIT
+· dbus 0.9.12 — 未获取（本地 registry 无该 crate 解包）
+· defmt 1.1.1 — MIT OR Apache-2.0
+· defmt-macros 1.1.1 — MIT OR Apache-2.0
+· defmt-parser 1.0.0 — MIT OR Apache-2.0
+· deranged 0.5.8 — MIT OR Apache-2.0
+· derive_arbitrary 1.5.0 — 未获取（本地 registry 无该 crate 解包）
+· derive_more 2.1.1 — MIT
+· derive_more-impl 2.1.1 — MIT
+· digest 0.10.7 — MIT OR Apache-2.0
+· dirs 7.0.0 — MIT OR Apache-2.0
+· dirs-sys 0.5.0 — MIT OR Apache-2.0
+· dispatch2 0.3.1 — Zlib OR Apache-2.0 OR MIT
+· displaydoc 0.2.7 — MIT OR Apache-2.0
+· dlopen2 0.8.2 — 未获取（本地 registry 无该 crate 解包）
+· dlopen2_derive 0.4.3 — 未获取（本地 registry 无该 crate 解包）
+· dom_query 0.28.0 — MIT
+· downcast-rs 1.2.1 — 未获取（本地 registry 无该 crate 解包）
+· dpi 0.1.2 — Apache-2.0 AND MIT
+· dtoa 1.0.11 — MIT OR Apache-2.0
+· dtoa-short 0.3.5 — MPL-2.0
+· dunce 1.0.5 — CC0-1.0 OR MIT-0 OR Apache-2.0
+· dyn-clone 1.0.20 — MIT OR Apache-2.0
+· embed_plist 1.2.2 — MIT OR Apache-2.0
+· embed-resource 3.0.12 — MIT
+· equivalent 1.0.2 — Apache-2.0 OR MIT
+· erased-serde 0.4.10 — MIT OR Apache-2.0
+· errno 0.3.14 — MIT OR Apache-2.0
+· error-code 3.4.0 — 未获取（本地 registry 无该 crate 解包）
+· fastrand 2.5.0 — Apache-2.0 OR MIT
+· fax 0.2.7 — MIT
+· fdeflate 0.3.7 — MIT OR Apache-2.0
+· field-offset 0.3.6 — 未获取（本地 registry 无该 crate 解包）
+· filetime 0.2.29 — MIT/Apache-2.0
+· find-msvc-tools 0.1.14 — MIT OR Apache-2.0
+· fixedbitset 0.5.7 — 未获取（本地 registry 无该 crate 解包）
+· flate2 1.1.10 — MIT OR Apache-2.0
+· fnv 1.0.7 — Apache-2.0 / MIT
+· foldhash 0.1.5 — 未获取（本地 registry 无该 crate 解包）
+· foldhash 0.2.0 — Zlib
+· foreign-types 0.5.0 — MIT/Apache-2.0
+· foreign-types-macros 0.2.4 — MIT/Apache-2.0
+· foreign-types-shared 0.3.1 — MIT/Apache-2.0
+· form_urlencoded 1.2.2 — MIT OR Apache-2.0
+· futures-channel 0.3.34 — MIT OR Apache-2.0
+· futures-core 0.3.34 — MIT OR Apache-2.0
+· futures-executor 0.3.34 — MIT OR Apache-2.0
+· futures-io 0.3.34 — MIT OR Apache-2.0
+· futures-macro 0.3.34 — MIT OR Apache-2.0
+· futures-sink 0.3.34 — MIT OR Apache-2.0
+· futures-task 0.3.34 — MIT OR Apache-2.0
+· futures-util 0.3.34 — MIT OR Apache-2.0
+· gdk 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· gdk-pixbuf 0.18.5 — 未获取（本地 registry 无该 crate 解包）
+· gdk-pixbuf-sys 0.18.0 — 未获取（本地 registry 无该 crate 解包）
+· gdk-sys 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· gdkwayland-sys 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· gdkx11 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· gdkx11-sys 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· generic-array 0.14.7 — MIT
+· gethostname 1.1.0 — 未获取（本地 registry 无该 crate 解包）
+· getrandom 0.2.17 — MIT OR Apache-2.0
+· getrandom 0.3.4 — MIT OR Apache-2.0
+· getrandom 0.4.3 — MIT OR Apache-2.0
+· gio 0.18.4 — 未获取（本地 registry 无该 crate 解包）
+· gio-sys 0.18.1 — 未获取（本地 registry 无该 crate 解包）
+· glib 0.18.5 — 未获取（本地 registry 无该 crate 解包）
+· glib-macros 0.18.5 — 未获取（本地 registry 无该 crate 解包）
+· glib-sys 0.18.1 — 未获取（本地 registry 无该 crate 解包）
+· glob 0.3.4 — MIT OR Apache-2.0
+· gobject-sys 0.18.0 — 未获取（本地 registry 无该 crate 解包）
+· gtk 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· gtk-sys 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· gtk3-macros 0.18.2 — 未获取（本地 registry 无该 crate 解包）
+· half 2.7.1 — MIT OR Apache-2.0
+· hashbrown 0.12.3 — MIT OR Apache-2.0
+· hashbrown 0.15.5 — 未获取（本地 registry 无该 crate 解包）
+· hashbrown 0.17.1 — MIT OR Apache-2.0
+· heck 0.4.1 — 未获取（本地 registry 无该 crate 解包）
+· heck 0.5.0 — MIT OR Apache-2.0
+· hex 0.4.3 — MIT OR Apache-2.0
+· html5ever 0.39.0 — MIT OR Apache-2.0
+· http 1.5.0 — MIT OR Apache-2.0
+· http-body 1.1.0 — MIT
+· http-body-util 0.1.5 — MIT
+· httparse 1.10.1 — MIT OR Apache-2.0
+· httpdate 1.0.3 — MIT OR Apache-2.0
+· hyper 1.12.0 — MIT
+· hyper-rustls 0.27.10 — Apache-2.0 OR ISC OR MIT
+· hyper-util 0.1.21 — MIT
+· iana-time-zone 0.1.65 — MIT OR Apache-2.0
+· iana-time-zone-haiku 0.1.2 — 未获取（本地 registry 无该 crate 解包）
+· ico 0.5.0 — MIT
+· icu_collections 2.3.0 — Unicode-3.0
+· icu_locale_core 2.3.0 — Unicode-3.0
+· icu_normalizer 2.3.0 — Unicode-3.0
+· icu_normalizer_data 2.3.0 — Unicode-3.0
+· icu_properties 2.3.0 — Unicode-3.0
+· icu_properties_data 2.3.0 — Unicode-3.0
+· icu_provider 2.3.1 — Unicode-3.0
+· ident_case 1.0.1 — MIT/Apache-2.0
+· idna 1.1.0 — MIT OR Apache-2.0
+· idna_adapter 1.2.2 — Apache-2.0 OR MIT
+· image 0.25.10 — MIT OR Apache-2.0
+· indexmap 1.9.3 — Apache-2.0 OR MIT
+· indexmap 2.14.2 — Apache-2.0 OR MIT
+· infer 0.22.0 — MIT
+· ipnet 2.12.2 — MIT OR Apache-2.0
+· itoa 1.0.18 — MIT OR Apache-2.0
+· javascriptcore-rs 1.1.2 — 未获取（本地 registry 无该 crate 解包）
+· javascriptcore-rs-sys 1.1.1 — 未获取（本地 registry 无该 crate 解包）
+· jiff 0.2.38 — Unlicense OR MIT
+· jiff-core 0.1.1 — Unlicense OR MIT
+· jiff-static 0.2.38 — 未获取（本地 registry 无该 crate 解包）
+· jiff-tzdb 0.1.9 — 未获取（本地 registry 无该 crate 解包）
+· jiff-tzdb-platform 0.1.3 — 未获取（本地 registry 无该 crate 解包）
+· jni 0.21.1 — 未获取（本地 registry 无该 crate 解包）
+· jni 0.22.4 — 未获取（本地 registry 无该 crate 解包）
+· jni-macros 0.22.4 — 未获取（本地 registry 无该 crate 解包）
+· jni-sys 0.3.1 — 未获取（本地 registry 无该 crate 解包）
+· jni-sys 0.4.1 — 未获取（本地 registry 无该 crate 解包）
+· jni-sys-macros 0.4.1 — 未获取（本地 registry 无该 crate 解包）
+· js-sys 0.3.106 — 未获取（本地 registry 无该 crate 解包）
+· json-patch 4.2.0 — MIT/Apache-2.0
+· jsonptr 0.7.1 — MIT OR Apache-2.0
+· keyboard-types 0.8.3 — MIT OR Apache-2.0
+· libappindicator 0.9.0 — 未获取（本地 registry 无该 crate 解包）
+· libappindicator-sys 0.9.0 — 未获取（本地 registry 无该 crate 解包）
+· libc 0.2.190 — MIT OR Apache-2.0
+· libdbus-sys 0.2.7 — 未获取（本地 registry 无该 crate 解包）
+· libloading 0.7.4 — 未获取（本地 registry 无该 crate 解包）
+· libredox 0.1.25 — 未获取（本地 registry 无该 crate 解包）
+· linux-raw-sys 0.12.1 — 未获取（本地 registry 无该 crate 解包）
+· litemap 0.8.3 — Unicode-3.0
+· lock_api 0.4.14 — MIT OR Apache-2.0
+· log 0.4.34 — MIT OR Apache-2.0
+· markup5ever 0.39.0 — MIT OR Apache-2.0
+· memchr 2.8.3 — Unlicense OR MIT
+· memoffset 0.9.1 — 未获取（本地 registry 无该 crate 解包）
+· mime 0.3.17 — MIT OR Apache-2.0
+· minisign-verify 0.2.5 — MIT
+· miniz_oxide 0.8.9 — MIT OR Zlib OR Apache-2.0
+· miniz_oxide 0.9.1 — MIT OR Zlib OR Apache-2.0
+· mio 1.2.4 — MIT
+· moxcms 0.8.1 — BSD-3-Clause OR Apache-2.0
+· muda 0.20.0 — Apache-2.0 OR MIT
+· ndk 0.9.0 — 未获取（本地 registry 无该 crate 解包）
+· ndk-context 0.1.1 — 未获取（本地 registry 无该 crate 解包）
+· ndk-sys 0.6.0+11769913 — 未获取（本地 registry 无该 crate 解包）
+· new_debug_unreachable 1.0.6 — MIT
+· nom 8.0.0 — 未获取（本地 registry 无该 crate 解包）
+· num_enum 0.7.6 — 未获取（本地 registry 无该 crate 解包）
+· num_enum_derive 0.7.6 — 未获取（本地 registry 无该 crate 解包）
+· num-conv 0.2.2 — MIT OR Apache-2.0
+· num-traits 0.2.19 — MIT OR Apache-2.0
+· objc2 0.6.5 — MIT
+· objc2-app-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· objc2-cloud-kit 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-core-data 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-core-foundation 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· objc2-core-graphics 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· objc2-core-image 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-core-location 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-core-text 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-encode 4.1.0 — MIT
+· objc2-exception-helper 0.1.1 — Zlib OR Apache-2.0 OR MIT
+· objc2-foundation 0.3.2 — MIT
+· objc2-io-surface 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· objc2-osa-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· objc2-quartz-core 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· objc2-ui-kit 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-user-notifications 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· objc2-web-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
+· once_cell 1.21.4 — MIT OR Apache-2.0
+· openssl-probe 0.2.1 — 未获取（本地 registry 无该 crate 解包）
+· option-ext 0.2.0 — MPL-2.0
+· os_pipe 1.2.3 — 未获取（本地 registry 无该 crate 解包）
+· osakit 0.3.1 — MIT OR Apache-2.0
+· pango 0.18.3 — 未获取（本地 registry 无该 crate 解包）
+· pango-sys 0.18.0 — 未获取（本地 registry 无该 crate 解包）
+· parking_lot 0.12.5 — MIT OR Apache-2.0
+· parking_lot_core 0.9.12 — MIT OR Apache-2.0
+· percent-encoding 2.3.2 — MIT OR Apache-2.0
+· petgraph 0.8.3 — 未获取（本地 registry 无该 crate 解包）
+· phf 0.13.1 — MIT
+· phf_codegen 0.13.1 — MIT
+· phf_generator 0.13.1 — MIT
+· phf_macros 0.13.1 — MIT
+· phf_shared 0.13.1 — MIT
+· pin-project-lite 0.2.17 — Apache-2.0 OR MIT
+· pkg-config 0.3.34 — MIT OR Apache-2.0
+· plist 1.10.1 — MIT
+· png 0.17.16 — MIT OR Apache-2.0
+· png 0.18.1 — MIT OR Apache-2.0
+· portable-atomic 1.15.0 — 未获取（本地 registry 无该 crate 解包）
+· portable-atomic-util 0.2.8 — 未获取（本地 registry 无该 crate 解包）
+· potential_utf 0.1.6 — Unicode-3.0
+· powerfmt 0.2.1 — MIT OR Apache-2.0
+· precomputed-hash 0.1.1 — MIT
+· proc-macro-crate 1.3.1 — 未获取（本地 registry 无该 crate 解包）
+· proc-macro-crate 2.0.2 — 未获取（本地 registry 无该 crate 解包）
+· proc-macro-crate 3.5.0 — 未获取（本地 registry 无该 crate 解包）
+· proc-macro-error 1.0.4 — 未获取（本地 registry 无该 crate 解包）
+· proc-macro-error-attr 1.0.4 — 未获取（本地 registry 无该 crate 解包）
+· proc-macro2 1.0.107 — MIT OR Apache-2.0
+· pxfm 0.1.30 — BSD-3-Clause OR Apache-2.0
+· quick-error 2.0.1 — MIT/Apache-2.0
+· quick-xml 0.41.0 — MIT
+· quick-xml 0.42.0 — MIT
+· quote 1.0.47 — MIT OR Apache-2.0
+· r-efi 5.3.0 — 未获取（本地 registry 无该 crate 解包）
+· r-efi 6.0.0 — 未获取（本地 registry 无该 crate 解包）
+· raw-window-handle 0.6.2 — MIT OR Apache-2.0 OR Zlib
+· redox_syscall 0.5.18 — 未获取（本地 registry 无该 crate 解包）
+· redox_users 0.5.3 — 未获取（本地 registry 无该 crate 解包）
+· ref-cast 1.0.27 — MIT OR Apache-2.0
+· ref-cast-impl 1.0.27 — MIT OR Apache-2.0
+· regex 1.13.1 — MIT OR Apache-2.0
+· regex-automata 0.4.18 — MIT OR Apache-2.0
+· regex-syntax 0.8.11 — MIT OR Apache-2.0
+· reqwest 0.13.5 — MIT OR Apache-2.0
+· rfd 0.16.0 — MIT
+· ring 0.17.14 — Apache-2.0 AND ISC
+· rustc_version 0.4.1 — MIT OR Apache-2.0
+· rustc-hash 2.1.3 — Apache-2.0 OR MIT
+· rustix 1.1.5 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+· rustls 0.23.45 — Apache-2.0 OR ISC OR MIT
+· rustls-native-certs 0.8.4 — 未获取（本地 registry 无该 crate 解包）
+· rustls-pki-types 1.15.1 — MIT OR Apache-2.0
+· rustls-platform-verifier 0.7.1 — MIT OR Apache-2.0
+· rustls-platform-verifier-android 0.2.0 — 未获取（本地 registry 无该 crate 解包）
+· rustls-webpki 0.103.15 — ISC
+· rustversion 1.0.23 — 未获取（本地 registry 无该 crate 解包）
+· same-file 1.0.6 — Unlicense/MIT
+· schannel 0.1.29 — 未获取（本地 registry 无该 crate 解包）
+· schemars 0.8.22 — MIT
+· schemars 0.9.0 — MIT
+· schemars 1.2.2 — MIT
+· schemars_derive 0.8.22 — MIT
+· scopeguard 1.2.0 — MIT OR Apache-2.0
+· security-framework 3.7.0 — MIT OR Apache-2.0
+· security-framework-sys 2.17.0 — MIT OR Apache-2.0
+· selectors 0.38.0 — MPL-2.0
+· semver 1.0.28 — MIT OR Apache-2.0
+· serde 1.0.229 — MIT OR Apache-2.0
+· serde_core 1.0.229 — MIT OR Apache-2.0
+· serde_derive 1.0.229 — MIT OR Apache-2.0
+· serde_derive_internals 0.29.1 — MIT OR Apache-2.0
+· serde_json 1.0.151 — MIT OR Apache-2.0
+· serde_repr 0.1.21 — MIT OR Apache-2.0
+· serde_spanned 0.6.9 — 未获取（本地 registry 无该 crate 解包）
+· serde_spanned 1.1.2 — MIT OR Apache-2.0
+· serde_with 3.24.0 — MIT OR Apache-2.0
+· serde_with_macros 3.24.0 — MIT OR Apache-2.0
+· serde-untagged 0.1.9 — MIT OR Apache-2.0
+· serialize-to-javascript 0.1.2 — MIT OR Apache-2.0
+· serialize-to-javascript-impl 0.1.2 — MIT OR Apache-2.0
+· servo_arc 0.4.3 — MIT OR Apache-2.0
+· sha2 0.10.9 — MIT OR Apache-2.0
+· shlex 2.0.1 — MIT OR Apache-2.0
+· simd_cesu8 1.2.0 — 未获取（本地 registry 无该 crate 解包）
+· simd-adler32 0.3.10 — MIT
+· simdutf8 0.1.5 — 未获取（本地 registry 无该 crate 解包）
+· siphasher 1.0.4 — MIT OR Apache-2.0
+· slab 0.4.12 — MIT
+· smallvec 1.16.3 — MIT OR Apache-2.0
+· socket2 0.6.5 — MIT OR Apache-2.0
+· softbuffer 0.4.8 — 未获取（本地 registry 无该 crate 解包）
+· soup3 0.5.0 — 未获取（本地 registry 无该 crate 解包）
+· soup3-sys 0.5.0 — 未获取（本地 registry 无该 crate 解包）
+· stable_deref_trait 1.2.1 — MIT OR Apache-2.0
+· string_cache 0.9.0 — MIT OR Apache-2.0
+· string_cache_codegen 0.6.1 — MIT OR Apache-2.0
+· strsim 0.11.1 — MIT
+· subtle 2.6.1 — BSD-3-Clause
+· swift-rs 1.0.9 — MIT OR Apache-2.0
+· syn 1.0.109 — 未获取（本地 registry 无该 crate 解包）
+· syn 2.0.119 — MIT OR Apache-2.0
+· syn 3.0.7 — MIT OR Apache-2.0
+· sync_wrapper 1.0.2 — Apache-2.0
+· synstructure 0.14.0 — MIT
+· system-configuration 0.7.0 — MIT OR Apache-2.0
+· system-configuration-sys 0.6.0 — MIT OR Apache-2.0
+· system-deps 6.2.2 — 未获取（本地 registry 无该 crate 解包）
+· tao 0.37.1 — Apache-2.0
+· tao-macros 0.1.4 — 未获取（本地 registry 无该 crate 解包）
+· tar 0.4.46 — MIT OR Apache-2.0
+· target-lexicon 0.12.16 — 未获取（本地 registry 无该 crate 解包）
+· tauri 2.12.2 — Apache-2.0 OR MIT
+· tauri-build 2.7.1 — Apache-2.0 OR MIT
+· tauri-codegen 2.7.1 — Apache-2.0 OR MIT
+· tauri-macros 2.7.1 — Apache-2.0 OR MIT
+· tauri-plugin 2.7.1 — Apache-2.0 OR MIT
+· tauri-plugin-clipboard-manager 2.4.1 — Apache-2.0 OR MIT
+· tauri-plugin-dialog 2.8.1 — Apache-2.0 OR MIT
+· tauri-plugin-fs 2.6.0 — Apache-2.0 OR MIT
+· tauri-plugin-process 2.4.0 — Apache-2.0 OR MIT
+· tauri-plugin-updater 2.13.2 — Apache-2.0 OR MIT
+· tauri-runtime 2.12.1 — Apache-2.0 OR MIT
+· tauri-runtime-wry 2.12.1 — Apache-2.0 OR MIT
+· tauri-utils 2.10.1 — Apache-2.0 OR MIT
+· tauri-winres 0.3.6 — MIT
+· tempfile 3.27.0 — MIT OR Apache-2.0
+· tendril 0.5.1 — MIT OR Apache-2.0
+· thiserror 1.0.69 — MIT OR Apache-2.0
+· thiserror 2.0.21 — MIT OR Apache-2.0
+· thiserror-impl 1.0.69 — MIT OR Apache-2.0
+· thiserror-impl 2.0.21 — MIT OR Apache-2.0
+· tiff 0.11.3 — MIT
+· time 0.3.55 — MIT OR Apache-2.0
+· time-core 0.1.9 — MIT OR Apache-2.0
+· time-macros 0.2.32 — MIT OR Apache-2.0
+· tiny_http 0.12.0 — MIT OR Apache-2.0
+· tinystr 0.8.4 — Unicode-3.0
+· tinyvec 1.13.3 — Zlib OR Apache-2.0 OR MIT
+· tokio 1.53.2 — MIT
+· tokio-rustls 0.26.6 — MIT OR Apache-2.0
+· tokio-util 0.7.20 — MIT
+· toml 0.8.2 — 未获取（本地 registry 无该 crate 解包）
+· toml 1.1.8+spec-1.1.0 — MIT OR Apache-2.0
+· toml_datetime 0.6.3 — 未获取（本地 registry 无该 crate 解包）
+· toml_datetime 1.1.2+spec-1.1.0 — MIT OR Apache-2.0
+· toml_edit 0.19.15 — 未获取（本地 registry 无该 crate 解包）
+· toml_edit 0.20.2 — 未获取（本地 registry 无该 crate 解包）
+· toml_edit 0.25.17+spec-1.1.0 — 未获取（本地 registry 无该 crate 解包）
+· toml_parser 1.1.5+spec-1.1.0 — MIT OR Apache-2.0
+· toml_writer 1.1.3+spec-1.1.0 — MIT OR Apache-2.0
+· tower 0.5.3 — MIT
+· tower-http 0.6.11 — MIT
+· tower-layer 0.3.3 — MIT
+· tower-service 0.3.3 — MIT
+· tracing 0.1.44 — MIT
+· tracing-core 0.1.36 — MIT
+· tray-icon 0.25.1 — MIT OR Apache-2.0
+· tree_magic_mini 3.2.2 — 未获取（本地 registry 无该 crate 解包）
+· try-lock 0.2.5 — MIT
+· typeid 1.0.3 — MIT OR Apache-2.0
+· typenum 1.20.1 — MIT OR Apache-2.0
+· unicode-ident 1.0.26 — (MIT OR Apache-2.0) AND Unicode-3.0
+· unicode-segmentation 1.13.3 — MIT OR Apache-2.0
+· untrusted 0.9.0 — ISC
+· url 2.5.8 — MIT OR Apache-2.0
+· urlpattern 0.6.0 — MIT
+· utf8_iter 1.0.4 — Apache-2.0 OR MIT
+· uuid 1.28.0 — Apache-2.0 OR MIT
+· version_check 0.9.5 — MIT/Apache-2.0
+· version-compare 0.2.1 — 未获取（本地 registry 无该 crate 解包）
+· vswhom 0.1.0 — 未获取（本地 registry 无该 crate 解包）
+· vswhom-sys 0.1.3 — 未获取（本地 registry 无该 crate 解包）
+· walkdir 2.5.0 — Unlicense/MIT
+· want 0.3.2 — MIT
+· wasi 0.11.1+wasi-snapshot-preview1 — 未获取（本地 registry 无该 crate 解包）
+· wasip2 1.0.4+wasi-0.2.12 — 未获取（本地 registry 无该 crate 解包）
+· wasm-bindgen 0.2.129 — 未获取（本地 registry 无该 crate 解包）
+· wasm-bindgen-futures 0.4.79 — 未获取（本地 registry 无该 crate 解包）
+· wasm-bindgen-macro 0.2.129 — 未获取（本地 registry 无该 crate 解包）
+· wasm-bindgen-macro-support 0.2.129 — 未获取（本地 registry 无该 crate 解包）
+· wasm-bindgen-shared 0.2.129 — 未获取（本地 registry 无该 crate 解包）
+· wasm-streams 0.5.0 — 未获取（本地 registry 无该 crate 解包）
+· wayland-backend 0.3.17 — 未获取（本地 registry 无该 crate 解包）
+· wayland-client 0.31.15 — 未获取（本地 registry 无该 crate 解包）
+· wayland-protocols 0.32.13 — 未获取（本地 registry 无该 crate 解包）
+· wayland-protocols-wlr 0.3.12 — 未获取（本地 registry 无该 crate 解包）
+· wayland-scanner 0.31.11 — 未获取（本地 registry 无该 crate 解包）
+· wayland-sys 0.31.11 — 未获取（本地 registry 无该 crate 解包）
+· web_atoms 0.2.6 — MIT OR Apache-2.0
+· web-sys 0.3.106 — 未获取（本地 registry 无该 crate 解包）
+· web-time 1.1.0 — MIT OR Apache-2.0
+· webkit2gtk 2.0.2 — 未获取（本地 registry 无该 crate 解包）
+· webkit2gtk-sys 2.0.2 — 未获取（本地 registry 无该 crate 解包）
+· webpki-root-certs 1.0.9 — 未获取（本地 registry 无该 crate 解包）
+· webview2-com 0.39.1 — 未获取（本地 registry 无该 crate 解包）
+· webview2-com-macros 0.8.1 — 未获取（本地 registry 无该 crate 解包）
+· webview2-com-sys 0.39.1 — 未获取（本地 registry 无该 crate 解包）
+· weezl 0.1.12 — MIT OR Apache-2.0
+· winapi 0.3.9 — 未获取（本地 registry 无该 crate 解包）
+· winapi-i686-pc-windows-gnu 0.4.0 — 未获取（本地 registry 无该 crate 解包）
+· winapi-util 0.1.11 — 未获取（本地 registry 无该 crate 解包）
+· winapi-x86_64-pc-windows-gnu 0.4.0 — 未获取（本地 registry 无该 crate 解包）
+· window-vibrancy 0.8.1 — Apache-2.0 OR MIT
+· windows 0.62.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_aarch64_gnullvm 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_aarch64_gnullvm 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_aarch64_gnullvm 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_aarch64_msvc 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_aarch64_msvc 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_aarch64_msvc 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_gnu 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_gnu 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_gnu 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_gnullvm 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_gnullvm 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_msvc 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_msvc 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_i686_msvc 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_gnu 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_gnu 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_gnu 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_gnullvm 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_gnullvm 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_gnullvm 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_msvc 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_msvc 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows_x86_64_msvc 0.53.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-collections 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-core 0.62.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-future 0.3.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-implement 0.60.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-interface 0.59.3 — 未获取（本地 registry 无该 crate 解包）
+· windows-link 0.2.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-numerics 0.3.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-registry 0.6.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-result 0.4.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-strings 0.5.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-sys 0.45.0 — 未获取（本地 registry 无该 crate 解包）
+· windows-sys 0.52.0 — 未获取（本地 registry 无该 crate 解包）
+· windows-sys 0.60.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-sys 0.61.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-targets 0.42.2 — 未获取（本地 registry 无该 crate 解包）
+· windows-targets 0.52.6 — 未获取（本地 registry 无该 crate 解包）
+· windows-targets 0.53.5 — 未获取（本地 registry 无该 crate 解包）
+· windows-threading 0.2.1 — 未获取（本地 registry 无该 crate 解包）
+· windows-version 0.1.7 — 未获取（本地 registry 无该 crate 解包）
+· winnow 0.5.40 — 未获取（本地 registry 无该 crate 解包）
+· winnow 1.0.4 — MIT
+· winreg 0.56.0 — 未获取（本地 registry 无该 crate 解包）
+· wit-bindgen 0.57.1 — 未获取（本地 registry 无该 crate 解包）
+· wl-clipboard-rs 0.9.4 — 未获取（本地 registry 无该 crate 解包）
+· writeable 0.6.4 — Unicode-3.0
+· wry 0.57.0 — Apache-2.0 OR MIT
+· x11 2.21.0 — 未获取（本地 registry 无该 crate 解包）
+· x11-dl 2.21.0 — 未获取（本地 registry 无该 crate 解包）
+· x11rb 0.13.2 — 未获取（本地 registry 无该 crate 解包）
+· x11rb-protocol 0.13.2 — 未获取（本地 registry 无该 crate 解包）
+· xattr 1.6.1 — MIT OR Apache-2.0
+· yoke 0.8.3 — Unicode-3.0
+· yoke-derive 0.8.4 — Unicode-3.0
+· zerocopy 0.8.62 — BSD-2-Clause OR Apache-2.0 OR MIT
+· zerocopy-derive 0.8.62 — BSD-2-Clause OR Apache-2.0 OR MIT
+· zerofrom 0.1.8 — Unicode-3.0
+· zerofrom-derive 0.1.8 — Unicode-3.0
+· zeroize 1.9.1 — Apache-2.0 OR MIT
+· zerotrie 0.2.5 — Unicode-3.0
+· zerovec 0.11.8 — Unicode-3.0
+· zerovec-derive 0.11.6 — Unicode-3.0
+· zip 4.6.1 — 未获取（本地 registry 无该 crate 解包）
+· zlib-rs 0.6.8 — Zlib
+· zmij 1.0.23 — MIT
+· zune-core 0.5.3 — MIT OR Apache-2.0 OR Zlib
+· zune-jpeg 0.5.15 — MIT OR Apache-2.0 OR Zlib
+
+其中 189 个条目本地未取到许可元数据，已如实标注，需要时重新生成即可补齐。
+
+───────────────────────────────────────────────────────────────────
+
+【4】待确认事项（不得对外表述为已合规）
+
+  1. eff-wordlist.js：词表数据条款未在文件头记录，需向来源页面确认后再补写第【1】段。
+
+已处理（保留记录，便于回溯）：
+  · jsQR：原手工副本无 LICENSE 文件，已改为 npm 依赖 jsqr@1.4.0（Apache-2.0），构建期由 vite 插件拷到 dist/assets/vendor/jsQR.js；与上游产物逐字节一致（cmp 校验）。
+  · 二维码生成库：原 src/public/assets/vendor/qrcode.min.js 系 davidshimjs/qrcodejs 的压缩产物，经核实与上游 master（commit 06c7a5e134f1，19927 字节）及 cdnjs/jsdelivr 各公开副本均相差 1 个字符（版本选择循环里 g>=f 被改成 g>f），即仓库里那份是被人手工改过的压缩代码，来源无法归到任何已发布版本。该原作者从未向 npm 发布，npm 上的 qrcodejs 各包都是第三方镜像，故改为直接采用作者本人发布的 qrcode-generator@2.0.4（MIT），渲染改由 QrShareModal 用 canvas 直绘；qrcode-generator 编码 → jsQR 解码往返共 17 项断言全绿（node scripts/test-qr-roundtrip.mjs）。

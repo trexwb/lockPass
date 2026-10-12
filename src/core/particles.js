@@ -69,8 +69,21 @@
       }
     }
 
+    /* mousemove 高频路径：缓存 canvas 坐标矩形，避免每次鼠标移动都强制布局读取；
+       resize/scroll 时缓存失效，下一次 mousemove 惰性重建 */
+    let cachedRect = null;
+    function invalidateRect() { cachedRect = null; }
+    function onMouseMove(e) {
+      if (!cachedRect) cachedRect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - cachedRect.left;
+      mouse.y = e.clientY - cachedRect.top;
+      mouse.active = true;
+    }
+
     function resize() {
       const rect = canvas.getBoundingClientRect();
+      // 同步坐标缓存：容器隐藏时置空，待下一次 mousemove 惰性重建
+      cachedRect = (rect.width > 0 && rect.height > 0) ? rect : null;
       if (rect.width === 0 || rect.height === 0) return; // 容器隐藏时不重置
       const oldW = width;
       const oldH = height;
@@ -184,13 +197,6 @@
       rafId = null;
     }
 
-    function onMouseMove(e) {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-      mouse.active = true;
-    }
-
     function onMouseLeave() {
       mouse.active = false;
     }
@@ -200,6 +206,8 @@
 
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('load', resize);
+    // 滚动会改变 canvas 在视口中的位置（工作区 canvas 随内容滚动），坐标缓存随之失效
+    window.addEventListener('scroll', invalidateRect, { capture: true, passive: true });
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseleave', onMouseLeave);
 
@@ -213,6 +221,7 @@
       onWindowResize.cancel();
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('load', resize);
+      window.removeEventListener('scroll', invalidateRect, { capture: true });
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseleave', onMouseLeave);
     }

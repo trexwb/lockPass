@@ -42,4 +42,28 @@
 - `vite build` 0 error（72 modules，含 usePasskey composable）
 - 代码审查修复：补 `SvgIcons.shield` 方法（原生物解锁按钮引用不存在图标致渲染崩溃）；抽 `usePasskey` 统一状态查询与平台判定。
 - 版本号随项目整体重置后自增至 v1.0.1；未执行任何 git 操作。
-- 2026-10-08（v1.1.3）本机直调 Security 框架实测：三标志叠加返回 -50；去掉 `userPresence` 后访问控制对象创建成功；`kSecPrivateKeyAttrs` 嵌套布局被接受，失败点仅剩 -34018（未签名环境的 entitlement）。同机 `security find-identity -v -p codesigning` = 0 valid identities，故 **enroll → 生物验证 → unlock 全链尚未在任何签名构建上端到端跑通**，需在 Apple 开发者证书签名的构建上回归（启用一次 → 锁屏出现生物入口 → 生物验证解密 → `status.enabled` 为 true）。
+- 本机直调 Security 框架验证：三标志（含 `userPresence`）叠加返回 -50；去掉 `userPresence` 后访问控制对象创建成功；`kSecPrivateKeyAttrs` 嵌套布局被接受，失败点仅剩 -34018（未签名环境的 entitlement）。因此 **enroll → 生物验证 → unlock 全链尚未在任何签名构建上端到端跑通**，需在 Apple 开发者证书签名的构建上回归（启用一次 → 锁屏出现生物入口 → 生物验证解密 → `status.enabled` 为 true）。
+
+## 签名构建端到端验证清单（待 Apple 开发者证书）
+
+> 现状（2026-10-12 记录）：链路代码已落地，但从未在签名构建上跑通——ad-hoc / 未签名构建写数据保护钥匙串必返 `errSecMissingEntitlement(-34018)`，`passkey_enroll` 以 `ENTITLEMENT_ERR` 拒绝。取得 Apple 开发者证书后按本清单逐项执行，全绿即视为端到端验证完成。
+
+### 前置（一次性）
+
+1. Apple Developer 账号 + `Apple Development` 证书；`tauri.conf.json` 的 `bundle > macOS > signingIdentity` 配置为该签名身份（或构建时注入对应环境变量）
+2. 签名构建安装后确认：`codesign -dv` 不再显示 `adhoc, linker-signed`；`codesign -d --entitlements - /Applications/LockPass.app` 输出包含 `keychain-access-groups`
+
+### 验证步骤
+
+| # | 操作 | 预期 |
+|---|------|------|
+| 1 | 启动应用，打开设置 → 安全 | macOS 桌面显示「生物识别解锁」开关；`passkey_status` 返回 `{ available: true, enabled: false }` |
+| 2 | 开启开关（`passkey_enroll`） | 系统弹出钥匙串写入确认；完成后开关为开、`status.enabled` 为 true |
+| 3 | 锁定保险箱 | 锁屏出现「生物识别解锁」按钮 |
+| 4 | 触控 ID / 面容 ID 验证（`passkey_unlock`） | Secure Enclave 弹系统生物验证；通过后直接解锁进主界面，数据完整可读 |
+| 5 | 取消或验证失败 | 返回结构化错误（`USER_CANCELED` / `AUTH_FAILED`），界面回退主密码输入，绝不静默放行 |
+| 6 | 修改主密码后再走生物解锁 | 报 `KEY_MISMATCH`，引导用主密码解锁后重新启用生物识别 |
+| 7 | 关闭开关（`passkey_remove`） | Keychain item 与 guard 文件删除，锁屏生物入口消失，主密码解锁不受影响 |
+| 8 | `cargo check` / `npm run vite:build` | 0 error |
+
+完成后在 `docs/version/RELEASE-v{主版本}.md` 追加验证结论与执行日期（发布日志只增不改）。

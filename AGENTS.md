@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.1.6`
+**当前版本**：`v1.1.7`
 
 ---
 
@@ -108,7 +108,8 @@
 - ✅ **UI 组件**放 `src/components/`，Vue 3 `<script setup>` 语法
 - ✅ **样式**放 `src/styles/`（按域拆分：base/layout/entries/editor/modal/settings/utilities/particles），
   组件内不写 `<style>` 块（保持样式集中管理）
-- ✅ **静态资源**放 `src/public/`（sw.js / manifest.json / assets/vendor/*.js，原样拷贝到 dist 根）
+- ✅ **静态资源**放 `src/public/`（sw.js / manifest.json / assets/icons，原样拷贝到 dist 根）；
+  第三方运行期库不进仓库，声明为 npm 依赖后由构建期拷贝（见 `vite.config.js` 的 `VENDOR_LIBS`）
 - ✅ **新增功能模块**：纯逻辑 → `core/` 新文件 + main.js 注册；新状态 → composable；新界面 → 组件
 
 ### 2. 代码风格
@@ -151,7 +152,8 @@
 
 ### 6. 离线优先
 
-- ✅ 禁止使用 CDN 链接，所有资源必须本地化（`src/public/assets/vendor/`）
+- ✅ 禁止使用 CDN 链接，所有资源必须本地化（第三方运行期库 jsQR / qrcode-generator 由 npm 安装，
+  构建期由 `vite.config.js` 的 `copyVendorLibs` 拷到 `dist/assets/vendor/`，仓库内不再存放其源码）
 - ✅ 禁止使用 Google Fonts 等外部字体，使用系统字体栈
 - ✅ 禁止使用外部 API（可选联网功能必须默认关闭 + 设置开关）
 - ✅ 测试时必须断网验证，确保完全离线可用
@@ -194,7 +196,9 @@ LockPass/
 │   │   │                  # QrShare / QrImport / ChangePw
 │   │   └── common/        # ModalBase
 │   ├── styles/            # 设计令牌 + 按域拆分（base/layout/entries/editor/modal/settings/utilities/particles）
-│   └── public/            # 静态资源（sw.js / manifest.json / assets/vendor/jsQR.js、qrcode.min.js）
+│   └── public/            # 静态资源（sw.js / manifest.json / assets/icons）
+│                          # 注：第三方二维码库（jsQR 解码 + qrcode-generator 生成）不再手工存放于此，
+│                          #     由 npm 依赖提供，构建期 vite 插件拷到 dist/assets/vendor/*.js；缺包即构建失败
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 │                          # 注：Info.plist 声明 NSLocalNetworkUsageDescription（局域网同步必需的 macOS 本地网络用途）
 ├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）
@@ -370,6 +374,13 @@ LockPass/
 ---
 
 ## 更新日志
+
+### 2026-10-12 文档对齐与方向决策（不推进版本号）
+
+- 头脑风暴确定下一阶段主线「收尾 + 安全基线」，决策记录见 `docs/superpowers/specs/2026-10-12-security-baseline-design.md`
+- README / `docs/spec.md`：PBKDF2 迭代次数描述由「100000」更正为 600k 现状（代码层 `DEFAULT_ITERATIONS = 600000` 早已落地，文档过时）；补旧库升级路径说明（修改主密码即升级）
+- `docs/passkey.md` 新增「签名构建端到端验证清单」（生物识别验证挂起，待 Apple 开发者证书）
+- A1 遗留改动（导入自然键判重 + UX 专项）本轮落盘仍被写入护栏误判拦截（标的为既有代码中 `password` 标识符，非新增内容），待放行后应用；版本号维持 v1.1.7
 
 ### 2026-10-10 v1.1.6：局域网同步联调修复 + macOS 隔离属性说明（v1.1.5 → v1.1.6，PATCH +1）
 

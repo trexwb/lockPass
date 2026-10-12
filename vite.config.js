@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 
@@ -72,10 +72,42 @@ function demoteModuleScripts() {
   }
 }
 
+// 构建期把 npm 包的浏览器产物拷到 dist/assets/vendor/，由组件运行时 script 注入按需加载。
+// 为什么不走 import：这两个库合计 300KB+，只在扫码/分享时才需要；产物是 iife 单 chunk
+// （见下方 rollupOptions.format），静态 import 会把它们压进首屏。改为「运行时注入 +
+// 构建期文件拷贝」既保留懒加载，又让许可正文随 npm 包分发，仓库里不再手工存放第三方代码。
+// 缺包即构建失败，不静默跳过（静默跳过的后果是功能上线后才发现 404）。
+// 注：qrcode.js 来自作者本人发布的 qrcode-generator，不是原先那份 qrcodejs 手工副本的
+// 同源替换（原作者从未发布到 npm），对应改动见 QrShareModal 的渲染分支。
+const VENDOR_LIBS = [
+  { from: 'jsqr/dist/jsQR.js', to: 'assets/vendor/jsQR.js' },
+  { from: 'qrcode-generator/dist/qrcode.js', to: 'assets/vendor/qrcode.js' },
+]
+
+function copyVendorLibs() {
+  return {
+    name: 'lockpass-copy-vendor-libs',
+    closeBundle() {
+      const outDir = resolve(import.meta.dirname, 'dist')
+      for (const lib of VENDOR_LIBS) {
+        const src = resolve(import.meta.dirname, 'node_modules', lib.from)
+        if (!existsSync(src)) {
+          throw new Error(
+            `缺少第三方运行期依赖产物：${src}（先执行 npm install，再重新构建）`
+          )
+        }
+        const dest = resolve(outDir, lib.to)
+        mkdirSync(resolve(dest, '..'), { recursive: true })
+        copyFileSync(src, dest)
+      }
+    },
+  }
+}
+
 export default defineConfig({
   root: 'src',
   base: './',
-  plugins: [vue(), injectSwVersion('dist'), demoteModuleScripts()],
+  plugins: [vue(), injectSwVersion('dist'), copyVendorLibs(), demoteModuleScripts()],
   build: {
     outDir: '../dist',
     emptyOutDir: true,

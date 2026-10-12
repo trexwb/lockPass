@@ -923,6 +923,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* TOTP 紧迫态：剩余 ≤5s 转警示色；≤3s 红色 + 秒数微脉冲
+   （prefers-reduced-motion 下动画由 base.css 全局兜底关闭） */
+.totp-countdown.totp-urgent circle:last-child {
+  stroke: var(--warning);
+}
+.totp-countdown.totp-urgent .totp-remaining {
+  color: var(--warning);
+}
+.totp-countdown.totp-critical circle:last-child {
+  stroke: var(--danger);
+}
+.totp-countdown.totp-critical .totp-remaining {
+  color: var(--danger);
+  animation: totp-urgent-pulse 1s var(--ease-out-quart) infinite;
+}
+@keyframes totp-urgent-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.18); }
+}
+
 /* 被删除的条目：离场动画（JS 加 .leaving 触发一次） */
 .entry-card.leaving {
   animation: row-leave-left var(--dur-med) var(--ease-in-quart) both;

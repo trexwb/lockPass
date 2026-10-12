@@ -307,6 +307,18 @@
   text-align: left;
 }
 .lock-warning svg { flex-shrink: 0; color: var(--warning); margin-top: 2px; }
+/* CapsLock 开启提示：轻量行内提示（非警示框），位于主密码输入组下方 */
+.lock-caps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 0;
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  animation: banner-pop var(--dur-med) var(--ease-out-quart) both;
+}
+.lock-caps svg { flex-shrink: 0; }
 .input-group { position: relative; }
 .input-group input {
   width: 100%;

@@ -42,6 +42,13 @@ const hostAddr = computed(() => (s.server ? `${s.server.bindIp}:${s.server.port}
 
 const travelBlocked = computed(() => vaultState.travelMode)
 
+/** 浏览器以 https 打开时无法访问 http 同步服务（混合内容被浏览器硬拦）。
+ *  前置提示，让用户在「连接」之前就看到原因，而不是连不上才懵。 */
+const browserHttpsWarning = computed(() => {
+  const proto = window.location && window.location.protocol
+  return !window.LockTauri?.isTauri && proto === 'https:'
+})
+
 async function onHost() {
   if (travelBlocked.value) {
     s.error = t('syncService.err.travelMode')
@@ -80,6 +87,10 @@ function close() {
       <p class="sync-subtitle">{{ t('syncService.subtitle') }}</p>
 
       <p v-if="s.error" class="sync-error" role="alert">{{ s.error }}</p>
+
+      <p v-if="browserHttpsWarning" class="sync-error" role="alert">
+        {{ t('syncService.err.mixedContent') }}
+      </p>
 
       <!-- ── 角色选择 ── -->
       <div v-if="s.mode === 'menu'" class="sync-menu">

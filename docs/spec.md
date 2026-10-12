@@ -1,6 +1,6 @@
 # LockPass — 个人密码工作台 规格文档
 
-> 版本：v1.1.6 | 更新日期：2026-08-29
+> 版本：v1.1.7 | 更新日期：2026-10-11
 
 ---
 
@@ -34,7 +34,8 @@
 ### 2.2 加密方案
 
 ```
-主密码 → PBKDF2(SHA-256, 100000次迭代, 32字节盐值) → AES-256-GCM 密钥
+主密码 → PBKDF2(SHA-256, 600000次迭代, 32字节盐值) → AES-256-GCM 密钥
+           （新库默认 OWASP 2023 基线；旧库沿用创建时的迭代次数，修改主密码即升级）
 数据   → AES-256-GCM 加密（随机12字节IV）          → 密文存储
 ```
 
@@ -65,7 +66,7 @@
 | 功能 | 说明 |
 |------|------|
 | 首次使用 | 引导创建主密码（8 位以上，建议强密码） |
-| 主密码派生 | PBKDF2（SHA-256，100000 次迭代）派生 AES-256-GCM 密钥 |
+| 主密码派生 | PBKDF2（SHA-256，新库 600000 次迭代；旧库沿用创建时参数）派生 AES-256-GCM 密钥 |
 | 盐值生成 | 随机生成 32 字节盐值，存储在 IndexedDB meta |
 | 数据加密 | 条目/回收站/标签注册表以 AES-256-GCM 加密后存入 IndexedDB |
 | 销毁保险箱 | 设置中双重确认后彻底删除所有数据 |
@@ -97,7 +98,7 @@
 | 类型扩展字段 | 见下 | | 按 entryType 语义化字段 |
 | createdAt / updatedAt | ISO8601 | 自动 | 创建 / 更新时间 |
 
-**6 种条目类型的扩展字段**（C2 起统一 `url` / `password` 数据模型；旧 vault 的 host / baseUrl / apiKey 字段在读取时自动迁移）：
+**6 种条目类型的扩展字段**（数据模型已统一为 `url` / `password`；旧 vault 的 host / baseUrl / apiKey 字段在读取时自动迁移）：
 
 | 类型 | 扩展字段 |
 |------|----------|
@@ -137,8 +138,8 @@
 - 点击眼睛图标：显示/隐藏密码
 - 点击复制：复制到剪贴板，可配置 10/30/60 秒后自动清空
 - 详情面板：编辑 / 复制 / 收藏 / 二维码分享 / 删除；回收站内为恢复 / 彻底删除
-- 右键条目卡片：快捷菜单（编辑 / 复制密码 / 收藏 / 删除；回收站视图为恢复 / 复制密码 / 彻底删除）——v1.0.22 起实现
-- 编辑器内「复制账号 / 密码」按钮走统一剪贴板安全链路（v1.0.22 起，与详情面板一致：成功提示 + 30 秒自动清除）
+- 右键条目卡片：快捷菜单（编辑 / 复制密码 / 收藏 / 删除；回收站视图为恢复 / 复制密码 / 彻底删除）
+- 编辑器内「复制账号 / 密码」按钮走统一剪贴板安全链路（成功提示 + 30 秒自动清除）
 
 ### 3.9 关联密码
 
@@ -150,7 +151,8 @@
 
 - **分享**：将条目加密为 `LockPass-QR v1` 载荷（format/v/salt/iv/data，AES-256-GCM），M 纠错级，容量上限约 2.2KB，超出提示改用文件同步
 - **导入**：上传图片 / 粘贴 / 拖拽 / 移动端摄像头扫码（jsQR 识别），解密后确认导入（重复条目需确认替换）
-- 二维码渲染使用本地 vendor 库 `qrcode.min.js`（零网络）
+- 二维码渲染使用 npm 依赖 `qrcode-generator`（作者发布，MIT），构建期拷到 `dist/assets/vendor/qrcode.js`
+  按需懒加载；解码用 `jsqr`（Apache-2.0），同样构建期拷贝（两端均零网络）
 
 ### 3.11 数据导入导出
 
@@ -160,9 +162,9 @@
 | `.json` | 加密备份：`.vault` 导出与自动快照/同步文件（`LockPass-backup-*.json`、`LockPass-vault.json`，format 为 `LockPass-file-sync`）均可导入；按 salt + iv + data 加密封套结构识别，导入时输入主密码解密 | ✅ 安全 |
 | `.csv` | 明文表格，支持全部类型字段 | ⚠️ 需妥善保管 |
 
-- 导入去重（按标题+用户名匹配）；`import-bridge.js` 负责列名映射与解析
+- 导入判重标准（2026-10-12，适用批量 CSV / .vault 备份合并与覆盖 / 扫码 / 局域网同步 / 桌面拖放全部导入路径）：按「条目自然键」判断覆盖还是新增 —— 网站=网站地址+用户名；服务器=连接地址+登录账号；数据库=数据库地址+用户名；AI=服务名称+API 地址；应用=标题+App ID；其他=凭证名称。同键视为同一条目（覆盖/合并），其余一律新增；键的组成部分不完整（如无网址）视为无法判定，一律新增、绝不凭空覆盖。地址类字段归一后比较（去 `http(s)://` 协议头与尾部 `/`、转小写、去首尾空白）；文本字段仅去首尾空白（大小写敏感）。实现：`sync-merge.js` 的 `entryIdentityKey`（合并模式经引擎自然键别名归并，胜负仍按 rev/时间裁决、落选版进回收站；仅在两侧各恰有一条同键存活条目且无 id 占用冲突时判同归并，更复杂的多副本形态整键保守并存——宁可重复不静默丢；CSV/扫码/覆盖模式为直接覆盖）；`import-bridge.js` 负责列名映射与解析
 - 导出迭代次数读取实际存储值；导入使用文件自带 iterations（与导出对称）
-- 加密封套统一按结构识别（salt + iv + data 同时存在即视为加密备份），不依赖 format 标记（v1.0.3 修复自动快照 json 导入报「不支持的文件格式」问题）
+- 加密封套统一按结构识别（salt + iv + data 同时存在即视为加密备份），不依赖 format 标记
 
 ### 3.12 修改历史与回滚
 
@@ -207,26 +209,26 @@
 - 解锁态通信：LockPass 页面 `ExtBridge`（src/core/ext-bridge.js）解锁广播 ready（含一次性会话令牌，sessionStorage），锁定/登出广播 locked；扩展请求须携带令牌且来源为同窗口；解密在页面内存完成，扩展仅转发
 - 表单填充：`content.js` 通用识别（密码框定位 + 用户名常见选择器 + 可见性过滤），原生 value setter + input/change 事件（React/Vue 兼容），不自动提交、高亮提交按钮
 - 安全：主密码不出主应用；扩展仅启用 activeTab/tabs/storage（storage 只存配对令牌，明文凭据仅瞬时内存转发）；条目列表脱敏（无密码字段）
-- 自动捕获（v1.1.2 交付，v1.1.3 修复加固，v1.1.4 链路补全）：`content.js` 监听 submit 后向后台登记待确认凭据（每 tab 一份，25s TTL；站点身份按「帧 hostname → referrer → 顶层 tab URL」三级解析，解析失败如 file:// 页拒绝暂存不弹窗）；浮层触发双路径——新页面加载的 CHECK + submit 后来源 frame 内 24s 观察窗（地址变化/密码框消失启发式，SPA 免刷新即弹；iframe 命中经 `forwardToTop` 由顶层 frame 弹层）。新显式 submit 会解除此前「忽略/关闭」对同域+同账号的弹层抑制；用户点「保存」后凭据以**后台下发的待确认记录**为准（不采信页面提交的 payload），入库按 `hostname + username` 去重并回传 `created / updated / exists`，新建条目标题优先取清洗后的网页 `document.title`（截 200 字符，缺省回退域名），写入必须经用户确认、绝不自动落库
-- 投递白名单（v1.1.3）：捕获凭据、条目列表与密码取回只交给浏览器注入、页面无法伪造的 `sender.url` 命中 `isTrustedAppPageUrl()` 的应用页面（GitHub Pages `/lockPass/`、`localhost:1420`、`127.0.0.1:1420`）；自建部署需同步该白名单。`file://` 本地页面之间无法区分，默认拒绝投递，需扩展弹窗显式勾选「允许本地文件页面接收捕获凭据」
-- 桌面版本地通道（v1.1.3）：桌面窗口没有页面桥，改走 Rust 侧 `tiny_http` 服务（仅监听 `127.0.0.1:33555`）。扩展弹窗「连接桌面版 LockPass」→ `POST /pair` 取 6 位 nonce → 桌面窗口配对弹窗核对数字点「允许配对」→ 扩展 `GET /pair/poll` 一次性领取 Bearer 令牌；捕获时 `POST /capture`（Bearer 校验、未解锁 409、载荷校验 400）只登记 `{id, created_at, status}` 待确认槽位，**明文不经 Rust 内存与磁盘保留**，凭据随 `lockpass:capture-request` 事件交给窗口，用户在桌面窗口点「保存」才入库；扩展轮询 `GET /capture/status?id=` 一次性领取结果（未决 200 `pending` / 过期 410 / 非法 id 404）
-- 通道并发与超时（v1.1.3，v1.1.4 对齐修正）：待确认槽位最多 4 个（满则挤最旧）、按 id 独立回报与领取、仅 `pending` 槽按 180s TTL 过期（终态槽保留至轮询一次性领取或锁屏清空，杜绝保存成功后被清理误报）、锁定即清空；扩展侧等待上限 185s（≥ Rust 槽位 TTL），期间每 20s 真走一次扩展 API 顶住 MV3 后台回收，浮层看门狗 195s（必须晚于后台上限）兜底恢复按钮并提示「未收到保存结果」；410 过期单独回 `expired` 文案，不再并入「返回异常」
-- 旅行模式联动：页面桥与桌面通道推给扩展的条目集合均为 `visibleEntries()`，敏感条目不外泄（v1.1.3）
+- 自动捕获：`content.js` 监听 submit 后向后台登记待确认凭据（每 tab 一份，25s TTL；站点身份按「帧 hostname → referrer → 顶层 tab URL」三级解析，解析失败如 file:// 页拒绝暂存不弹窗）；浮层触发双路径——新页面加载的 CHECK + submit 后来源 frame 内 24s 观察窗（地址变化/密码框消失启发式，SPA 免刷新即弹；iframe 命中经 `forwardToTop` 由顶层 frame 弹层）。新显式 submit 会解除此前「忽略/关闭」对同域+同账号的弹层抑制；用户点「保存」后凭据以**后台下发的待确认记录**为准（不采信页面提交的 payload），入库按 `hostname + username` 去重并回传 `created / updated / exists`，新建条目标题优先取清洗后的网页 `document.title`（截 200 字符，缺省回退域名），写入必须经用户确认、绝不自动落库
+- 投递白名单：捕获凭据、条目列表与密码取回只交给浏览器注入、页面无法伪造的 `sender.url` 命中 `isTrustedAppPageUrl()` 的应用页面（GitHub Pages `/lockPass/`、`localhost:1420`、`127.0.0.1:1420`）；自建部署需同步该白名单。`file://` 本地页面之间无法区分，默认拒绝投递，需扩展弹窗显式勾选「允许本地文件页面接收捕获凭据」
+- 桌面版本地通道：桌面窗口没有页面桥，改走 Rust 侧 `tiny_http` 服务（仅监听 `127.0.0.1:33555`）。扩展弹窗「连接桌面版 LockPass」→ `POST /pair` 取 6 位 nonce → 桌面窗口配对弹窗核对数字点「允许配对」→ 扩展 `GET /pair/poll` 一次性领取 Bearer 令牌；捕获时 `POST /capture`（Bearer 校验、未解锁 409、载荷校验 400）只登记 `{id, created_at, status}` 待确认槽位，**明文不经 Rust 内存与磁盘保留**，凭据随 `lockpass:capture-request` 事件交给窗口，用户在桌面窗口点「保存」才入库；扩展轮询 `GET /capture/status?id=` 一次性领取结果（未决 200 `pending` / 过期 410 / 非法 id 404）
+- 通道并发与超时：待确认槽位最多 4 个（满则挤最旧）、按 id 独立回报与领取、仅 `pending` 槽按 180s TTL 过期（终态槽保留至轮询一次性领取或锁屏清空，杜绝保存成功后被清理误报）、锁定即清空；扩展侧等待上限 185s（≥ Rust 槽位 TTL），期间每 20s 真走一次扩展 API 顶住 MV3 后台回收，浮层看门狗 195s（必须晚于后台上限）兜底恢复按钮并提示「未收到保存结果」；410 过期单独回 `expired` 文案，不再并入「返回异常」
+- 旅行模式联动：页面桥与桌面通道推给扩展的条目集合均为 `visibleEntries()`，敏感条目不外泄
 - 限制：浏览器版需 LockPass 页面保持解锁打开；桌面版需应用运行且已完成配对；复杂动态表单可能识别失败；无自动弹出建议
 
 ### 3.17 文件同步（本地）
 
 - 浏览器版（Chrome/Edge）：文件系统访问 API，绑定本地数据目录
 - 同步失败有 Toast + 状态标签反馈（`lastSyncError`）
-- **句柄自愈（v1.0.5）**：`FileSystemDirectoryHandle` 无法经 JSON 序列化还原、引擎升级也可能使存储句柄退化为普通对象（调用 `getFileHandle` 报 "not a function"）；`ensureUsableDirHandle()` 检测到失效即自动解绑并 Toast 提示一次，后续保存回归静默，数据不受影响；设置面板同步显示「目录句柄失效，请重新绑定」。快照浏览器分支同样走自愈
-- 桌面版：Tauri 文件存储，等价结构（见 docs/tauri.md）；**禁止绑定同步目录**（bindDirectory 硬拒绝）；file-store 在 `__TAURI__` 缺失时经 `__TAURI_INTERNALS__` 兜底桥接，防止桌面被误判为浏览器而暴露绑定入口（v1.0.6）；v1.0.7 起统一由 `core/tauri-env.js`（挂载 `window.LockTauri`，双信号）提供环境判定，sw-register 桌面分支脚本求值期立即注销残留 SW
-- **桌面包剥离 sw.js（v1.0.9）**：`beforeBuildCommand` 链尾调用 `scripts/remove-dist-sw.mjs` 删除 dist/sw.js；受控对比（fastenerTradeWorkbench 无 SW 同机不复现）证实残留注册是首屏 404 根因
-- **冷启动自愈探针（v1.0.9）**：`boot-flag.js` 同步置 `__LOCKPASS_BOOTED__`，Rust setup 线程三次 eval 探测，失败页上下文内自动 reload ≤2 次
-- **IDB→文件迁移桥（v1.0.9）**：file-store 启用时若文件空而旧 origin IndexedDB 有完整加密负载则一次性搬运（meta.salt/iterations/version + vault/main，排除 dirHandle），openDB 闸门串行化避免竞态
+- **句柄自愈**：`FileSystemDirectoryHandle` 无法经 JSON 序列化还原、引擎升级也可能使存储句柄退化为普通对象（调用 `getFileHandle` 报 "not a function"）；`ensureUsableDirHandle()` 检测到失效即自动解绑并 Toast 提示一次，后续保存回归静默，数据不受影响；设置面板同步显示「目录句柄失效，请重新绑定」。快照浏览器分支同样走自愈
+- 桌面版：Tauri 文件存储，等价结构（见 docs/tauri.md）；**禁止绑定同步目录**（bindDirectory 硬拒绝）；file-store 在 `__TAURI__` 缺失时经 `__TAURI_INTERNALS__` 兜底桥接，防止桌面被误判为浏览器而暴露绑定入口；统一由 `core/tauri-env.js`（挂载 `window.LockTauri`，双信号）提供环境判定，sw-register 桌面分支脚本求值期立即注销残留 SW
+- **桌面包剥离 sw.js**：`beforeBuildCommand` 链尾调用 `scripts/remove-dist-sw.mjs` 删除 dist/sw.js；证实残留注册是首屏 404 根因
+- **冷启动自愈探针**：`boot-flag.js` 同步置 `__LOCKPASS_BOOTED__`，Rust setup 线程三次 eval 探测，失败页上下文内自动 reload ≤2 次
+- **IDB→文件迁移桥**：file-store 启用时若文件空而旧 origin IndexedDB 有完整加密负载则一次性搬运（meta.salt/iterations/version + vault/main，排除 dirHandle），openDB 闸门串行化避免竞态
 
 ### 3.18 多设备同步（局域网直连，v1.1.5）
 
-设计文档见 `docs/multi-device-sync-design.md`（§4 密钥模型 / §6 合并语义 / §7 协议 / §9 失败模式）。
+设计文档已并入本节（密钥模型 / 合并语义 / 协议 / 失败模式均在下文展开）。
 
 - **通道**：局域网明文 HTTP，**不经任何服务器 / 云端 / 中继**（离线优先）。桌面端既能开启服务也能连接服务，谁先点「开启服务」谁就是服务端 A；**浏览器版只能当客户端**（无监听端口能力）
 - **入口**：侧栏「添加密码 → 更多添加方式」下拉 → 「同步服务」→ 「开启服务」/「连接对端」
@@ -234,10 +236,10 @@
 - **客户端（B）**：填地址 + 端口 + 口令 → 对端预览（数据序号 / 时钟偏差）→ 四步进度（鉴权 → 拉取 → 合并 → 回写）→ 结果页
 - **一轮结束两端一致**：B 拉取 A 的快照后在**本地**做双向合并（`sync-merge.js`），再把合并结果整包推回 A（`POST /sync/apply` + `baseRev` 乐观锁）；A **不做二次合并**，只校验后原样落盘。不等即 `409`，B 自动重跑一轮
 - **同步口令 P**：**6 位纯数字**（v1.1.5 用户拍板「越简单越好」：同网络 + 需手动开启服务 + 只在同步那几分钟有效），一次性、TTL 600s。**P 绝不等于主密码**，界面明确标注；P 本身永不过线（只上线 `HMAC(K_auth, challenge)` 与载荷 `mac = HMAC(K_auth, iv‖data)`）；鉴权失败 3 次即销毁服务实例
-- **口令强度取舍记录在案**：6 位数字约 20 bit，低于设计文档 §4.2 原定的 40 bit。可用的前提是「600 秒窗口 + 3 次猜测上限 + 600000 次 PBKDF2 使离线爆破无法在窗口内完成 + P 不是数据密钥（仍需主密码才能解密）」，等价蓝牙 / Wi-Fi 配对 PIN 的用法；若改公网或长期会话，必须换回 ≥40 bit 的词组口令
+- **口令强度取舍记录在案**：6 位数字约 20 bit，低于最初设计建议的 40 bit。可用的前提是「600 秒窗口 + 3 次猜测上限 + 600000 次 PBKDF2 使离线爆破无法在窗口内完成 + P 不是数据密钥（仍需主密码才能解密）」，等价蓝牙 / Wi-Fi 配对 PIN 的用法；若改公网或长期会话，必须换回 ≥40 bit 的词组口令
 - **数据面直接复用既有密文信封**（`{salt, iterations, iv, data}`），A 端不解密、不重加密、不需要一次性同步密钥。**硬前提：两端主密码相同**，不同则报 `E_KEY_MISMATCH` 并引导改用 .vault 单边迁移，绝不做跨主密码的自动合并
 - **回写沿用 A 的 `salt / iterations`** 加密，A 用自身主密码解密后原样落盘，**不改动 `meta.salt`**（避免把「修改主密码」的语义搅进来）；A 落盘前先写一份本地加密快照作回滚点
-- **实施偏差（相对设计文档，均为收紧）**：① **Rust 侧不做任何密码学** —— `mac` 由前端 Web Crypto 裁决后回报布尔，`K_auth` 完全不进 Rust 内存（`hmac` / `pbkdf2` 不可离线获取，离线优先不引入依赖）；② 出站 HTTP 为 Rust 手写最小客户端（`std::net::TcpStream`），不引入 `reqwest`。Rust 侧**零新增依赖**，只搬运密文
+- **实施偏差（相对最初设计，均为收紧）**：① **Rust 侧不做任何密码学** —— `mac` 由前端 Web Crypto 裁决后回报布尔，`K_auth` 完全不进 Rust 内存（`hmac` / `pbkdf2` 不可离线获取，离线优先不引入依赖）；② 出站 HTTP 为 Rust 手写最小客户端（`std::net::TcpStream`），不引入 `reqwest`。Rust 侧**零新增依赖**，只搬运密文
 - **安全边界**：同步实例**不存在** `/credentials` 之类的明文面（与扩展桥编译期隔离，不是路由内 `if`）；全程只搬密文，明文只在本 webview 内存中解密与合并；载荷上限 8 MB；旅行模式开启时入口置灰且 Rust 侧硬拒
 - **角色与限制**：浏览器客户端走 `file://` 双击本地 `dist/index.html`（已实测可行，服务端回 `ACAO: *`）；在线版 https 页面不能当客户端（混合内容被禁）；**手机形态暂不支持**（origin 不固定 → 孤儿数据，且 http origin 无 `crypto.subtle`）
 - **已知限制**：墓碑表（`meta.syncBaseline.tombstones`）不随同步交换，风险由合并的交换律 / 幂等收敛性兜底；尚未两台真机联调
@@ -251,18 +253,18 @@
 - 数据备份与恢复（.vault）
 - 销毁保险箱（双重确认）
 - 应用更新 / 自动检查更新（仅桌面版）：见 3.20
-- 桌面剪贴板实现（v1.0.12）：Windows 走 clipboard-manager 插件 shim；macOS 复制走 WebKit 原生 clipboard API（主线程安全），无手势清空经自定义命令 `clipboard_write_text` 主线程派发 arboard 写入——规避插件 tokio 线程与 WebKit 粘贴板监控的竞态（plugins-workspace#3205）；复制失败自动降级 execCommand 并透出真实错误
+- 桌面剪贴板实现：Windows 走 clipboard-manager 插件 shim；macOS 复制走 WebKit 原生 clipboard API（主线程安全），无手势清空经自定义命令 `clipboard_write_text` 主线程派发 arboard 写入——规避插件 tokio 线程与 WebKit 粘贴板监控的竞态（plugins-workspace#3205）；复制失败自动降级 execCommand 并透出真实错误
 
 ### 3.20 自动更新（桌面版）
 
 - 通道：Tauri updater 插件；端点 `https://github.com/trexwb/lockPass/releases/latest/download/latest.json`；公钥内嵌 `tauri.conf.json`（`plugins.updater.pubkey`），更新包带 minisign 签名（CI 以 Secrets 注入私钥 `TAURI_SIGNING_PRIVATE_KEY` 生成 `.sig`）
 - 流程：桌面启动 5s 静默检查（开关：设置 → 关于 → 自动检查更新，默认开）→ 发现新版本后台 `downloadAndInstall`（进度 0~100 上报 设置 → 关于 → 应用更新）→ Toast + 确认弹窗 → `process.relaunch` 重启完成安装
 - 发布链：release.yml 构建期生成更新产物（NSIS setup.exe / macOS app.tar.gz + .sig），`update-manifest` job 由 `scripts/gen-latest-json.mjs` 汇总生成 latest.json 随 Draft Release 上传；Publish 后全量可达（Draft 未发布时清单 404 属预期）
-- 边界：仅桌面版联网检查；浏览器版无更新机制；私钥丢失需轮换公钥并全量重装；v1.0.11 为首个自更新版本，更早版本需手动升级一次
+- 边界：仅桌面版联网检查；浏览器版无更新机制；私钥丢失需轮换公钥并全量重装；更早版本需手动升级一次
 
 ### 3.20 键盘快捷键
 
-快捷键体系优先使用 Alt/Option 组合（避开浏览器保留键），macOS 为 ⌥（Option）、Windows 为 Alt；⌘/Ctrl 按平台自动映射。设置面板内有完整速查表。v1.0.22 起新增列表键盘导航与主界面键盘可达（导航项 / 条目卡片可 Tab 聚焦，Enter/Space 触发）。
+快捷键体系优先使用 Alt/Option 组合（避开浏览器保留键），macOS 为 ⌥（Option）、Windows 为 Alt；⌘/Ctrl 按平台自动映射。设置面板内有完整速查表。列表键盘导航与主界面键盘可达（导航项 / 条目卡片可 Tab 聚焦，Enter/Space 触发）。
 
 | 快捷键 | 功能 |
 |--------|------|
@@ -287,8 +289,8 @@
 | `⌘/Ctrl + ⌫` | 删除当前条目（回收站视图中为彻底删除） |
 | `⌥/Alt + ⇧ + R` | 恢复条目（回收站视图中） |
 | `⌥/Alt + ⇧ + ⌫` | 清空回收站（需二次确认） |
-| `↑ / ↓` | 列表上下导航选择条目（v1.0.22；非输入态） |
-| `Enter / Space` | 卡片聚焦时打开详情（v1.0.22） |
+| `↑ / ↓` | 列表上下导航选择条目（非输入态） |
+| `Enter / Space` | 卡片聚焦时打开详情 |
 | `Escape` | 关闭弹窗 / 详情面板，或清空搜索 |
 
 ### 3.21 旅行模式（敏感条目临时隐藏）
@@ -297,7 +299,7 @@
 - 开关：侧边栏「旅行模式」，状态存 `localStorage`（`lockpass_travel_mode`，仅布尔值、不含任何条目数据），开关本身不落库
 - 读取出口统一走 `visibleEntries()` / `isTravelHidden()`：列表与搜索、详情与复制/编辑入口、回收站与过期提醒计数、关联密码、密码健康报告与「关于」条目数、`.vault` 导出（含回收站内敏感条目与其编辑历史快照）、QR 分享与扫码导入的 TOTP 绑定目标、扩展页面桥条目列表、桌面版本地 HTTP 通道推送的条目集合
 - 写盘与合并按钮（导入合并、自动备份、保存）仍按全量集合处理，避免覆盖隐藏条目而丢数据；这是刻意区分：**隐藏 = 读取出口过滤，不是从库中删除**
-- 副作用守卫（v1.1.3）：开启时关闭正在编辑的敏感条目、编辑器内标敏不再落草稿；`selectEntry` / `openEntryModal` / `copyPassword` / `copyPasswordWithTotp` 统一加隐藏守卫，间接入口不可达
+- 副作用守卫：开启时关闭正在编辑的敏感条目、编辑器内标敏不再落草稿；`selectEntry` / `openEntryModal` / `copyPassword` / `copyPasswordWithTotp` 统一加隐藏守卫，间接入口不可达
 - 取舍：口令仍在库中，仅运行时不出屏；不防住已解锁的机器与内存取证，定位是过境临时隐藏而非删除
 
 ---
@@ -313,7 +315,7 @@ Database: PasswordVaultDB
 
 ObjectStore: meta (keyPath: key)
   { key: "salt",       value: "base64-encoded-salt" }
-  { key: "iterations", value: 100000 }
+  { key: "iterations", value: 600000 }   // 新库默认；旧库沿用创建时参数（可为 100000）
   { key: "version",    value: 1 }
 
 ObjectStore: vault (keyPath: id)
@@ -371,7 +373,7 @@ Entropy = log2(charset_size ^ length)
 ### 5.2 自动锁定
 
 - 监听用户交互事件（mousemove, mousedown, keydown, touchstart, scroll）重置计时器
-- 超时触发锁定：清除内存明文（entries / 回收站 / 标签）+ **密码历史快照（含修改前明文，v1.0.22 起）** + **编辑器草稿（sessionStorage `lockpass_draft_*`，含明文，v1.0.22 起）** + sessionStorage 会话 + cryptoKey；锁定与退出登录均执行同等清理
+- 超时触发锁定：清除内存明文（entries / 回收站 / 标签）+ **密码历史快照（含修改前明文）** + **编辑器草稿（sessionStorage `lockpass_draft_*`，含明文）** + sessionStorage 会话 + cryptoKey；锁定与退出登录均执行同等清理
 
 ### 5.3 安全风险与防范
 
@@ -422,22 +424,20 @@ LockPass/
 
 ## 8. 未来规划
 
-- [x] 支持 TOTP 两步验证（HMAC-SHA1 自实现 + 扫码导入 + 密码与验证码组合复制：v1.1.0 落地代码、v1.1.1 补齐接线；v1.1.3 修正扫码绑定时只作用于旅行模式可见条目）
-- [x] 密码健康审计（弱 / 复用 / 空 / 长期未更新 / 过期五类，纯本地计算，v1.1.0 落地；v1.1.3 审计输入改为旅行模式可见集合）
-- [x] 密码历史记录与回滚（v1.0.x 已实现）
-- [x] 支持多语言（中英文轻量 i18n，设置 → 语言即时生效；v1.0.x 基线，v1.1.x 文案渐进迁移）
-- [x] 支持自定义主题色（浅色 / 深色 / 跟随系统 + 强调色，v1.0.x 已实现）
-- [x] 支持密码过期提醒（条目过期时间 + 提醒天数设置 + 列表卡片角标，v1.1.0 落地、v1.1.1 补齐卡片警示）
-- [x] 自动备份提醒 / 定期快照（v1.0.x 已实现）
-- [x] 支持浏览器扩展（MV3：自动填充 v1.0.1 交付；自动捕获 v1.1.2 交付、v1.1.3 补齐桌面版本地 HTTP 通道并完成投递白名单等安全加固，见 §3.16）
-- [x] 旅行模式（敏感条目运行时从全部读取出口隐藏，v1.1.2 交付、v1.1.3 补齐出口与守卫，见 §3.21）
-- ~~密钥文件双因素 / 演示模式 / 活动时间线视图 / 卡片显示自定义~~ → 2026-10-08 判定排除（理由见 `docs/v1.1-plan.md` §三 已排除项；密钥文件未接线的孤立源码已于同日删除）
-- ~~泄露检测（HIBP k-anonymity，默认关闭的可选联网功能）~~ → 2026-10-08 判定排除：需联网，与离线优先底线冲突，弱/复用/过期已由本地安全报告覆盖（详见 `docs/v1.1-plan.md` §三 已排除项）
-- [x] 移动端体验打磨（底部导航 / 触控目标 / 扫码流程 / 安全区，v1.0.x 已实现）
-- [ ] 生物识别 / WebAuthn 全平台：macOS Secure Enclave 代码链路已落地（v1.1.3 修正访问控制标志位并映射签名缺失错误），但**尚未在签名构建上端到端验证**——未签名的开发构建必然返回 `ENTITLEMENT_ERR`；Windows Hello 与浏览器 WebAuthn 未实现（`docs/v1.1-plan.md` Phase 3 §8）
+- [x] 支持 TOTP 两步验证（HMAC-SHA1 自实现 + 扫码导入 + 密码与验证码组合复制）
+- [x] 密码健康审计（弱 / 复用 / 空 / 长期未更新 / 过期五类，纯本地计算）
+- [x] 密码历史记录与回滚（见 §3.12）
+- [x] 支持多语言（中英文轻量 i18n，设置 → 语言即时生效）
+- [x] 支持自定义主题色（浅色 / 深色 / 跟随系统 + 强调色）
+- [x] 支持密码过期提醒（条目过期时间 + 提醒天数设置 + 列表卡片角标）
+- [x] 自动备份提醒 / 定期快照
+- [x] 支持浏览器扩展（MV3：自动填充与自动捕获，见 §3.16）
+- [x] 旅行模式（敏感条目运行时从全部读取出口隐藏，见 §3.21）
+- [x] 移动端体验打磨（底部导航 / 触控目标 / 扫码流程 / 安全区）
+- [ ] 生物识别 / WebAuthn 全平台：macOS Secure Enclave 代码链路已落地，但**尚未在签名构建上端到端验证**——未签名的开发构建必然返回 `ENTITLEMENT_ERR`；Windows Hello 与浏览器 WebAuthn 未实现
 
 > 优先级与工作量评估见工作区路线图文档；v1.x 的 MAJOR / MINOR 版本升级由用户决定。
 
 ---
 
-**文档版本：v1.1.6**
+**文档版本：v1.1.7**
