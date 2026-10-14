@@ -71,7 +71,8 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcxMEIwNTkxRUVBNkU4MTMKUldRVDZLYnVrUVVMY1drSFNITTRLaG1BOFJiQnhPRkgvMkZHUS9kcThsWHBnK3A2Qi81VXFSRUMK",
       "endpoints": [
-        "https://github.com/trexwb/lockPass/releases/latest/download/latest.json"
+        "https://github.com/trexwb/lockPass/releases/latest/download/latest.json",
+        "https://v4.gh-proxy.org/https://github.com/trexwb/lockPass/releases/latest/download/latest.json"
       ]
     }
   }
