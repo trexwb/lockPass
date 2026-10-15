@@ -11,6 +11,35 @@ const PAIR_TIMEOUT_MS = 90000
 const HTTP_STATUS_POLL_MS = 15000
 const STORAGE_TOKEN_KEY = 'lp_http_token'
 
+// ── 填充模式（v1.1.8） ──────────────────────────────
+// auto   ：检测到登录表单（一级）后自动填入（默认）
+// suggest：仅弹建议气泡，用户点击条目才填入（二级凭据页固定此行为）
+// off    ：关闭自动填充，仅保留 popup 手动填充
+const FILL_MODE_KEY = 'lp_fill_mode'
+const FILL_MODES = ['auto', 'suggest', 'off']
+let fillMode = 'auto'
+chrome.storage.local.get(FILL_MODE_KEY).then((r) => {
+  if (FILL_MODES.includes(r[FILL_MODE_KEY])) fillMode = r[FILL_MODE_KEY]
+}).catch(() => {})
+
+// 二级敏感凭据字段：自动填充路径永不发送，仅用户点击建议 / popup 手动填充时填入
+const CREDENTIAL_FILL_KEYS = ['token', 'pin', 'notes']
+
+// 登录成功抑制（v1.1.8）：content 填充密码后观察到 URL 变化 → LP_LOGIN_DONE，
+// 记录 tabId+domain，后续该组合的 LP_PAGE_READY 不再自动写表单（仍可提示/手动填）
+const LOGIN_DONE_TTL_MS = 30 * 60 * 1000
+const loginDoneMap = new Map() // 'tabId|domain' -> at
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const key of loginDoneMap.keys()) {
+    if (key.startsWith(tabId + '|')) loginDoneMap.delete(key)
+  }
+})
+
+function isLoginDone(tabId, domain) {
+  const at = loginDoneMap.get(tabId + '|' + String(domain || '').toLowerCase())
+  return !!at && Date.now() - at < LOGIN_DONE_TTL_MS
+}
+
 // ── 状态 ─────────────────────────────────────────────
 let pageBridgeReady = false
 let cachedEntries = [] // 页面桥来源的条目（不含密码）
@@ -168,11 +197,15 @@ async function fetchCredentials(domain) {
 }
 
 // ── 多字段填充（upgrade-design.md §2.2） ─────────────
-// key 语义名：username/password/email/phone/otp/url（url 为自定义字段类型扩展项）
-// 条目数据来源：username←条目 username；password←条目 password；
-// email←自定义字段 type=email；phone←type=phone；otp←type=otp；url←type=url。
+// key 语义名：username/password/email/phone/otp/url + token/pin/notes（v1.1.8）。
+// 条目数据来源：username←条目 username；password←条目 password（AI 条目的
+// Token 亦存于 password）；email←自定义字段 type=email；phone←type=phone；
+// otp←type=otp；url←type=url；token←条目 password 或 type=token 自定义字段；
+// pin←type=pin；notes←type=notes。
+// token/pin/notes 为二级字段：自动填充路径剔除（见 CREDENTIAL_FILL_KEYS），
+// 仅用户点击建议（SUGGESTION_FILL）或 popup 手动填充（POPUP_FILL）时下发。
 // 发送前仍做密码剥离：LP_MULTI_FILL 仅在 background → content 瞬时内存中携带明文。
-const MULTI_FILL_KEYS = ['username', 'password', 'email', 'phone', 'otp', 'url']
+const MULTI_FILL_KEYS = ['username', 'password', 'email', 'phone', 'otp', 'url', 'token', 'pin', 'notes']
 
 function pickCustomFieldValue(entry, type) {
   const cf = ((entry && entry.customFields) || []).find((c) => c && c.type === type)
@@ -180,8 +213,10 @@ function pickCustomFieldValue(entry, type) {
   return v === undefined || v === null ? '' : String(v)
 }
 
-// 按字段集合构造 LP_MULTI_FILL 字段数组（保持 用户名→密码→邮箱/手机→验证码 顺序），
-// 条目无对应值（空字符串）的字段自动剔除
+// 按字段集合构造 LP_MULTI_FILL 字段数组（保持 用户名→密码→邮箱/手机→验证码→凭据 顺序），
+// 条目无对应值（空字符串）的字段自动剔除。
+// token：优先条目 password（AI 条目 Token 存于 password 字段），其次 type=token
+// 自定义字段；页面存在 token 输入框时才会被 content 匹配填入（inputMap 隔离）。
 function buildFields(entry, password, keys) {
   const want = Array.isArray(keys) && keys.length ? keys : MULTI_FILL_KEYS
   const fields = []
@@ -194,6 +229,9 @@ function buildFields(entry, password, keys) {
     else if (key === 'phone') value = pickCustomFieldValue(entry, 'phone')
     else if (key === 'otp') value = pickCustomFieldValue(entry, 'otp')
     else if (key === 'url') value = pickCustomFieldValue(entry, 'url')
+    else if (key === 'token') value = password || pickCustomFieldValue(entry, 'token')
+    else if (key === 'pin') value = pickCustomFieldValue(entry, 'pin')
+    else if (key === 'notes') value = pickCustomFieldValue(entry, 'notes')
     if (value !== undefined && value !== null && value !== '') fields.push({ key, value: String(value) })
   }
   return fields
@@ -219,11 +257,15 @@ async function sendMultiFill(tabId, fields, frameId) {
 // 按页面能力位 availableFields 构造字段集并填充；若页面还有未出现字段
 // （多步登录），把整套字段数据缓存进 pendingCredential（120s 有效期），
 // 后续 LP_FIELDS_READY 上报新字段出现时补填剩余字段。
-async function autoFill(domain, tabId, frameId, hasPassword, availableFields) {
+// allowFill=false（仅提示模式 / 登录成功后 / 二级凭据页）时只取数弹建议，
+// 不向页面写入任何字段。二级字段（token/pin/notes）在任何自动填充路径中
+// 均被剔除，只能经用户点击建议或 popup 手动填充下发。
+async function autoFill(domain, tabId, frameId, hasPassword, availableFields, allowFill = true) {
   const entryForDomain = (list) => (list && list.length ? list[0] : null)
-  const keys = Array.isArray(availableFields) && availableFields.length
+  const pageKeys = Array.isArray(availableFields) && availableFields.length
     ? availableFields
     : hasPassword ? MULTI_FILL_KEYS : ['username']
+  const keys = pageKeys.filter((k) => !CREDENTIAL_FILL_KEYS.includes(k))
   if (httpReadyFlag) {
     let entries = await fetchCredentials(domain)
     if ((!entries || !entries.length) && tabId) {
@@ -240,15 +282,17 @@ async function autoFill(domain, tabId, frameId, hasPassword, availableFields) {
     if (entry) {
       lastSuggestCreds = { tabId, domain, entries, at: Date.now() }
       const allFields = buildFields(entry, entry.password, MULTI_FILL_KEYS)
-      const sendFields = allFields.filter((f) => keys.includes(f.key))
-      if (sendFields.length) await sendMultiFill(tabId, sendFields, frameId)
-      // 多步：页面能力位中仍有未发送字段（如密码框尚未出现）→ 缓存整套字段数据等待补填
-      if (keys.some((k) => !sendFields.some((f) => f.key === k))) {
-        pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
+      if (allowFill) {
+        const sendFields = allFields.filter((f) => keys.includes(f.key))
+        if (sendFields.length) await sendMultiFill(tabId, sendFields, frameId)
+        // 多步：页面能力位中仍有未发送字段（如密码框尚未出现）→ 缓存整套字段数据等待补填
+        if (keys.some((k) => !sendFields.some((f) => f.key === k))) {
+          pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
+        }
       }
     }
     // 命中/未命中都弹建议气泡（页面有登录表单的前提下）
-    await sendSuggestions(tabId, entry ? entries : null)
+    await sendSuggestions(tabId, entry ? entries : null, allowFill)
     return
   }
   if (pageBridgeReady) {
@@ -258,16 +302,18 @@ async function autoFill(domain, tabId, frameId, hasPassword, availableFields) {
       const pwd = await requestPassword(entry.id)
       if (pwd.ok) {
         const allFields = buildFields(entry, pwd.password, MULTI_FILL_KEYS)
-        const sendFields = allFields.filter((f) => keys.includes(f.key))
-        if (sendFields.length) await sendMultiFill(tabId, sendFields, frameId)
-        if (keys.some((k) => !sendFields.some((f) => f.key === k))) {
-          pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
+        if (allowFill) {
+          const sendFields = allFields.filter((f) => keys.includes(f.key))
+          if (sendFields.length) await sendMultiFill(tabId, sendFields, frameId)
+          if (keys.some((k) => !sendFields.some((f) => f.key === k))) {
+            pendingCredential = { tabId, domain, fields: allFields, at: Date.now() }
+          }
         }
-        await sendSuggestions(tabId, [entry])
+        await sendSuggestions(tabId, [entry], allowFill)
         return
       }
     }
-    await sendSuggestions(tabId, null)
+    await sendSuggestions(tabId, null, allowFill)
   }
 }
 
@@ -275,22 +321,25 @@ function maybeAutoFill() {
   if (!autoFillPending) return
   const p = autoFillPending
   autoFillPending = null
-  autoFill(p.domain, p.tabId, p.frameId, p.hasPassword, p.fields)
+  // 就绪后补发：按缓存的 tier 与当前填充模式决定是否自动写入
+  const allowFill = fillMode === 'auto' && p.tier !== 'credential' && !isLoginDone(p.tabId, p.domain)
+  autoFill(p.domain, p.tabId, p.frameId, p.hasPassword, p.fields, allowFill)
 }
 
 // ── 自动弹出建议（按 URL 域名预筛选推荐条目） ────────
-// 向顶层 frame 发送建议列表（剥离密码字段，密码仅在后台内存中），并叠加徽标数字提示
+// 向顶层 frame 发送建议列表（剥离密码字段，密码仅在后台内存中），并叠加徽标数字提示。
+// persistent=true（二级凭据页 / 仅提示模式）时气泡常驻，等待用户主动点击填入。
 function safeSuggestEntries(entries) {
   return (entries || []).map(({ password, ...rest }) => rest)
 }
 
-async function sendSuggestions(tabId, entries) {
+async function sendSuggestions(tabId, entries, persistent = false) {
   if (!tabId) return
   const has = !!(entries && entries.length)
   try {
     await chrome.tabs.sendMessage(
       tabId,
-      { type: 'LP_SHOW_SUGGESTIONS', entries: has ? safeSuggestEntries(entries) : [], empty: !has },
+      { type: 'LP_SHOW_SUGGESTIONS', entries: has ? safeSuggestEntries(entries) : [], empty: !has, persistent: !!persistent },
       { frameId: 0 }
     )
   } catch (e) { /* 页面不可达/未注入，忽略 */ }
@@ -668,22 +717,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true })
       break
 
-    // 网页发现登录表单 → 就绪后自动填充
-    // fields 为页面能力位（username/password/email/phone/otp/url），后台据此构造多字段填充
+    // 网页发现登录表单 → 就绪后按填充模式处理
+    // fields 为页面能力位（username/password/email/phone/otp/url/token/pin/notes），
+    // tier 为字段分级：login=一级登录页；credential=二级凭据页（仅提示，不自动写）
     case 'LP_PAGE_READY': {
       const tabId = sender.tab && sender.tab.id
       const frameId = sender.frameId
       const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
       const hasPassword = !!msg.hasPassword
+      const tier = msg.tier === 'credential' ? 'credential' : 'login'
       // 记录最近上报登录表单的 frame，供建议点击/后续填充定位
       lastFormFrame = { tabId, frameId, at: Date.now() }
+      // 登录成功后：该 tab + 域名不再自动写表单。若密码框重新出现（用户登出 /
+      // 切换账号回到登录页），清除抑制恢复正常；二级字段仍允许提示点击填入。
+      if (isLoginDone(tabId, domain)) {
+        if (hasPassword) loginDoneMap.delete(tabId + '|' + String(domain || '').toLowerCase())
+        else {
+          checkHttpStatus().then(() => {
+            if (isReady()) autoFill(domain, tabId, frameId, hasPassword, msg.fields, false)
+          })
+          sendResponse({ ok: true })
+          break
+        }
+      }
+      if (fillMode === 'off') {
+        sendResponse({ ok: true })
+        break
+      }
+      const allowFill = fillMode === 'auto' && tier !== 'credential'
       checkHttpStatus().then(() => {
         if (isReady()) {
-          autoFill(domain, tabId, frameId, hasPassword, msg.fields)
+          autoFill(domain, tabId, frameId, hasPassword, msg.fields, allowFill)
         } else {
-          autoFillPending = { domain, tabId, frameId, hasPassword, fields: msg.fields }
+          autoFillPending = { domain, tabId, frameId, hasPassword, fields: msg.fields, tier }
         }
       })
+      sendResponse({ ok: true })
+      break
+    }
+
+    // 登录成功（v1.1.8）：content 在填充密码后观察到 URL 变化即上报，
+    // 记录 tabId + 域名，停止该组合后续自动填充（popup 手动填充不受影响）
+    case 'LP_LOGIN_DONE': {
+      const tabId = sender.tab && sender.tab.id
+      if (tabId && msg.domain) {
+        loginDoneMap.set(tabId + '|' + String(msg.domain).toLowerCase(), Date.now())
+      }
       sendResponse({ ok: true })
       break
     }
@@ -694,7 +773,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const frameId = sender.frameId
       const domain = msg.domain || extractDomain(sender.tab && sender.tab.url)
       lastFormFrame = { tabId, frameId, at: Date.now() }
-      const want = Array.isArray(msg.fields) && msg.fields.length ? msg.fields : MULTI_FILL_KEYS
+      const want = Array.isArray(msg.fields) && msg.fields.length
+        ? msg.fields.filter((k) => !CREDENTIAL_FILL_KEYS.includes(k))
+        : MULTI_FILL_KEYS.filter((k) => !CREDENTIAL_FILL_KEYS.includes(k))
       const pc = pendingCredential
       const fresh = pc && Date.now() - pc.at < 120000 // 120s 有效，过期丢弃
       if (pc && fresh && pc.tabId === tabId && pc.domain === domain) {
@@ -707,7 +788,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 缓存缺失/过期（如用户隔了很久才到下一步）→ 走常规自动填充兜底
         pendingCredential = null
         checkHttpStatus().then(() => {
-          if (isReady()) autoFill(domain, tabId, frameId, want.includes('password'), want)
+          if (isReady()) autoFill(domain, tabId, frameId, want.includes('password'), want, fillMode === 'auto')
         })
         sendResponse({ ok: true })
       }
@@ -731,7 +812,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 缓存缺失/过期（如用户隔了很久才到第二步）→ 走常规自动填充兜底
         pendingCredential = null
         checkHttpStatus().then(() => {
-          if (isReady()) autoFill(domain, tabId, frameId, true, ['password'])
+          if (isReady()) autoFill(domain, tabId, frameId, true, ['password'], fillMode === 'auto')
         })
         sendResponse({ ok: true })
       }
@@ -767,6 +848,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           pairNonce,
           trustFilePages: trustFileAppPages,
           fileAppSeen: fileAppPageSeen,
+          fillMode,
         })
       })
       return true // 异步响应
@@ -783,6 +865,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       }
       sendResponse({ ok: true, value: trustFileAppPages })
+      break
+    }
+
+    // popup 切换填充模式（v1.1.8）：auto=自动填入 / suggest=仅提示点击填入 / off=关闭
+    case 'POPUP_SET_FILL_MODE': {
+      const mode = FILL_MODES.includes(msg.value) ? msg.value : 'auto'
+      fillMode = mode
+      chrome.storage.local.set({ [FILL_MODE_KEY]: mode })
+      sendResponse({ ok: true, value: fillMode })
       break
     }
 

@@ -298,3 +298,26 @@ body {
   accent-color: var(--accent);
   cursor: pointer;
 }
+
+/* 填充模式选择（v1.1.8，见 background.js FILL_MODE_KEY） */
+.trust-row select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trust-row select:hover {
+  border-color: var(--accent);
+}
+
+.trust-row select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
