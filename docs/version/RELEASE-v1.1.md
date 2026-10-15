@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-10-15（补）· 扩展填充默认档位修正 + AI Token 页建议回退 —— **不推进版本号**（v1.1.8 同日同模块追加，基线仍 v1.1.8）
+
+依据用户明确诉求「不点击就不默认填入」与 fill-gating 设计文档对齐结论（默认智能建议），对上节做三处代码修正；其中 `background.js` 三处改动被写入护栏误判拦截（标的为文件中既有 password 标识符，非新增凭据，与 2026-10-12 记录的同类误判一致），待放行后应用。
+
+- **已落盘**：popup 下拉默认选中项改为「仅提示，点击才填入」（popup.html，未选存储偏好时的初始视觉值）。
+- **待放行（background.js，均未落盘、未验证）**：
+  1. 默认填充档位 auto 改为 suggest——初始值与 POPUP_SET_FILL_MODE 非法值兜底同步；已存过偏好的用户不受影响（storage 优先）；
+  2. AI Token 页建议回退（fill-gating 设计修订二补落地）——页面桥通道域名无命中且页面存在 token 字段时，建议气泡回退列出全部 AI 条目（entryType 为 ai，常驻提示），点击即经 SUGGESTION_FILL 填入（token 取条目 password 字段，即 API Key）；桌面 HTTP 通道维持域名匹配限制不变（见设计文档限制记录）；
+  3. token 字段误写防护——buildFields 对 token 增加条目类型门槛：entryType 非 ai 的条目不再把条目 password 字段值写进页面 token 框（此前任何条目点击建议都会带过去），字段名兼容页面桥 camelCase 与桌面 HTTP 通道差异。
+- **验证**：现有 v1.1.8 代码 `node --check` 三脚本通过、`npm run version:check` 11 处一致（v1.1.8）；上列待放行三处应用后需重跑语法检查并人工回归：AI 服务商 Token 设置页（域名无命中）弹常驻 AI 条目建议、点击即填；suggest 默认档下登录页只弹泡不写表单、搜索页无任何提示。
+
+---
+
+## 2026-10-15 · 扩展自动填充防误填：字段分级 + 三档填充模式 + 登录成功后抑制 —— **v1.1.8**（PATCH，bug 修复）
+
+**动机**：用户反馈现代网页搜索框普遍监听 input 即时搜索，扩展把账号误填入搜索表单导致无故搜索；同时希望「只监听登录页面，登录成功后不再自动填入」，并保留 Token 等非登录凭据的「提示后点击填入」能力。
+
+### 1. 已落盘（全部在扩展侧，主应用零逻辑改动）
+
+- `extension/content.js`：
+  - **搜索表单排除（三级）**：`isSearchField()` 识别 `type=search`、搜索语义命名（search/query/keyword/搜索/查询…）、并在 username/email/phone/otp/url/token/pin/notes 全部候选判定中前置排除；URL 级搜索参数页无密码框时不再上报。
+  - **用户名候选收紧 + 登录上下文兜底**：无密码框页面仅接受明确登录语义（去掉 `type=text` 无条件兜底与裸 `name` 词，补中文词 账号/帐号/用户/登录名/工号/会员号/客户编号/证件号，排除 1-2 字母极简命名如 `q`/`s`）；**有密码框时同一边界内的普通文本框按用户名兜底**（密码框即登录页强证据，搜索页无密码框走不到该分支，不误伤）。
+  - **中文语义与 label 关联**：`fieldAttrs()` 在 name/id/placeholder/aria-label 之外关联 `<label>` 文本（`el.labels` 优先，回退 `label[for=id]`）；email/phone 判定补中文词（邮箱/邮件、手机/电话/联系方式）。
+  - **二级字段识别**：新增 token（API Key/Token/Secret/授权码，AI 条目 Token 存于条目 password）、pin（PIN/通行码）、notes（恢复码/备份码）识别；无密码框时按「同 root 有提交按钮」回退扫描。
+  - **字段分级**：`detectLoginState()` 返回 `tier`（login=一级登录页 / credential=二级凭据页），`LP_PAGE_READY` 携带；`LP_MULTI_FILL` inputMap 增加 token/pin/notes 映射。
+  - **登录成功检测**：密码填充成功后武装 60s URL 变化观察，命中上报 `LP_LOGIN_DONE`（后台据此停止该 tab+域名自动填充）。
+  - 建议气泡支持常驻（persistent）：二级凭据页提示不 5 秒自动收起，避免「提示一闪而过」。
+- `extension/background.js`：
+  - `MULTI_FILL_KEYS` 扩展 token/pin/notes；`buildFields()` 映射 token←条目 password（AI Token）/type=token 自定义字段，pin/notes←对应自定义字段类型。
+  - **二级字段永不自动写入**：`CREDENTIAL_FILL_KEYS` 在所有自动填充路径（autoFill / LP_FIELDS_READY / LP_PASSWORD_READY）的 keys 过滤中剔除，只能经用户点击建议（SUGGESTION_FILL）或 popup 手动填充（POPUP_FILL）下发。
+  - **三档填充模式**（`lp_fill_mode`，storage.local 持久，默认 auto）：auto=一级登录页自动填入；suggest=仅弹建议点击才填；off=关闭自动填充（popup 手动填充不受影响）。
+  - **登录成功后抑制**：`LP_LOGIN_DONE` 按 tabId+domain 记录（30min TTL，tab 关闭即清）；命中后不再自动写表单，仅保留建议提示；密码框重新出现（登出/切账号）自动解除抑制。
+- `extension/popup.html/js/css`：footer 新增填充模式三档选择（POPUP_SET_FILL_MODE / POPUP_GET_STATE 透传）。
+- `src/core/ext-bridge.js`：自定义字段注释同步 v1.1.8 字段扩展（type 透传逻辑不变，桌面通道 toDto 已含 type）。
+
+### 2. 验证
+
+- 三个扩展 JS 文件语法解析通过；`npm run version:check` 11 处一致（v1.1.8）。
+- 需人工回归：搜索页不再被自动填入；登录成功后同页刷新/SPA 跳转不再自动填；AI 服务商 Token 设置页弹常驻建议、点击即填；popup 三档切换即时生效并持久化。
+
+---
+
 ## 2026-10-12（续）· 导入判重标准深度检查：发现并修复 4 项缺陷 —— **不推进版本号**（基线仍 v1.1.7）
 
 **方式**：逐行审查已落盘的自然键别名实现 + /tmp 对抗脚本 41 项断言 + 审阅者子代理独立复审（首次执行失败，重试后完成并实锤一项方向不收敛缺陷）。

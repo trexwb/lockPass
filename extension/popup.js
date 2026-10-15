@@ -100,6 +100,7 @@ async function getState() {
 
 function renderState(state) {
   syncTrustRow(state)
+  syncFillMode(state)
   // 配对进行中：显示 nonce，等待桌面端确认
   if (state.pairing) {
     showState(statePairing)
@@ -214,6 +215,29 @@ trustFile.addEventListener('change', async () => {
     return
   }
   setStatus(trustFile.checked ? '已允许本地页面接收凭据' : '已禁止本地页面接收凭据', 'warn')
+})
+
+/* 填充模式（v1.1.8）：auto=自动填入登录表单 / suggest=仅提示点击填入 / off=关闭。
+   搜索表单已被识别层排除；二级凭据字段（Token/PIN/恢复码）任何模式下均只提示不自动填。 */
+const fillMode = $('fill-mode')
+
+function syncFillMode(state) {
+  if (!state || !state.fillMode) return
+  fillMode.value = state.fillMode
+}
+
+fillMode.addEventListener('change', async () => {
+  const resp = await chrome.runtime.sendMessage({ type: 'POPUP_SET_FILL_MODE', value: fillMode.value })
+  if (!resp || !resp.ok) {
+    setStatus('设置失败，请重试', 'warn')
+    return
+  }
+  const labels = {
+    auto: '已开启：检测到登录表单即自动填入',
+    suggest: '已切换：仅提示，点击条目才填入',
+    off: '已关闭自动填充，可点击扩展图标手动填充',
+  }
+  setStatus(labels[resp.value] || '已保存', 'ok')
 })
 
 async function init() {

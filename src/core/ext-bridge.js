@@ -77,7 +77,9 @@
         username: x.username || '',
         url: x.url || '',
         entryType: x.entryType || 'website',
-        // 自定义字段（upgrade-design.md §2.2）：扩展据此按 type 匹配 email/phone/otp/url 填充。
+        // 自定义字段（upgrade-design.md §2.2，v1.1.8 扩展 token/pin/notes）：
+        // 扩展据此按 type 匹配 email/phone/otp/url/token/pin/notes 多字段填充。
+        // 其中 token/pin/notes 为二级字段，仅在用户点击建议后填入，不会自动写入。
         // 敏感字段（sensitive=true）不随条目列表下发，扩展侧遇到缺失 value 时跳过该字段填充；
         // 如需敏感字段值，可后续走独立取数通道（当前扩展仅填充非敏感自定义字段）。
         customFields: (x.customFields || []).map((cf) => ({

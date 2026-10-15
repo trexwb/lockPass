@@ -1,36 +1,87 @@
 /* LockPass 自动填充 — 通用内容脚本（所有网页，含 iframe）
    职责：识别登录表单（支持 iframe / Shadow DOM / 多步登录）、填充凭据。
-   安全：不自动提交表单（仅填充 + 高亮提交按钮，用户确认后自行提交）。 */
+   安全：不自动提交表单（仅填充 + 高亮提交按钮，用户确认后自行提交）。
+   字段分级（v1.1.8）：
+   - 一级（登录）：页面存在密码框 / 用户名 / 邮箱 / 手机 / 验证码 / URL 字段，
+     按用户填充模式处理（自动填入 / 仅提示 / 关闭）；
+   - 二级（敏感凭据）：无密码框时的 token / pin / 恢复码字段，仅弹提示，
+     用户点击建议后才填入，绝不自动写入；
+   - 三级（排除）：搜索表单（type=search / 搜索语义命名 / URL 搜索参数），
+     完全不检测、不提示、不填充。 */
 
-// ── 用户名候选判定 ──────────────────────────────────
-const USERNAME_HINT_RE = /user|email|login|account|mobile|phone|tel|name/i
+// ── 搜索表单排除（三级）──────────────────────────────
+// 现代页面搜索框普遍监听 input 即时搜索，误填即触发无故搜索，优先排除
+const SEARCH_HINT_RE = /search|query|keyword|搜索|查询|关键字|关键词|搜一下/i
 
-function isUsernameCandidate(el) {
-  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
-    .filter(Boolean)
-    .join(' ')
+function isSearchField(el) {
+  const type = (el.type || '').toLowerCase()
+  if (type === 'search') return true
+  const attrs = fieldAttrs(el)
+  return SEARCH_HINT_RE.test(attrs)
+}
+
+// 输入框语义属性拼接：name/id/placeholder/aria-label + 关联 <label> 文本。
+// label 关联优先 el.labels（标准 API，跨 shadow root 亦可），回退 label[for=id] 查询，
+// 覆盖「placeholder 为空但 label 写有 账号/用户名/邮箱/手机号」的常见表单。
+function fieldAttrs(el) {
+  const parts = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
+  try {
+    if (el.labels && el.labels.length) {
+      for (const l of el.labels) parts.push(l.textContent)
+    } else if (el.id) {
+      const root = el.getRootNode()
+      if (root && root.querySelector) {
+        const l = root.querySelector('label[for="' + CSS.escape(el.id) + '"]')
+        if (l) parts.push(l.textContent)
+      }
+    }
+  } catch (e) { /* 跨边界取不到 label 时忽略，不影响其余属性判定 */ }
+  return parts.filter(Boolean).join(' ')
+}
+
+// ── 用户名候选判定（收紧 + 登录上下文兜底）────────────
+// 无密码框的页面：仅接受明确登录语义（去掉裸 name 词与 type=text 无条件
+// 兜底，避免误抓搜索框 / 姓名框 / 地址框）。
+// 有密码框的页面（登录上下文）：密码框即登录页强证据，同渲染边界内的普通
+// 文本框按用户名兜底——搜索页没有密码框，走不到该分支，不会误伤。
+const USERNAME_HINT_RE = /user|account|login|sign.?in|sign.?up|register|email|mail|mobile|phone|tel|nick|账号|帐号|账户|用户|用户名|用户号|登录名|工号|会员|会员号|客户编号|证件号|身份证/i
+
+function isUsernameCandidate(el, inLoginContext) {
+  if (isSearchField(el)) return false
+  const auto = (el.autocomplete || '').toLowerCase()
+  // autocomplete 是浏览器标准登录语义，强信号
+  if (auto === 'username' || auto === 'email' || auto === 'tel') return true
+  const attrs = fieldAttrs(el)
   if (USERNAME_HINT_RE.test(attrs)) return true
   const type = (el.type || '').toLowerCase()
-  return ['text', 'email', 'tel'].includes(type)
+  if (type === 'email' || type === 'tel') return true
+  // 登录上下文兜底：同一边界内存在密码框，普通文本框即用户名候选。
+  // 排除 1-2 字母极简命名（q/s/k/w 等搜索框惯用），降低登录页内嵌搜索框误抓。
+  if (inLoginContext && type === 'text') {
+    const bare = String(el.name || el.id || '')
+    if (bare && bare.length <= 2) return false
+    return true
+  }
+  return false
 }
 
 // ── 多字段识别（upgrade-design.md §2.1） ─────────────
 // 在 username/password 启发式之外，按特征识别 email / phone / otp / url 字段，
 // 供 LP_MULTI_FILL 按条目 customFields type 匹配填充。识别结果与既有逻辑共用
 // walkRoots 遍历框架（iframe / shadow DOM 自动兼容）。
-const EMAIL_HINT_RE = /email|mail/i
-const PHONE_HINT_RE = /phone|mobile|tel/i
+const EMAIL_HINT_RE = /email|mail|邮箱|邮件/i
+const PHONE_HINT_RE = /phone|mobile|tel|手机|电话|联系方式/i
 const OTP_HINT_RE = /code|otp|verify|verification|captcha|mfa|2fa|auth/i
 const URL_HINT_RE = /url|website|web.?site|link|domain/i
 
+// 既有的 email/phone/otp/url 判定统一走 fieldAttrs（与 isSearchField 一致的属性集）
 function isEmailField(el) {
   const type = (el.type || '').toLowerCase()
   if (type === 'email') return true
   const auto = (el.autocomplete || '').toLowerCase()
   if (auto === 'email' || /(^|\s)email(\s|$)/.test(auto)) return true
-  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
-    .filter(Boolean)
-    .join(' ')
+  const attrs = fieldAttrs(el)
+  if (SEARCH_HINT_RE.test(attrs)) return false
   return EMAIL_HINT_RE.test(attrs)
 }
 
@@ -39,9 +90,8 @@ function isPhoneField(el) {
   if (type === 'tel') return true
   const auto = (el.autocomplete || '').toLowerCase()
   if (auto === 'tel' || /(^|\s)tel(\s|$)/.test(auto)) return true
-  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
-    .filter(Boolean)
-    .join(' ')
+  const attrs = fieldAttrs(el)
+  if (SEARCH_HINT_RE.test(attrs)) return false
   return PHONE_HINT_RE.test(attrs)
 }
 
@@ -50,9 +100,7 @@ function isOtpField(el) {
   if (auto === 'one-time-code') return true
   const type = (el.type || '').toLowerCase()
   if (!['text', 'tel', 'number'].includes(type)) return false
-  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
-    .filter(Boolean)
-    .join(' ')
+  const attrs = fieldAttrs(el)
   if (!OTP_HINT_RE.test(attrs)) return false
   // 强特征（名称/占位符含验证码语义）或数字输入模式视为 OTP，避免误抓普通 code 输入框
   if (/(verify|verification|otp|captcha|mfa|2fa)/i.test(attrs)) return true
@@ -62,10 +110,48 @@ function isOtpField(el) {
 function isUrlField(el) {
   const type = (el.type || '').toLowerCase()
   if (type === 'url') return true
-  const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label')]
-    .filter(Boolean)
-    .join(' ')
+  const attrs = fieldAttrs(el)
+  if (SEARCH_HINT_RE.test(attrs)) return false
   return URL_HINT_RE.test(attrs)
+}
+
+// ── 二级敏感凭据字段识别（仅提示，不自动填）────────────
+// token：AI API Key / Token / Secret / 授权码（LockPass AI 条目存于 password 字段）
+const TOKEN_HINT_RE = /token|api.?key|apikey|access.?key|secret.?key|client.?secret|credential|授权码|密钥/i
+// pin：PIN 码 / 通行码（数字键盘语义，如银行卡 PIN、设备码）
+const PIN_HINT_RE = /(^|[^a-z])pin([^a-z]|$)|passcode|pin.?code/i
+// notes：恢复码 / 备份码（LockPass 自定义字段 type=notes）
+const NOTES_HINT_RE = /recovery|backup.?code|恢复码|备份码|备用码/i
+
+function isTokenField(el) {
+  const type = (el.type || '').toLowerCase()
+  // type=password 由密码框分支优先捕获，这里只处理明文类输入框
+  if (!['text', 'tel'].includes(type)) return false
+  if (isSearchField(el)) return false
+  const auto = (el.autocomplete || '').toLowerCase()
+  if (auto === 'off') return false // 页面明确声明不自动填充
+  const attrs = fieldAttrs(el)
+  if (SEARCH_HINT_RE.test(attrs)) return false
+  return TOKEN_HINT_RE.test(attrs)
+}
+
+function isPinField(el) {
+  const type = (el.type || '').toLowerCase()
+  if (!['text', 'tel', 'number'].includes(type)) return false
+  if (isSearchField(el)) return false
+  const attrs = fieldAttrs(el)
+  if (SEARCH_HINT_RE.test(attrs)) return false
+  if (PIN_HINT_RE.test(attrs)) return true
+  return el.inputMode === 'numeric' && PIN_HINT_RE.test(attrs)
+}
+
+function isNotesField(el) {
+  const type = (el.type || '').toLowerCase()
+  if (!['text', 'tel'].includes(type)) return false
+  if (isSearchField(el)) return false
+  const attrs = fieldAttrs(el)
+  if (SEARCH_HINT_RE.test(attrs)) return false
+  return NOTES_HINT_RE.test(attrs)
 }
 
 /* ── Shadow DOM 穿透遍历 ────────────────────────────
@@ -100,10 +186,11 @@ function findPasswordInput() {
 }
 
 /* ── 页面状态检测（多字段，upgrade-design.md §2.1/§2.3） ──
-   统一扫描 username / password / email / phone / otp / url 输入框：
+   统一扫描 username / password / email / phone / otp / url / token / pin / notes：
    优先以「密码框所在渲染边界」为范围（避免误填不同表单的框）；
-   无密码框时回退全文档扫描（多步登录/注册/验证码场景）。
-   返回 fieldKeys 能力位，供后台按条目数据构造 LP_MULTI_FILL 字段集。 */
+   无密码框时回退全文档扫描（多步登录/注册/验证码/凭据设置页）。
+   返回 fieldKeys 能力位与 tier 分级（login=一级登录页 / credential=二级凭据页 / null=排除），
+   供后台按条目数据与填充模式构造 LP_MULTI_FILL 字段集。 */
 function findFormFields() {
   const fields = {
     username: null,
@@ -112,18 +199,25 @@ function findFormFields() {
     phone: null,
     otp: null,
     url: null,
+    token: null,
+    pin: null,
+    notes: null,
   }
   const passwordInput = findPasswordInput()
   const root = passwordInput ? passwordInput.getRootNode() : document
+  // 登录上下文：本边界内存在密码框 → username 兜底放宽（见 isUsernameCandidate）
+  const inLoginContext = !!passwordInput
   walkRoots(root, (el) => {
     if (!(el instanceof HTMLInputElement)) return
     if (el === passwordInput) return
     if (el.disabled || el.readOnly) return
     const type = (el.type || '').toLowerCase()
     if (['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(type)) return
+    if (isSearchField(el)) return
     const r = el.getBoundingClientRect()
     if (r.width === 0 && r.height === 0) return
-    // 优先级：password > otp > email > phone > url > username（避免 email 框被抢作 username）
+    // 优先级：password > otp > email > phone > url > token > pin > notes > username
+    // （email 等强语义先行，避免被 username 兜底抢走）
     if (type === 'password') {
       fields.password = fields.password || el
     } else if (isOtpField(el)) {
@@ -134,12 +228,18 @@ function findFormFields() {
       fields.phone = fields.phone || el
     } else if (isUrlField(el)) {
       fields.url = fields.url || el
-    } else if (isUsernameCandidate(el)) {
+    } else if (isTokenField(el)) {
+      fields.token = fields.token || el
+    } else if (isPinField(el)) {
+      fields.pin = fields.pin || el
+    } else if (isNotesField(el)) {
+      fields.notes = fields.notes || el
+    } else if (isUsernameCandidate(el, inLoginContext)) {
       fields.username = fields.username || el
     }
   })
   if (passwordInput) fields.password = passwordInput
-  // 无密码框时：全文档找 username 候选（含提交按钮校验，避免误抓搜索框）
+  // 无密码框时：全文档找 username 候选（收紧语义 + 提交按钮校验，避免误抓搜索框）
   if (!fields.password && !fields.username) {
     let usernameEl = null
     walkRoots(document, (el) => {
@@ -154,39 +254,78 @@ function findFormFields() {
       usernameEl = el
       return false
     })
-    if (usernameEl) {
-      const r2 = usernameEl.getRootNode()
-      let hasSubmit = false
-      walkRoots(r2, (el) => {
-        if (el.tagName === 'BUTTON' && (!el.type || el.type === 'submit')) {
-          hasSubmit = true
-          return false
-        }
-        if (el instanceof HTMLInputElement && ['submit', 'image'].includes((el.type || '').toLowerCase())) {
-          hasSubmit = true
-          return false
-        }
-      })
-      if (hasSubmit) fields.username = usernameEl
+    if (usernameEl && hasSubmitInRoot(usernameEl.getRootNode())) {
+      fields.username = usernameEl
     }
+  }
+  // 无密码框时：全文档找二级凭据字段（token / pin / 恢复码）。
+  // 这些字段只弹提示由用户点击填入（见 background LP_PAGE_READY 分流），
+  // 但仍要求同 root 存在提交按钮，避免抓取设置页的说明性输入框。
+  if (!fields.password) {
+    const credScan = (pred) => {
+      let found = null
+      walkRoots(document, (el) => {
+        if (!(el instanceof HTMLInputElement)) return
+        if (el.disabled || el.readOnly) return
+        const type = (el.type || '').toLowerCase()
+        if (!['text', 'tel', 'number'].includes(type)) return
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 && r.height === 0) return
+        if (!pred(el)) return
+        found = el
+        return false
+      })
+      return found && hasSubmitInRoot(found.getRootNode()) ? found : null
+    }
+    if (!fields.token) fields.token = credScan(isTokenField)
+    if (!fields.pin) fields.pin = credScan(isPinField)
+    if (!fields.notes) fields.notes = credScan(isNotesField)
   }
   return fields
 }
 
+// 指定 root 内是否存在提交按钮（BUTTON[type=submit] / input[type=submit|image]）
+function hasSubmitInRoot(root) {
+  let hasSubmit = false
+  walkRoots(root, (el) => {
+    if (el.tagName === 'BUTTON' && (!el.type || el.type === 'submit')) {
+      hasSubmit = true
+      return false
+    }
+    if (el instanceof HTMLInputElement && ['submit', 'image'].includes((el.type || '').toLowerCase())) {
+      hasSubmit = true
+      return false
+    }
+  })
+  return hasSubmit
+}
+
+// 字段分级：一级登录（可自动填）/ 二级凭据（仅提示）/ null（无可填字段）
+const LOGIN_FIELD_KEYS = ['username', 'password', 'email', 'phone', 'otp', 'url']
+const CREDENTIAL_FIELD_KEYS = ['token', 'pin', 'notes']
+
 function detectLoginState() {
   const f = findFormFields()
+  const fieldKeys = [...LOGIN_FIELD_KEYS, ...CREDENTIAL_FIELD_KEYS].filter((k) => f[k])
+  const tier = LOGIN_FIELD_KEYS.some((k) => f[k])
+    ? 'login'
+    : CREDENTIAL_FIELD_KEYS.some((k) => f[k]) ? 'credential' : null
   return {
     hasPassword: !!f.password,
-    hasAnyField: !!(f.password || f.username || f.email || f.phone || f.otp || f.url),
+    hasAnyField: !!tier,
+    tier,
     passwordInput: f.password,
     usernameInput: f.username,
     emailInput: f.email,
     phoneInput: f.phone,
     otpInput: f.otp,
     urlInput: f.url,
+    tokenInput: f.token,
+    pinInput: f.pin,
+    notesInput: f.notes,
     form: (f.password && f.password.closest('form')) || (f.username && f.username.closest('form')) || null,
     // 能力位：本页面已出现哪些可填字段（按状态机顺序）
-    fieldKeys: ['username', 'password', 'email', 'phone', 'otp', 'url'].filter((k) => f[k]),
+    fieldKeys,
   }
 }
 
@@ -248,8 +387,42 @@ function notifyPageReady() {
       domain: location.hostname,
       hasPassword: state.hasPassword,
       fields: state.fieldKeys,
+      // 分级：login=一级登录页（按模式处理）；credential=二级凭据页（仅提示）
+      tier: state.tier,
     })
   } catch (e) { /* 忽略 */ }
+}
+
+/* ── 登录成功检测（v1.1.8） ──────────────────────────
+   自动填充密码成功后观察本 frame 的 URL 变化（SPA 路由 / 地址栏跳转均会
+   改变 location.href）：变化即视为登录成功，上报后台 LP_LOGIN_DONE，
+   后台据此停止该 tab + 域名的后续自动填充（用户显式点击仍可填入）。
+   仅在「填过密码」后武装，观察窗 60s；URL 未变化（登录失败/停留登录页）
+   到窗自动解除，不影响后续检测。 */
+const LOGIN_WATCH_MS = 60000
+const LOGIN_WATCH_TICK_MS = 500
+let loginWatchTimer = null
+
+function armLoginWatch() {
+  if (loginWatchTimer) clearInterval(loginWatchTimer)
+  const startHref = location.href
+  const startedAt = Date.now()
+  loginWatchTimer = setInterval(() => {
+    if (Date.now() - startedAt > LOGIN_WATCH_MS) {
+      clearInterval(loginWatchTimer)
+      loginWatchTimer = null
+      return
+    }
+    if (location.href === startHref) return
+    clearInterval(loginWatchTimer)
+    loginWatchTimer = null
+    // 延迟一帧复报，避免重定向链中第一跳误报
+    setTimeout(() => {
+      try {
+        chrome.runtime.sendMessage({ type: 'LP_LOGIN_DONE', domain: location.hostname })
+      } catch (e) { /* 后台不可达，忽略 */ }
+    }, 300)
+  }, LOGIN_WATCH_TICK_MS)
 }
 
 function onDomMaybeChanged() {
@@ -305,7 +478,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // 多字段填充（upgrade-design.md §2.2 主路径）：fields = [{ key, value }]
-  // key ∈ username/password/email/phone/otp/url，按页面能力位匹配输入框逐项填充
+  // key ∈ username/password/email/phone/otp/url/token/pin/notes，按页面能力位匹配输入框逐项填充。
+  // token/pin/notes 为二级字段：仅由用户点击建议（SUGGESTION_FILL）或 popup 手动填充触发，
+  // 后台自动填充路径已将其从 keys 中剔除，不会自动写入。
   if (msg.type === 'LP_MULTI_FILL') {
     const { fields } = msg
     if (!Array.isArray(fields) || !fields.length) {
@@ -320,6 +495,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       phone: state.phoneInput,
       otp: state.otpInput,
       url: state.urlInput,
+      token: state.tokenInput,
+      pin: state.pinInput,
+      notes: state.notesInput,
     }
     const filled = []
     for (const f of fields) {
@@ -335,6 +513,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     highlightSubmit(state)
     const hasPasswordFilled = filled.includes('password')
+    // 密码已填入：武装登录成功观察，URL 变化后上报后台停止本 tab 自动填充
+    if (hasPasswordFilled) armLoginWatch()
     // 多步：页面仍有已识别但本次未填充的字段（如密码框尚未出现）→ 等待补填
     const remaining = state.fieldKeys.filter((k) => !filled.includes(k))
     waitingFields = remaining.length ? filled : null
@@ -416,7 +596,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     lastSuggestAt = now
     if (msg.empty) showSuggestionEmpty()
-    else showSuggestionBubble(msg.entries || [])
+    else showSuggestionBubble(msg.entries || [], !!msg.persistent)
     sendResponse({ ok: true })
     return
   }
@@ -464,7 +644,7 @@ function attachSuggestClose(root) {
   })
 }
 
-function showSuggestionBubble(entries) {
+function showSuggestionBubble(entries, persistent) {
   ensureSuggestStyle()
   removeSuggestBubble()
   const root = document.createElement('div')
@@ -493,6 +673,7 @@ function showSuggestionBubble(entries) {
   })
   attachSuggestClose(root)
   ;(document.body || document.documentElement).appendChild(root)
+  if (persistent) return // 二级凭据页：常驻到用户点击 / 关闭，避免提示一闪而过
   // 5s 后自动收起（点击条目 / 关闭后不再重复弹）
   setTimeout(() => {
     if (document.getElementById('lp-suggest-root') === root) removeSuggestBubble()
@@ -552,7 +733,8 @@ function findCaptureInputs(root) {
     if (type === 'password') {
       if (!pw && el.value) pw = el
     } else if (!un && ['text', 'email', 'tel'].includes(type) && el.value) {
-      if (type === 'email' || isUsernameCandidate(el)) un = el
+      // 调用方已确认同范围存在密码框（登录上下文），用户名兜底放宽
+      if (type === 'email' || isUsernameCandidate(el, true)) un = el
     }
   })
   return { pw, un }

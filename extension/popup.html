@@ -47,6 +47,13 @@
 
     <footer class="popup-footer">
       <span id="status-text" class="status">检测中…</span>
+      <label id="fill-mode-row" class="trust-row" title="自动填入：检测到登录表单即写入；仅提示：弹建议气泡，点击才填入（搜索框等页面不会误填）；关闭：仅保留扩展图标手动填充">
+        <select id="fill-mode">
+          <option value="auto">自动填入登录表单</option>
+          <option value="suggest" selected>仅提示，点击才填入</option>
+          <option value="off">关闭自动填充</option>
+        </select>
+      </label>
       <label id="trust-file-row" class="trust-row hidden" title="默认关闭：本地文件页面可能伪装成 LockPass 应用接收登录凭据">
         <input id="trust-file" type="checkbox">
         <span>允许本地文件页面接收捕获凭据</span>
