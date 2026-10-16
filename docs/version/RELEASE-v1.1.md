@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-10-16 · 浏览器扩展按「IP+端口」精确查找相关密码 —— **v1.1.9**（PATCH，bug 修复）
+
+**动机**：用户反馈浏览器扩展查找当前站点的密码时，命中范围过大——`http://127.0.0.1:35729/` 与 `http://127.0.0.1:16637/` 两个不同端口的本地服务，会被一起归到 `127.0.0.1` 下互相串扰。需求：**仅针对 IP 地址的 URL 带端口一起匹配**，普通域名仍按原「精确值或上级域」语义（不带端口）。
+
+### 1. 改动
+
+- `extension/content.js`：新增 `isIPv4Host` / `urlSiteKey` / `currentSiteKey`，上报 `LP_PAGE_READY` / `LP_FIELDS_READY` / `LP_LOGIN_DONE` / `LP_CAPTURE_PENDING` 的 `domain` 改为站点匹配键（IPv4 地址带端口如 `127.0.0.1:35729`，域名不带端口）；`captureDomain()` 同步改走匹配键。
+- `extension/background.js`：`extractDomain()` 对 IPv4 地址返回 `host`（含端口），域名返回 `hostname`；`domainMatches()` 增加分支——`IPv4:端口` 形式按「IP+端口」精确匹配（`127.0.0.1:35729` 与 `127.0.0.1:16637` 互不匹配）。
+- `src/core/tauri-server-bridge.js`：同步给桌面本地服务的 `domain` 字段同样对 IPv4 地址带端口、域名不带。
+- `src-tauri/src/server.rs`：`domain_matches()` 新增 `is_ipv4` / `is_ip_port_key`，对 `IPv4:端口` 形式仅做精确相等匹配（与扩展两侧口径一致）；`/credentials` 命中行为随之修正。
+- `src-tauri/src/server.rs`（同日追加修复，用户回归发现）：查询参数解析补百分号解码（新增 `percent_decode` / `hex_val`）——扩展侧 `fetchCredentials()` 对 domain 做了 `encodeURIComponent`，`127.0.0.1:35729` 变为 `127.0.0.1%3A35729`，而服务端此前按原样切分不解码，导致桌面 HTTP 通道 `domain_matches` 收到 `127.0.0.1%3a35729` 永不命中（表现为 popup「当前网站没有匹配条目」）。改动前域名值不含需编码字符，缺陷被掩盖，属本次引入的回归；页面桥通道不走 HTTP 不受影响。同时给 `credentials_match_by_ip_and_port_exactly` 补 `%3A` 编码形态断言防回归。
+- 新增 2 项 Rust 单测：`credentials_match_by_ip_and_port_exactly`（同 IP 不同端口互不命中、裸 IP 不命中带端口条目）、`credentials_domain_subdomain_still_matches`（域名子域匹配语义不变）。
+- `.github/workflows/pages.yml` + `scripts/build-extension.mjs`：扩展打包步骤解耦 web-ext 依赖——`npm install -g web-ext` 与 Firefox xpi 校验改为尽力而为（`bash -e` 下不再因 web-ext 安装/构建失败而中断整步、导致已生成的 Chrome zip 无法随 Pages 发布）；脚本内 web-ext 构建失败自动回退系统 zip，Firefox 打包异常不再中断脚本（Chrome zip 必出）。修复「流水线未生成 `lockpass-extension-v*.zip`」问题（此前停在 v1.1.6）。
+
+### 2. 验证
+
+- `cargo test --lib server::` 16 项全绿（含新增 2 项与 `%3A` 编码形态回归断言）；`npm run version:check` 11 处一致（v1.1.9）。
+- 端到端模拟验证修复后链路：`domain=127.0.0.1%3A35729` 解码后命中 35729 条目、不命中 16637 条目；裸 IP 请求仍不命中；域名子域匹配不受影响。
+- `node scripts/build-extension.mjs` 本地执行退出码 0，产出 `dist/lockpass-extension-v1.1.9.zip` 与 `dist/lockpass-extension-v1.1.9-firefox.xpi`；`pages.yml` 扩展步骤在 web-ext 不可用时仍生成 Chrome zip 并随 Pages 发布。
+- 需人工回归：在 `127.0.0.1:35729` 与 `127.0.0.1:16637` 各放一个登录页，扩展应只弹对应端口的条目、不串扰；普通站点（如 `example.com:8080` 与 `example.com`）仍按域名匹配、不区分端口；桌面 HTTP 通道与网页桥通道行为一致。
+
+---
+
 ## 2026-10-15（补）· 扩展填充默认档位修正 + AI Token 页建议回退 —— **不推进版本号**（v1.1.8 同日同模块追加，基线仍 v1.1.8）
 
 依据用户明确诉求「不点击就不默认填入」与 fill-gating 设计文档对齐结论（默认智能建议），对上节做三处代码修正；其中 `background.js` 三处改动被写入护栏误判拦截（标的为文件中既有 password 标识符，非新增凭据，与 2026-10-12 记录的同类误判一致），待放行后应用。

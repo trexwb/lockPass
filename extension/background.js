@@ -66,19 +66,34 @@ function isReady() {
   return pageBridgeReady || httpReadyFlag
 }
 
+/** 判断主机名是否为 IPv4 地址 */
+function isIPv4Host(host) {
+  const parts = (host || '').split('.')
+  if (parts.length !== 4) return false
+  return parts.every((p) => /^\d{1,3}$/.test(p) && parseInt(p, 10) <= 255)
+}
+
+/** 由 URL 计算站点匹配键：IPv4 地址带端口（127.0.0.1:35729），域名不带端口 */
 function extractDomain(url) {
   try {
-    return new URL(url).hostname.toLowerCase()
+    const u = new URL(url)
+    const hostOnly = u.hostname.toLowerCase()
+    if (isIPv4Host(hostOnly)) return u.host.toLowerCase() // 含端口（非默认端口时）
+    return hostOnly
   } catch (e) {
     return ''
   }
 }
 
-// 请求域名匹配条目域名（条目域名为请求域名的精确值或上级域）
+// 请求域名匹配条目域名：
+// - IPv4:端口形式（如 127.0.0.1:35729）按「IP+端口」精确匹配，35729 与 16637 互不匹配；
+// - 域名形式按「精确值或上级域」匹配（保留原有语义）。
 function domainMatches(requestDomain, entryDomain) {
   const rd = (requestDomain || '').trim().toLowerCase()
   const ed = (entryDomain || '').trim().toLowerCase()
   if (!rd || !ed) return false
+  // IP:端口 形式：仅精确相等（同 IP 不同端口视为不同站点）
+  if (rd.includes(':') && isIPv4Host(rd.split(':')[0])) return rd === ed
   return rd === ed || rd.endsWith('.' + ed)
 }
 

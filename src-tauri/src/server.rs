@@ -300,12 +300,66 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     diff == 0
 }
 
+/// 查询参数值百分号解码（query string 语义）：%3A → ':'、%2F → '/'。
+/// 扩展侧对 domain 做过 encodeURIComponent（IP:端口 的 ':' → '%3A'），
+/// 服务端必须解码后再进 domain_matches，否则 IP:端口 永不命中。
+/// 只解 %XX；刻意不做 '+' → 空格 转换——域名按 RFC 可含 '+'，转换会引入歧义，
+/// 且本服务所有取值（domain/nonce/id）均无 form 编码的加号语义。
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+}
+
+/// 单个 ASCII 十六进制字符 → 数值（非十六进制返回 None）
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// 判断主机名是否为 IPv4 地址
+fn is_ipv4(host: &str) -> bool {
+    let parts: Vec<&str> = host.split('.').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    parts.iter().all(|p| p.parse::<u32>().map_or(false, |n| n <= 255))
+}
+
+/// 请求域名是否为「IPv4:端口」形式（如 127.0.0.1:35729）
+fn is_ip_port_key(key: &str) -> bool {
+    match key.split_once(':') {
+        Some((host, _)) => is_ipv4(host),
+        None => false,
+    }
+}
+
 /// 请求域名是否匹配条目域名（条目域名为请求域名的精确值或上级域）
 fn domain_matches(request_domain: &str, entry_domain: &str) -> bool {
     let rd = request_domain.trim().to_lowercase();
     let ed = entry_domain.trim().to_lowercase();
     if rd.is_empty() || ed.is_empty() {
         return false;
+    }
+    // IPv4:端口 形式：按「IP+端口」精确匹配（127.0.0.1:35729 与 127.0.0.1:16637 互不匹配）
+    if is_ip_port_key(&rd) {
+        return rd == ed;
     }
     if rd == ed {
         return true;
@@ -391,8 +445,8 @@ fn spawn_workers(server: Arc<tiny_http::Server>, inner: Arc<Mutex<ServerInner>>,
                 .filter(|s| !s.is_empty())
                 .filter_map(|kv| {
                     let mut it = kv.splitn(2, '=');
-                    let k = it.next()?.to_string();
-                    let v = it.next().unwrap_or("").to_string();
+                    let k = percent_decode(it.next()?);
+                    let v = percent_decode(it.next().unwrap_or(""));
                     Some((k, v))
                 })
                 .collect();
@@ -972,6 +1026,73 @@ mod tests {
         ServerState(ts.inner.clone()).lock().unwrap();
         assert!(ts.inner.lock().unwrap().pending_captures.is_empty());
         assert_eq!(poll_status(&ts, Some("Bearer t0k3n"), &id).0, 404);
+    }
+
+    #[test]
+    fn credentials_match_by_ip_and_port_exactly() {
+        let ts = start_server();
+        unlock(&ts, "t0k3n");
+        // 两个同 IP 不同端口的条目：35729 与 16637 必须互不干扰
+        let mut guard = ts.inner.lock().unwrap();
+        guard.entries = vec![
+            EntryDto {
+                id: "a".into(),
+                title: "".into(),
+                username: "".into(),
+                password: "1".into(),
+                url: "http://127.0.0.1:35729/".into(),
+                entry_type: "website".into(),
+                domain: "127.0.0.1:35729".into(),
+                custom_fields: vec![],
+            },
+            EntryDto {
+                id: "b".into(),
+                title: "".into(),
+                username: "".into(),
+                password: "2".into(),
+                url: "http://127.0.0.1:16637/".into(),
+                entry_type: "website".into(),
+                domain: "127.0.0.1:16637".into(),
+                custom_fields: vec![],
+            },
+        ];
+        drop(guard);
+
+        let (status, body) = call(&ts, "GET", "/credentials?domain=127.0.0.1:35729", Some("Bearer t0k3n"), "");
+        assert_eq!(status, 200);
+        let arr = body.as_array().expect("应为数组");
+        assert_eq!(arr.len(), 1, "只应命中同 IP+端口的条目");
+        assert_eq!(arr[0]["id"], "a");
+
+        // 回归：扩展侧经 encodeURIComponent 发送，':' → '%3A'，服务端解码后必须命中
+        // （query 参数未解码缺陷存在时，此断言为红）
+        let (_, body_enc) = call(&ts, "GET", "/credentials?domain=127.0.0.1%3A35729", Some("Bearer t0k3n"), "");
+        assert_eq!(body_enc.as_array().unwrap().len(), 1, "百分号编码的 IP:端口 必须命中");
+        // 端口对不上的裸 IP 不应命中（按用户要求「带端口一起」）
+        let (_, body2) = call(&ts, "GET", "/credentials?domain=127.0.0.1", Some("Bearer t0k3n"), "");
+        assert_eq!(body2.as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn credentials_domain_subdomain_still_matches() {
+        let ts = start_server();
+        unlock(&ts, "t0k3n");
+        let mut guard = ts.inner.lock().unwrap();
+        guard.entries = vec![EntryDto {
+            id: "x".into(),
+            title: "".into(),
+            username: "".into(),
+            password: "1".into(),
+            url: "https://example.com/".into(),
+            entry_type: "website".into(),
+            domain: "example.com".into(),
+            custom_fields: vec![],
+        }];
+        drop(guard);
+        // 子域 + 显式端口都不应破坏域名匹配语义
+        let (status, body) = call(&ts, "GET", "/credentials?domain=sub.example.com", Some("Bearer t0k3n"), "");
+        assert_eq!(status, 200);
+        assert_eq!(body.as_array().unwrap().len(), 1);
     }
 
     #[test]
