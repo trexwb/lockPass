@@ -64,16 +64,24 @@ jobs:
       # 浏览器扩展打包进站点根目录：Chrome/Edge 解压 zip 后「加载已解压的扩展程序」直接使用；
       # Firefox 使用 xpi 通过 about:debugging 临时加载（gecko 变体 manifest 由脚本派生：
       # browser_specific_settings.gecko + background.scripts 声明）。
-      # 版本号取自 extension/manifest.json（由 npm run version:set 统一同步）
+      # 版本号取自 extension/manifest.json（由 npm run version:set 统一同步）。
+      # 注意：GitHub Actions 默认 bash 带 -e，-o pipefail，任一命令失败即中断整步、
+      # 导致已生成的 Chrome zip 无法随 Pages 发布；故 web-ext 安装与 xpi 校验均设为
+      # 尽力而为（不阻断 Chrome zip 发布），Firefox 失败由 build-extension.mjs 内部兜底。
       - name: 打包浏览器扩展（Chrome zip + Firefox xpi）
         run: |
-          npm install -g web-ext
+          npm install -g web-ext || echo "WARN: web-ext 安装失败，将回退系统 zip 生成 Firefox xpi"
           node scripts/build-extension.mjs
           EXT_VER=$(node -p "require('./extension/manifest.json').version")
-          test -s "dist/lockpass-extension-v${EXT_VER}.zip"
-          test -s "dist/lockpass-extension-v${EXT_VER}-firefox.xpi"
+          # Chrome zip 为关键产物：缺失则直接失败
+          test -s "dist/lockpass-extension-v${EXT_VER}.zip" || { echo "ERROR: Chrome zip 缺失"; exit 1; }
           echo "extension zip: lockpass-extension-v${EXT_VER}.zip"
-          echo "firefox xpi: lockpass-extension-v${EXT_VER}-firefox.xpi"
+          # Firefox xpi 为尽力而为：缺失仅告警，不影响 Chrome zip 发布
+          if [ -s "dist/lockpass-extension-v${EXT_VER}-firefox.xpi" ]; then
+            echo "firefox xpi: lockpass-extension-v${EXT_VER}-firefox.xpi"
+          else
+            echo "WARN: Firefox xpi 未生成（不影响 Chrome zip 发布）"
+          fi
 
       - name: 上传 Pages 产物
         uses: actions/upload-pages-artifact@v5

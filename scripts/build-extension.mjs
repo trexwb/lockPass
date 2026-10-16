@@ -125,9 +125,15 @@ function buildFirefox(ver) {
   const xpiName = `lockpass-extension-v${ver}-firefox.xpi`
   const xpiPath = join(ROOT, 'dist', xpiName)
   if (hasWebExt()) {
-    // 设计文档 3.2：web-ext 命令生成 .xpi 供手动加载
-    run('web-ext', ['build', '--source-dir', fxDir, '--artifacts-dir', join(ROOT, 'dist'), '--filename', xpiName, '--overwrite-dest'])
-    console.log('[Firefox] 使用 web-ext 打包 .xpi')
+    try {
+      // 设计文档 3.2：web-ext 命令生成 .xpi 供手动加载
+      run('web-ext', ['build', '--source-dir', fxDir, '--artifacts-dir', join(ROOT, 'dist'), '--filename', xpiName, '--overwrite-dest'])
+      console.log('[Firefox] 使用 web-ext 打包 .xpi')
+    } catch (e) {
+      // web-ext 构建失败（版本校验/环境差异）时回退系统 zip，保证 xpi 产物不缺失
+      console.warn('[Firefox] web-ext 打包失败，回退系统 zip 生成 .xpi：', e?.message || e)
+      run('zip', ['-r', '-q', xpiPath, '.'], { cwd: fxDir })
+    }
   } else {
     // 兜底：xpi 本质为 zip，系统 zip 打包同样可被 Firefox 加载
     run('zip', ['-r', '-q', xpiPath, '.'], { cwd: fxDir })
@@ -168,10 +174,15 @@ function main() {
   mkdirSync(join(ROOT, 'dist'), { recursive: true })
   const ver = readExtensionVersion()
   console.log(`[build-extension] LockPass 扩展 v${ver} 双版本打包开始`)
-  buildChrome(ver)
-  buildFirefox(ver)
-  verifyFirefoxManifest(ver)
-  console.log(`[build-extension] 完成：Chrome zip + Firefox xpi 已输出到 dist/`)
+  buildChrome(ver) // 关键产物：Chrome/Edge 解压即用，必须成功
+  // Firefox 为尽力而为：任一环节失败不影响 Chrome zip 的发布
+  try {
+    buildFirefox(ver)
+    verifyFirefoxManifest(ver)
+  } catch (e) {
+    console.warn(`[build-extension] ⚠️ Firefox 打包失败（不影响 Chrome zip）：${e?.message || e}`)
+  }
+  console.log(`[build-extension] 完成：Chrome zip 已输出到 dist/lockpass-extension-v${ver}.zip`)
 }
 
 main()

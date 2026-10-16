@@ -10,7 +10,7 @@
 
 **核心原则**：安全 → 简洁 → 离线优先
 
-**当前版本**：`v1.1.8`
+**当前版本**：`v1.1.9`
 
 ---
 
@@ -33,7 +33,7 @@
 
 > **🔴 强制硬规则（2026-08-28 起生效，所有 Agent 必须遵守）**：
 > - **版本号单一来源**：`package.json` 的 `version` 字段，构建时由 Vite define 注入全局 `__APP_VERSION__`。
-> - **版本号同步三处**：1) `package.json` 的 `version` 字段；2) `src-tauri/tauri.conf.json` 的 `version` 字段（Tauri 桌面版）；3) `AGENTS.md` 中的「当前基准版本」。
+> - **版本号单一入口**：`package.json` 的 `version` 为唯一真源，由 `npm run version:set` 统一下发到 `src-tauri/tauri.conf.json` / `extension/manifest.json` / `src-tauri/Cargo.toml` / `AGENTS.md` / `docs/spec.md`（完整覆盖清单见「版本号存储位置」）。
 > - **末位 +1 的唯一场景**：仅当新增了与现有问题**不同类、不同根因**的新功能 / 新修复，且用户明确允许推进版本号时，才将末位（x）加 1。
 > - **🟥 以下情形绝对禁止推进版本号（写死不 +1）**：
 >   1. 上一轮同一用户反馈的问题 / 同类问题**持续修复、多次往返排查、再次验证修复**（如"引导弹两次修完用户仍反馈弹两次"的多轮跟进）
@@ -41,7 +41,7 @@
 >   3. 同日（自然日 00:00–23:59 本地时区）对同一模块 / 同一类 bug 的追加修复
 >   4. 仅更新 `docs/`（发布日志、截图、操作手册、审计 HTML 等文档类修改）
 >   5. 纯 CSS 微调 / 文案修正 / 去抖防抖等纯体验打磨，不引入新逻辑分支
-> - **版本回退规则**：当用户要求"回退到 X.Y.Z"时，以上三处必须**同时**改写成用户指定的值，且本回合内不得再以"我刚才做了修改所以要 +1"为由推进。
+> - **版本回退规则**：当用户要求"回退到 X.Y.Z"时，运行 `npm run version:set X.Y.Z` 统一下发（勿逐文件手改），且本回合内不得再以"我刚才做了修改所以要 +1"为由推进。
 > - **版本更新日志统一写 `docs/version/` 目录**：每次版本更新（无论是否推进版本号）都必须追加到 `docs/version/RELEASE-v{主版本}.md` 对应分节，标注日期与版本号；不推进版本号时明确标注"不推进版本号"。发布日志只增不改，禁止再维护根目录 `CHANGELOG.md`（已废弃）。
 
 ### 版本更新规则
@@ -57,21 +57,25 @@
 
 ### 版本号存储位置（单一来源）
 
-**真源（仅此两处保存版本号，其余全部派生）**：
-1. **`package.json`** - `version`（npm 标准源，构建期注入运行版本）
-2. **`src-tauri/tauri.conf.json`** - `version`（Tauri 打包产物版本）
+**唯一真源**：`package.json` 的 `version`。`src-tauri/tauri.conf.json` 为桌面产物版本（脚本同步，勿手改）。
 
-**构建期自动派生（源码不含版本号字面量）**：
+**`npm run version:set <x.y.z>` 覆盖（9 处 / 8 文件，支持 `--dry-run` 预览）**：
+- `package.json` / `package-lock.json`（顶层 + `packages[""]`）
+- `src-tauri/tauri.conf.json`（桌面安装包版本）
+- `extension/manifest.json`（浏览器扩展版本随主应用——发布链接 `lockpass-extension-v<版本>.zip` 用的就是同一版本号）
+- `src-tauri/Cargo.toml`
+- `AGENTS.md`（当前版本）/ `docs/spec.md`（头部 + 文档版本）
+
+**构建期自动派生（源码不含版本号字面量，不手改）**：
 - `src/core/version.js` - `APP_VERSION` ← vite define 注入 `__LOCKPASS_VERSION__`
 - `vite.config.js` - `__APP_VERSION__` / `__LOCKPASS_VERSION__` ← 读取 package.json
 - `src/public/sw.js` - `CACHE_NAME` ← 构建时由 vite 插件注入 `lockpass-vX.Y.Z`
 
-**脚本/生态同步（不手改）**：
-- `package-lock.json` - npm 生态同步 package.json
-- `src-tauri/Cargo.toml` - `npm run version:set` 同步 tauri.conf.json
-- `AGENTS.md` / `docs/spec.md` - 文档记录，`npm run version:set` 同步
+**不在脚本范围（需人工核对）**：
+- `Safari/`（Xcode 工程，iOS/macOS 扩展版本走构建设置）：改动 Safari 扩展时手动核对其版本
+- `README.md` 更新日志（人工编写）
 
-> 升级版本号只需 `npm run version:set <x.y.z>`（改两个真源 + 同步派生物），
+> 升级版本号只需 `npm run version:set <x.y.z>`，
 > 发布前用 `npm run version:check` 校验一致性（含注入模式防硬编码漂移）。
 
 ### 更新流程
@@ -82,6 +86,42 @@
 2. 运行 `npm run version:set x.y.z` 统一更新版本号（运行时代码由构建自动注入，无需手改）
 3. 运行 `npm run version:check` 确认全部一致
 4. **写版本更新日志到 `docs/version/`**：每次版本更新（推进或不推进版本号）都必须追加到 `docs/version/RELEASE-v{主版本}.md` 对应分节（最新在前），标注日期与版本号；不推进版本号时明确标注"不推进版本号"。发布日志只增不改，禁止写根目录 `CHANGELOG.md`（已废弃）。
+
+---
+
+## 常用命令
+
+> 仓库无 ESLint / Prettier 配置：JS 静态检查用 `node --check`；自动化测试 = node 脚本 + Rust `cargo test`（未引 vitest 等前端单测框架）。
+
+### 开发与构建
+
+- `npm install` — 安装依赖（vue / vite / @tauri-apps/cli / jsQR / qrcode-generator）
+- `npm run dev` — Vite dev server（http://localhost:1420，strictPort）
+- `npm run vite:build` — 构建 `dist/`（浏览器版 / Pages / Tauri frontendDist 共用；iife 单 chunk 外置资源，file:// 双击可用）
+- `npm run build` — 完整桌面构建链：`vite:build` + `tauri:build` + `make-dmg`
+- `npm run tauri:dev` / `npm run tauri:build` — 桌面开发 / 打包（签名私钥经 `scripts/with-updater-key.mjs` 从根目录 `.env.local` 注入，配置见 README「自动更新」）
+- `npm run make-dmg` — macOS 生成 .dmg（`scripts/make-dmg.sh`，hdiutil）
+- `npm run icons` — 由根目录 `app-icon.png` 生成 Tauri 全套图标
+- `node scripts/copy-frontend.mjs` — CI 兼容壳：内部执行 `npm run vite:build` 生成 dist/
+
+### 测试
+
+- `npm run test:sync` — 局域网同步合并逻辑测试（`scripts/test-sync-merge.mjs`）
+- `npm run test:qr` — 二维码编解码 roundtrip 测试（`scripts/test-qr-roundtrip.mjs`）
+- `cd src-tauri && cargo test --lib` — Rust 单测全量（基线：`server::` 16 项 + `sync::` 11 项全绿）
+- `cd src-tauri && cargo test --lib server::` — 只跑扩展桥 / 凭据匹配相关；单跑用例：`cargo test --lib <测试名>`
+- `node --check extension/*.js` — 扩展脚本语法检查（改动扩展后必跑）
+
+### 浏览器扩展打包与调试
+
+- `node scripts/build-extension.mjs` — 本地打包双版本到 `dist/`：Chrome/Edge `lockpass-extension-v<版本>.zip`（必须成功）+ Firefox `lockpass-extension-v<版本>-firefox.xpi`（web-ext 缺失 / 构建失败自动回退系统 zip）
+- 加载调试：Chrome/Edge `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」→ 选 `extension/` 目录
+
+### CI（GitHub Actions）
+
+- `.github/workflows/pages.yml`：push `main` 或手动触发 → `npm ci` → `copy-frontend.mjs` → `build-extension.mjs` → 部署 GitHub Pages；扩展 zip/xpi 随站点发布（<https://trexwb.github.io/lockPass/>）
+- `.github/workflows/release.yml`：push `v*` 标签或手动触发 → Windows/macOS 构建 → Actions Artifact + Draft Release；`update-manifest` job 用 `scripts/gen-latest-json.mjs` 生成 `latest.json`
+- ⚠️ workflow `run` 默认 `bash -e -o pipefail`：扩展打包步骤已把 `web-ext` 安装与 xpi 校验设为尽力而为，**Chrome zip 是唯一硬关卡**——勿在该步骤引入会静默失败的命令
 
 ---
 
@@ -158,6 +198,15 @@
 - ✅ 禁止使用外部 API（可选联网功能必须默认关闭 + 设置开关）
 - ✅ 测试时必须断网验证，确保完全离线可用
 
+### 7. 跨层一致性约束（改一处必须同步其余处）
+
+- **站点匹配键**（v1.1.9 起）：IPv4 地址**带端口**精确匹配（`127.0.0.1:35729` 与 `127.0.0.1:16637` 互不命中），域名**不带端口**按「精确值或上级域」匹配。该逻辑在四层同构实现，改匹配语义必须四处同步并补测试：
+  `extension/content.js`（`urlSiteKey` / `currentSiteKey` 上报键）、`extension/background.js`（`extractDomain` / `domainMatches`）、`src/core/tauri-server-bridge.js`（`extractDomain`）、`src-tauri/src/server.rs`（`domain_matches`）
+- **扩展版本随主应用**：`extension/manifest.json` 由 `version:set` 同步，勿手改；`Safari/` 工程版本例外（人工核对）
+- **固定端口**：扩展桌面通道 `127.0.0.1:33555`、局域网同步服务 `5613`（Rust 与前端桥接两侧写死，改动需两端同步并补测试）
+- **应用地址白名单**：扩展只向 `extension/background.js` 的 `isTrustedAppPageUrl()` 命中页面投递凭据；自建部署（换 Pages 域名等）需同步该函数
+- **数据模型**：条目 / `tagDefs` / `deleted` 及 6 种类型字段结构变更，需同步 `src/core/`（database / import-bridge / related）、EntryEditor 表单与扩展捕获字段映射
+
 ---
 
 ## 文件组织
@@ -201,12 +250,22 @@ LockPass/
 │                          #     由 npm 依赖提供，构建期 vite 插件拷到 dist/assets/vendor/*.js；缺包即构建失败
 ├── src-tauri/             # Tauri v2 桌面封装（Rust 命令 + 图标 + 打包配置）
 │                          # 注：Info.plist 声明 NSLocalNetworkUsageDescription（局域网同步必需的 macOS 本地网络用途）
-├── scripts/               # 构建辅助脚本（bump-version / check-version / gen-icons / make-dmg）
-│                          # 注：copy-frontend.mjs 为 CI 兼容壳（内部 vite build）；serve.mjs 遗留未引用
-├── dist/                  # 构建产物（vite build 生成，不手动修改）
+├── extension/             # 浏览器扩展（Manifest V3：background/content/popup/bridge + manifest）
+│                          # 版本随主应用（version:set 同步）；Chrome / Edge / Firefox 三端可用
+├── Safari/                # Safari Web Extension 移植（Xcode 工程：iOS/macOS App+Extension、Shared (App)/(Extension)）
+│                          # 与 extension/ 共享填充逻辑 JS/CSS；版本不走 version:set，需人工核对
+├── scripts/               # 构建辅助脚本（13 个 .mjs/.sh）
+│                          # 常用：bump-version / check-version（版本号）· build-extension（扩展双版本打包）
+│                          #       copy-frontend（CI 壳，内部 vite build）· with-updater-key（签名密钥包装，读 .env.local）
+│                          #       gen-latest-json（更新清单）· gen-icons / make-dmg / gen-third-party-notices
+│                          #       test-sync-merge / test-qr-roundtrip（node 测试）· remove-dist-sw · serve（遗留未引用）
+├── .github/workflows/     # CI：pages.yml（Pages 部署 + 扩展打包）、release.yml（v* 标签桌面发版 + latest.json）
+├── dist/                  # 构建产物（vite build 生成，不手动修改；build-extension.mjs 也在此输出扩展 zip/xpi）
 ├── docs/                  # 文档中心（spec / tauri / 迁移设计，见 docs/README.md）
-│   ├── memory/            # AI 工作记录（按日期 YYYY-MM-DD.md）
+│   ├── version/           # 发布日志（RELEASE-v{主版本}.md，最新在前，只增不改）
+│   ├── superpowers/       # 设计文档 / 规格（按日期命名）
 │   └── wiki/              # GitHub Wiki 发布源（拷贝推送至 lockPass.wiki 仓库）
+├── app-icon.png           # Tauri 图标源图（npm run icons 生成）
 ├── README.md              # 使用说明（仓库首页）
 └── AGENTS.md              # 本文件（Agent 开发规范，约定置于根目录）
 ```
@@ -311,9 +370,17 @@ LockPass/
 - [ ] 自动锁定触发
 - [ ] XSS 注入测试（标题、备注等字段）
 
+### 自动化测试
+
+- [ ] `npm run test:sync` — 同步合并逻辑（改动 `src/core/sync-service.js` / `useSyncService.js` / `sync.rs` 后必跑）
+- [ ] `npm run test:qr` — 二维码编解码 roundtrip（改动 QrShare / QrImport 相关后必跑）
+- [ ] `cd src-tauri && cargo test --lib` — Rust 全量（基线 `server::` 16 + `sync::` 11 全绿）
+- [ ] `node --check extension/*.js` — 改扩展后语法检查（无 lint 配置，这是唯一静态检查）
+
 ### 构建验证
 
 - [ ] `npm run vite:build` 通过，`dist/index.html` 双击可打开（file://）
+- [ ] `node scripts/build-extension.mjs` 产出 Chrome zip（+ Firefox xpi）
 - [ ] `npm run version:check` 版本一致
 - [ ] 桌面版 `npm run tauri:build` 通过（如环境允许）
 
@@ -374,6 +441,14 @@ LockPass/
 ---
 
 ## 更新日志
+
+### 2026-10-16 AGENTS.md 补充命令速查与跨层约束（不推进版本号）
+
+- 新增「常用命令」章节：开发构建 / 测试（test:sync、test:qr、cargo test、node --check）/ 扩展打包 / CI 工作流速查
+- 「版本号存储位置」改为与 `scripts/bump-version.mjs` 实际覆盖一致（9 处/8 文件，含 `extension/manifest.json`），补 Safari 工程版本例外
+- 目录结构补录 `extension/`、`Safari/`、`.github/workflows/`、`app-icon.png`，修正 scripts（13 个）与 docs（version/superpowers/wiki，移除不存在的 memory/）清单
+- 开发规范新增「7. 跨层一致性约束」：站点匹配键四层同构、扩展版本随主应用、固定端口 33555/5613、应用地址白名单、数据模型同步面
+- 测试检查清单补自动化测试命令；纯文档修改，不升版本号
 
 ### 2026-10-12 文档对齐与方向决策（不推进版本号）
 

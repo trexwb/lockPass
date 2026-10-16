@@ -384,7 +384,7 @@ function notifyPageReady() {
   try {
     chrome.runtime.sendMessage({
       type: 'LP_PAGE_READY',
-      domain: location.hostname,
+      domain: currentSiteKey(),
       hasPassword: state.hasPassword,
       fields: state.fieldKeys,
       // 分级：login=一级登录页（按模式处理）；credential=二级凭据页（仅提示）
@@ -419,7 +419,7 @@ function armLoginWatch() {
     // 延迟一帧复报，避免重定向链中第一跳误报
     setTimeout(() => {
       try {
-        chrome.runtime.sendMessage({ type: 'LP_LOGIN_DONE', domain: location.hostname })
+        chrome.runtime.sendMessage({ type: 'LP_LOGIN_DONE', domain: currentSiteKey() })
       } catch (e) { /* 后台不可达，忽略 */ }
     }, 300)
   }, LOGIN_WATCH_TICK_MS)
@@ -439,7 +439,7 @@ function onDomMaybeChanged() {
       try {
         chrome.runtime.sendMessage({
           type: 'LP_FIELDS_READY',
-          domain: location.hostname,
+          domain: currentSiteKey(),
           fields: state.fieldKeys,
         })
       } catch (e) { /* 忽略 */ }
@@ -741,13 +741,42 @@ function findCaptureInputs(root) {
 }
 
 /**
- * 捕获身份域名：优先当前文档主机名；无主机名帧（srcdoc / about:blank 等内嵌登录框）
- * 退用 referrer 的宿主页面主机名；仍取不到返回 ''，由后台退用顶层 tab URL 解析。
- * @returns {string} 小写主机名或空串
+ * 判断主机名是否为 IPv4 地址
+ * @param {string} host
+ * @returns {boolean}
+ */
+function isIPv4Host(host) {
+  const parts = (host || '').split('.')
+  if (parts.length !== 4) return false
+  return parts.every((p) => /^\d{1,3}$/.test(p) && parseInt(p, 10) <= 255)
+}
+
+/**
+ * 由 URL 计算站点匹配键：
+ * - IPv4 地址（如 127.0.0.1:35729）带端口，确保同 IP 不同端口（35729 / 16637）视为不同站点；
+ * - 域名（如 github.com）不带端口，保留原有「精确值或上级域」匹配语义。
+ * @param {URL} u
+ * @returns {string} 小写匹配键
+ */
+function urlSiteKey(u) {
+  const hostOnly = u.hostname.toLowerCase()
+  if (isIPv4Host(hostOnly)) return u.host.toLowerCase() // 含端口（非默认端口时），如 127.0.0.1:35729
+  return hostOnly
+}
+
+/** 当前页面的站点匹配键（IP+端口 / 域名） */
+function currentSiteKey() {
+  try { return urlSiteKey(new URL(location.href)) } catch (e) { return '' }
+}
+
+/**
+ * 捕获身份域名：优先当前文档站点匹配键（IP 带端口）；无主机名帧（srcdoc / about:blank 等内嵌登录框）
+ * 退用 referrer 的宿主页面站点匹配键；仍取不到返回 ''，由后台退用顶层 tab URL 解析。
+ * @returns {string} 小写匹配键或空串
  */
 function captureDomain() {
-  if (location.hostname) return location.hostname
-  try { return new URL(document.referrer).hostname.toLowerCase() } catch (e) { return '' }
+  if (location.hostname) return currentSiteKey()
+  try { return urlSiteKey(new URL(document.referrer)) } catch (e) { return '' }
 }
 
 /**

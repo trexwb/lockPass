@@ -25,7 +25,14 @@
   function extractDomain(url) {
     try {
       const u = new URL(url);
-      return u.hostname.toLowerCase();
+      const hostOnly = u.hostname.toLowerCase();
+      // 仅 IPv4 地址带端口参与匹配：127.0.0.1:35729 与 127.0.0.1:16637 视为不同站点；
+      // 域名（github.com）不带端口，保留「精确值或上级域」匹配语义。
+      const isIPv4 = (() => {
+        const parts = hostOnly.split('.');
+        return parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && parseInt(p, 10) <= 255);
+      })();
+      return isIPv4 ? u.host.toLowerCase() : hostOnly;
     } catch (e) {
       return '';
     }
