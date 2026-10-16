@@ -252,16 +252,62 @@ function buildFields(entry, password, keys) {
   return fields
 }
 
+/** 发送失败是否因「接收端不存在」：页面在扩展安装/重载前已打开（声明式注入不会补注）、
+ * iframe 已导航/移除，或页面属受限类型（chrome://、应用商店、PDF）注不了 content script */
+function isNoReceiverError(e) {
+  const m = String((e && e.message) || e || '')
+  return m.includes('Receiving end does not exist') || m.includes('Could not establish connection')
+}
+
+/** 程序化补注 content.js（MV3 chrome.scripting；依赖 activeTab/host 权限，失败静默 false）。
+ * 典型场景：用户在 chrome://extensions 重载扩展后没刷新页面，旧 content script 已成孤儿 */
+async function ensureContentScript(tabId, frameId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [typeof frameId === 'number' ? frameId : 0] },
+      files: ['content.js'],
+    })
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+/** 向指定 tab/frame 发消息；遇「接收端不存在」先补注 content.js 重试，再退顶层 frame，
+ * 均不可达则抛出可操作的人话错误（受限页面 / 需刷新页面） */
+async function sendToTab(tabId, message, frameId) {
+  const target = typeof frameId === 'number' ? frameId : 0
+  const attempt = (fid) =>
+    chrome.tabs.sendMessage(tabId, { ...message, frameId: fid }, { frameId: fid })
+  try {
+    return await attempt(target)
+  } catch (e) {
+    if (!isNoReceiverError(e)) throw e
+  }
+  // 补注后重试（popup 点击路径有 activeTab 授权；无授权时注入失败即跳过）
+  if (await ensureContentScript(tabId, target)) {
+    try {
+      return await attempt(target)
+    } catch (e) {
+      if (!isNoReceiverError(e)) throw e
+    }
+  }
+  // 目标 frame（iframe）可能已移除：顶层 frame 再试一次
+  if (target !== 0) {
+    try {
+      return await attempt(0)
+    } catch (e) {
+      if (!isNoReceiverError(e)) throw e
+    }
+  }
+  throw new Error('页面尚未就绪：请刷新当前页面后重试（chrome://、应用商店、PDF 等页面不支持填充）')
+}
+
 async function sendMultiFill(tabId, fields, frameId) {
   if (!tabId || !fields || !fields.length) return { ok: false, error: '无可填充字段' }
   try {
     // 显式指定 frameId（默认顶层 0），避免 all_frames 下向所有 frame 广播导致重复填充
-    const opts = { frameId: typeof frameId === 'number' ? frameId : 0 }
-    const resp = await chrome.tabs.sendMessage(
-      tabId,
-      { type: 'LP_MULTI_FILL', frameId: opts.frameId, fields },
-      opts
-    )
+    const resp = await sendToTab(tabId, { type: 'LP_MULTI_FILL', fields }, frameId)
     return resp || { ok: true }
   } catch (e) {
     return { ok: false, error: 'page not ready: ' + (e.message || e) }
@@ -428,11 +474,7 @@ async function fillCurrentTab(entryId) {
   }
 
   try {
-    const resp = await chrome.tabs.sendMessage(tab.id, {
-      type: 'LP_FILL',
-      entry,
-      password,
-    }, { frameId: 0 })
+    const resp = await sendToTab(tab.id, { type: 'LP_FILL', entry, password }, 0)
     delete passwordCache[entryId]
     return resp || { ok: true }
   } catch (e) {
@@ -976,6 +1018,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         activeTab().then((tab) => {
           if (!tab || !tab.id) {
             sendResponse({ ok: false, error: 'no active web page' })
+            return
+          }
+          // 受限页面（chrome://、应用商店、PDF 等）注不了 content script，提前给人话错误
+          if (!/^https?:|^file:/.test(tab.url || '')) {
+            sendResponse({ ok: false, error: '当前页面类型不支持自动填充，请在普通网页使用' })
             return
           }
           const fields = buildFields(entry, entry.password, MULTI_FILL_KEYS)

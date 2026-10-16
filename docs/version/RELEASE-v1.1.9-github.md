@@ -52,6 +52,7 @@
 - **macOS 首次打开**：ad-hoc 签名仍会被 Gatekeeper 拦截，执行一次 `xattr -dr com.apple.quarantine "/Applications/LockPass.app"` 即可（重装后需再执行一次）
 - **Windows**：SmartScreen 提示「更多信息 → 仍要运行」
 - **浏览器扩展**：重新下载 zip，或在 `chrome://extensions` 点卡片上的刷新
+- 修复：重载 / 更新扩展后未刷新页面时，点击条目填充报「page not ready: Receiving end does not exist」——现在会自动向页面补注内容脚本并重试；`chrome://`、应用商店、PDF 等页面会给出明确提示
 - **数据无需迁移**：`.vault` 格式不变，现有密码库直接解锁即用
 
 ## ⚠️ 已知限制

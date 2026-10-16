@@ -15,6 +15,7 @@
 - `src/core/tauri-server-bridge.js`：同步给桌面本地服务的 `domain` 字段同样对 IPv4 地址带端口、域名不带。
 - `src-tauri/src/server.rs`：`domain_matches()` 新增 `is_ipv4` / `is_ip_port_key`，对 `IPv4:端口` 形式仅做精确相等匹配（与扩展两侧口径一致）；`/credentials` 命中行为随之修正。
 - `src-tauri/src/server.rs`（同日追加修复，用户回归发现）：查询参数解析补百分号解码（新增 `percent_decode` / `hex_val`）——扩展侧 `fetchCredentials()` 对 domain 做了 `encodeURIComponent`，`127.0.0.1:35729` 变为 `127.0.0.1%3A35729`，而服务端此前按原样切分不解码，导致桌面 HTTP 通道 `domain_matches` 收到 `127.0.0.1%3a35729` 永不命中（表现为 popup「当前网站没有匹配条目」）。改动前域名值不含需编码字符，缺陷被掩盖，属本次引入的回归；页面桥通道不走 HTTP 不受影响。同时给 `credentials_match_by_ip_and_port_exactly` 补 `%3A` 编码形态断言防回归。
+- `extension/background.js` + `extension/manifest.json`（同日追加修复，用户回归发现）：填充发送链路补「无接收端」恢复——桌面 HTTP 通道下 popup 条目列表来自本地服务、不经过页面 content script，扩展重载后未刷新的页面 / `chrome://` 等受限页 / 已移除的 iframe 都会让 `chrome.tabs.sendMessage` 抛 `Receiving end does not exist`（表现为 popup「page not ready: Could not establish connection」）。新增 `sendToTab()`：先经 `chrome.scripting`（manifest 新增 `scripting` 权限）程序化补注 `content.js` 重试，再退顶层 frame，均不可达返回可操作人话错误；非接收端错误原样抛出不被误吞。`fillCurrentTab`（旧填充路径）同步接入；`POPUP_FILL` 桌面分支增加受限页面预检。
 - 新增 2 项 Rust 单测：`credentials_match_by_ip_and_port_exactly`（同 IP 不同端口互不命中、裸 IP 不命中带端口条目）、`credentials_domain_subdomain_still_matches`（域名子域匹配语义不变）。
 - `.github/workflows/pages.yml` + `scripts/build-extension.mjs`：扩展打包步骤解耦 web-ext 依赖——`npm install -g web-ext` 与 Firefox xpi 校验改为尽力而为（`bash -e` 下不再因 web-ext 安装/构建失败而中断整步、导致已生成的 Chrome zip 无法随 Pages 发布）；脚本内 web-ext 构建失败自动回退系统 zip，Firefox 打包异常不再中断脚本（Chrome zip 必出）。修复「流水线未生成 `lockpass-extension-v*.zip`」问题（此前停在 v1.1.6）。
 
@@ -22,6 +23,7 @@
 
 - `cargo test --lib server::` 16 项全绿（含新增 2 项与 `%3A` 编码形态回归断言）；`npm run version:check` 11 处一致（v1.1.9）。
 - 端到端模拟验证修复后链路：`domain=127.0.0.1%3A35729` 解码后命中 35729 条目、不命中 16637 条目；裸 IP 请求仍不命中；域名子域匹配不受影响。
+- `sendToTab()` 四条路径 mock 验证：补注后重试命中、受限页面给人话错误、失效 iframe 回退顶层命中、非接收端错误原样抛出；`node --check` 与 manifest JSON 校验通过。
 - `node scripts/build-extension.mjs` 本地执行退出码 0，产出 `dist/lockpass-extension-v1.1.9.zip` 与 `dist/lockpass-extension-v1.1.9-firefox.xpi`；`pages.yml` 扩展步骤在 web-ext 不可用时仍生成 Chrome zip 并随 Pages 发布。
 - 需人工回归：在 `127.0.0.1:35729` 与 `127.0.0.1:16637` 各放一个登录页，扩展应只弹对应端口的条目、不串扰；普通站点（如 `example.com:8080` 与 `example.com`）仍按域名匹配、不区分端口；桌面 HTTP 通道与网页桥通道行为一致。
 
